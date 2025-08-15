@@ -1,0 +1,10 @@
+namespace POIneer.Render.Ports;
+using POIneer.Render.Application.Contracts;
+
+public interface IRegionSource
+{
+    // Retrieves a list of regions from a JSON file
+    Task<IReadOnlyList<RegionDto>> GetRegionsAsync(
+        string regionsJsonPath,
+        CancellationToken ct = default);
+}

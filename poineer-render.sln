@@ -6,7 +6,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "POIneer.Render", "POIneer.Render", "{8D70EBDE-D2BE-E5ED-6EF8-B42DB572F679}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "POIneer.Render", "src\POIneer.Render\POIneer.Render\POIneer.Render.csproj", "{FBD89DE4-4D15-770C-A1C6-48C8290395FE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "POIneer.Render", "src\POIneer.Render\POIneer.Render.csproj", "{FBD89DE4-4D15-770C-A1C6-48C8290395FE}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
