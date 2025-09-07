@@ -5,20 +5,20 @@ using POIneer.Render.Application.Contracts;
 
 public sealed class RenderRegion
 {
-    private readonly ILogger<RenderRegion> _log;
-    private readonly IPolygonCutter _cutter;
-    private readonly IOsmReader _reader;
+    private readonly ILogger<RenderRegion> _logger;
+    private readonly IPolygonCutter _polygonCutter;
+    private readonly IOsmReader _osmReader;
     private readonly IExporter _exporter;
 
     public RenderRegion(
         ILogger<RenderRegion> log,
-        IPolygonCutter cutter,
-        IOsmReader reader,
+        IPolygonCutter polygonCutter,
+        IOsmReader osmReader,
         IExporter exporter)
     {
-        _log = log;
-        _cutter = cutter;
-        _reader = reader;
+        _logger = log;
+        _polygonCutter = polygonCutter;
+        _osmReader = osmReader;
         _exporter = exporter;
     }
 
@@ -33,16 +33,16 @@ public sealed class RenderRegion
         if (!File.Exists(pbfPath))
             throw new FileNotFoundException($"PBF not found: {pbfPath}");
 
-        _log.LogInformation("({Id}) Cutting polygon...", regionDto.Id);
-        var cutPbf = await _cutter.CutAsync(pbfPath, regionDto.Poly, ct);
+        _logger.LogInformation("({Id}) Cutting polygon...", regionDto.Id);
+        var cutPbf = await _polygonCutter.CutAsync(pbfPath, regionDto.Poly, ct);
 
-        _log.LogInformation("({Id}) Reading OSM → POIs...", regionDto.Id);
-        var pois = _reader.ReadAsync(cutPbf, ct);
+        _logger.LogInformation("({Id}) Reading OSM → POIs...", regionDto.Id);
+        var pois = _osmReader.ReadAsync(cutPbf, ct);
 
         var outPath = Path.Combine(outDir, $"{regionDto.Id}.sqlite");
-        _log.LogInformation("({Id}) Exporting to SQLite: {Out}", regionDto.Id, outPath);
+        _logger.LogInformation("({Id}) Exporting to SQLite: {Out}", regionDto.Id, outPath);
         await _exporter.ExportAsync(pois, outPath, ct);
 
-        _log.LogInformation("({Id}) Done.", regionDto.Id);
+        _logger.LogInformation("({Id}) Done.", regionDto.Id);
     }
 }

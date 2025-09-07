@@ -7,10 +7,12 @@ public sealed class GeofabrikRegionSource : IRegionSource
 {
     public async Task<IReadOnlyList<RegionDto>> GetRegionsAsync(
         string regionsJsonPath,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
-        await using var s = File.OpenRead(regionsJsonPath);
-        var regions = await JsonSerializer.DeserializeAsync<List<RegionDto>>(s, cancellationToken: ct)
+        await using var fileStream = File.OpenRead(regionsJsonPath);
+        var regions = await JsonSerializer.DeserializeAsync<List<RegionDto>>(
+            fileStream,
+            cancellationToken: cancellationToken)
                       ?? new();
         return regions.Where(r => !string.IsNullOrWhiteSpace(r.PbfUrl)).ToList();
     }

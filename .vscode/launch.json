@@ -1,0 +1,73 @@
+{
+  // VS Code launch configurations for POIneer.Render (.NET 9)
+  "version": "0.2.0",
+  "configurations": [
+    // Default launch config for POIneer.Render in Development mode  
+    {
+      "name": "POIneer.Render • Development",
+      "type": "coreclr", 
+      "request": "launch",
+      "preLaunchTask": "build",                 // ensure fresh build
+      // Program points to the built DLL in Debug
+      "program": "${workspaceFolder}/src/POIneer.Render/bin/Debug/net9.0/POIneer.Render.dll",
+      // Working directory = project root (so relative paths like config/… resolve there)
+      "cwd": "${workspaceFolder}/src/POIneer.Render",
+      "args": [
+        // You can optionally override config via command line:
+        // "--Renderer:RegionsJson=config/regions.local.json"
+        // "--Renderer:OnlyRegionId=berlin"
+      ],
+      "env": {
+        // Host environment used by appsettings.{Environment}.json
+        "DOTNET_ENVIRONMENT": "Development",
+        // Optional: override via env (matches Program.cs prefix "POINEER_RENDER__")
+        // "POINEER_RENDER__RENDERER__REGIONSJSON": "config/regions.local.json",
+        // "POINEER_RENDER__RENDERER__ONLYREGIONID": "berlin"
+      },
+      "console": "integratedTerminal",
+      "stopAtEntry": false,
+      "justMyCode": true
+    },
+    // Default launch config for POIneer.Render in Production mode
+    {
+      "name": "POIneer.Render • Production",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/POIneer.Render/bin/Debug/net9.0/POIneer.Render.dll",
+      "cwd": "${workspaceFolder}/src/POIneer.Render",
+      "args": [
+        // Prod usually uses appsettings.Production.json; only override if needed:
+        // "--Renderer:RegionsJson=config/regions.prod.json"
+      ],
+      "env": {
+        "DOTNET_ENVIRONMENT": "Production"
+      },
+      "console": "integratedTerminal",
+      "stopAtEntry": false,
+      "justMyCode": true
+    },
+    // Default launch config for POIneer.Render in Development mode
+    {
+      "name": "POIneer.Render • Dev (Single Region: berlin)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/POIneer.Render/bin/Debug/net9.0/POIneer.Render.dll",
+      "cwd": "${workspaceFolder}/src/POIneer.Render",
+      "args": [
+        // Override OnlyRegionId via command line binding:
+        "--Renderer:OnlyRegionId=berlin"
+      ],
+      "env": {
+        "DOTNET_ENVIRONMENT": "Development"
+      },
+      "console": "integratedTerminal",
+      "stopAtEntry": false,
+      "justMyCode": true
+    }
+  ],
+  "compounds": [
+    // Run multiple configs together if you ever add more services
+  ]
+}
