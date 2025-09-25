@@ -36,26 +36,41 @@ pipeline {
       }
     }
 
+
+
     stage('Ensure dotnet SDK') {
       steps {
         sh '''
           set -eux
-          if ! command -v dotnet >/dev/null 2>&1; then
-            echo "[setup] dotnet not found; trying repository install script..."
-            if [ -x scripts/dotnet/install-dotnet-sdk.sh ]; then
-              # Install into /opt/dotnet/<version> and symlink /usr/local/bin/dotnet (as in your setup)
-              sudo scripts/dotnet/install-dotnet-sdk.sh "$DOTNET_SDK_VERSION"
-            else
-              echo "ERROR: scripts/dotnet/install-dotnet-sdk.sh not found or not executable."
-              exit 2
-            fi
-          fi
+          SDK="${DOTNET_SDK_VERSION}"
+          INSTALL_DIR="${WORKSPACE}/.dotnet"
+          mkdir -p "${INSTALL_DIR}"
+          curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+          # immer die gewünschte Version in den Workspace installieren
+          bash /tmp/dotnet-install.sh --version "${SDK}" --install-dir "${INSTALL_DIR}" --skip-non-versioned-files true
+          "${INSTALL_DIR}/dotnet" --info
+          "${INSTALL_DIR}/dotnet" --list-sdks
+        '''
+        // Ab hier überall dieses dotnet benutzen:
+        script {
+          env.DOTNET = "${WORKSPACE}/.dotnet/dotnet"
+          env.DOTNET_ROOT = "${WORKSPACE}/.dotnet"
+          env.PATH = "${WORKSPACE}/.dotnet:${env.PATH}"
+        }
+      }
+    }
 
-          # Prefer your /usr/local/bin symlink if present
-          export PATH="/usr/local/bin:$PATH"
 
-          # Verify correct SDK available; if multiple SDKs exist, we'll still use global.json if present.
-          dotnet --info
+    stage('Debug dotnet') {
+      steps {
+        sh '''
+          set -eux
+          which -a dotnet || true
+          echo "PATH=$PATH"
+          echo "DOTNET_ROOT=${DOTNET_ROOT-}"
+          dotnet --version || true
+          "$DOTNET" --version
+          "$DOTNET" --list-sdks
         '''
       }
     }
@@ -65,7 +80,7 @@ pipeline {
         sh '''
           set -eux
           mkdir -p "${NUGET_PACKAGES}"
-          dotnet restore "${RENDER_CSProj}" --nologo
+          "$DOTNET" restore "${RENDER_CSProj}" --nologo
         '''
       }
     }
@@ -74,7 +89,7 @@ pipeline {
       steps {
         sh '''
           set -eux
-          dotnet build "${RENDER_CSProj}" -c Release --no-restore --nologo
+          "$DOTNET" build "${RENDER_CSProj}" -c Release --no-restore --nologo
         '''
       }
     }
@@ -91,7 +106,7 @@ pipeline {
             for t in $(ls tests/**/**/*.csproj tests/**/*.csproj tests/*.csproj 2>/dev/null || true); do
               echo "Running tests for $t"
               # TRX is fine to archive; JUnit would require a logger package
-              dotnet test "$t" -c Release --no-build --nologo --logger "trx;LogFileName=test-results.trx"
+              "$DOTNET" test "$t" -c Release --no-build --nologo --logger "trx;LogFileName=test-results.trx"
             done
           else
             echo "No test projects found (tests/*.csproj). Skipping."
@@ -111,7 +126,7 @@ pipeline {
         sh '''
           set -eux
           rm -rf "${PUBLISH_DIR}"
-          dotnet publish "${RENDER_CSProj}" -c Release -o "${PUBLISH_DIR}" --no-build --nologo
+          "$DOTNET" publish "${RENDER_CSProj}" -c Release -o "${PUBLISH_DIR}" --no-build --nologo
           tar -C "${PUBLISH_DIR}" -czf "poineer-render_${BRANCH_NAME}.tar.gz" .
         '''
       }
@@ -154,7 +169,7 @@ pipeline {
           set -eux
           echo "[check] Running a short sanity-check invocation (no heavy work expected)."
           # Example of a quick, no-op style run if your app supports it:
-          # dotnet "${PUBLISH_DIR}/POIneer.Render.dll" --help
+          # "$DOTNET" "${PUBLISH_DIR}/POIneer.Render.dll" --help
         '''
       }
     }
