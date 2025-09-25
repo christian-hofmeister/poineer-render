@@ -3,7 +3,6 @@
 // - Placeholder "deploy" on 'release/*'
 // - Avoids heavy rendering on Jenkins
 // - Uses repository script to ensure dotnet SDK if missing
-// Comments in English (per your preference)
 
 pipeline {
   agent any
