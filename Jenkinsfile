@@ -44,14 +44,17 @@ pipeline {
           set -eux
           SDK="${DOTNET_SDK_VERSION}"
           INSTALL_DIR="${WORKSPACE}/.dotnet"
+
           mkdir -p "${INSTALL_DIR}"
           curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
-          # immer die gewünschte Version in den Workspace installieren
-          bash /tmp/dotnet-install.sh --version "${SDK}" --install-dir "${INSTALL_DIR}" --skip-non-versioned-files true
+
+          # nur installieren, wenn die gewünschte SDK-Version fehlt
+          if ! [ -x "${INSTALL_DIR}/dotnet" ] || ! "${INSTALL_DIR}/dotnet" --list-sdks | grep -q "^${SDK} "; then
+            bash /tmp/dotnet-install.sh --version "${SDK}" --install-dir "${INSTALL_DIR}" --skip-non-versioned-files
+          fi
+
           "${INSTALL_DIR}/dotnet" --info
-          "${INSTALL_DIR}/dotnet" --list-sdks
         '''
-        // Ab hier überall dieses dotnet benutzen:
         script {
           env.DOTNET = "${WORKSPACE}/.dotnet/dotnet"
           env.DOTNET_ROOT = "${WORKSPACE}/.dotnet"
@@ -59,6 +62,7 @@ pipeline {
         }
       }
     }
+
 
 
     stage('Debug dotnet') {
