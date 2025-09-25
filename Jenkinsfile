@@ -27,11 +27,6 @@ pipeline {
     PUBLISH_DIR = 'out/POIneer.Render'
   }
 
-  triggers {
-    // For multibranch, SCM webhooks usually trigger automatically.
-    // pollSCM('H/5 * * * *') // enable if you rely on polling
-  }
-
   stages {
 
     stage('Checkout') {
