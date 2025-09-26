@@ -86,7 +86,7 @@ pipeline {
                 --settings coverlet.runsettings --collect:"XPlat Code Coverage"
             else
               dotnet test POIneerRender.sln -c Release --nologo \
-                --logger "junit;LogFileName=test-results.junit.xml" \
+                --logger "junit;LogFileName=test-results.junit.xml"
             fi
           else
             # Fallback: einzelne Testprojekte
@@ -102,7 +102,7 @@ pipeline {
                   --settings coverlet.runsettings --collect:"XPlat Code Coverage"
               else
                 dotnet test "$p" -c Release --nologo \
-                --logger "junit;LogFileName=test-results.junit.xml" \
+                --logger "junit;LogFileName=test-results.junit.xml" 
               fi
             done
           fi
