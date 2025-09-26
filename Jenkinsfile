@@ -36,35 +36,6 @@ pipeline {
       }
     }
 
-
-
-    stage('Ensure dotnet SDK') {
-      steps {
-        sh '''
-          set -eux
-          SDK="${DOTNET_SDK_VERSION}"
-          INSTALL_DIR="${WORKSPACE}/.dotnet"
-
-          mkdir -p "${INSTALL_DIR}"
-          curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
-
-          # nur installieren, wenn die gewünschte SDK-Version fehlt
-          if ! [ -x "${INSTALL_DIR}/dotnet" ] || ! "${INSTALL_DIR}/dotnet" --list-sdks | grep -q "^${SDK} "; then
-            bash /tmp/dotnet-install.sh --version "${SDK}" --install-dir "${INSTALL_DIR}" --skip-non-versioned-files
-          fi
-
-          "${INSTALL_DIR}/dotnet" --info
-        '''
-        script {
-          env.DOTNET = "${WORKSPACE}/.dotnet/dotnet"
-          env.DOTNET_ROOT = "${WORKSPACE}/.dotnet"
-          env.PATH = "${WORKSPACE}/.dotnet:${env.PATH}"
-        }
-      }
-    }
-
-
-
     stage('Debug dotnet') {
       steps {
         sh '''
@@ -73,8 +44,8 @@ pipeline {
           echo "PATH=$PATH"
           echo "DOTNET_ROOT=${DOTNET_ROOT-}"
           dotnet --version || true
-          "$DOTNET" --version
-          "$DOTNET" --list-sdks
+          dotnet --version
+          dotnet --list-sdks
         '''
       }
     }
@@ -84,7 +55,7 @@ pipeline {
         sh '''
           set -eux
           mkdir -p "${NUGET_PACKAGES}"
-          "$DOTNET" restore "${RENDER_CSProj}" --nologo
+          dotnet restore "${RENDER_CSProj}" --nologo
         '''
       }
     }
@@ -93,7 +64,7 @@ pipeline {
       steps {
         sh '''
           set -eux
-          "$DOTNET" build "${RENDER_CSProj}" -c Release --no-restore --nologo
+          dotnet build "${RENDER_CSProj}" -c Release --no-restore --nologo
         '''
       }
     }
@@ -122,11 +93,11 @@ pipeline {
             echo "[test] Running ${proj}"
             if [ -f coverlet.runsettings ]; then
               # Collector-Args DIREKT (korrekt gequotet) an dotnet test hängen
-              "$DOTNET" test "${proj}" -c Release --no-build --nologo \
+              dotnet test "${proj}" -c Release --no-build --nologo \
                 --logger "trx;LogFileName=test-results.trx" \
                 --settings coverlet.runsettings --collect:"XPlat Code Coverage"
             else
-              "$DOTNET" test "${proj}" -c Release --no-build --nologo \
+              dotnet test "${proj}" -c Release --no-build --nologo \
                 --logger "trx;LogFileName=test-results.trx"
             fi
           done
@@ -148,7 +119,7 @@ pipeline {
         sh '''
           set -eux
           rm -rf "${PUBLISH_DIR}"
-          "$DOTNET" publish "${RENDER_CSProj}" -c Release -o "${PUBLISH_DIR}" --no-build --nologo
+          dotnet publish "${RENDER_CSProj}" -c Release -o "${PUBLISH_DIR}" --no-build --nologo
           tar -C "${PUBLISH_DIR}" -czf "poineer-render_${BRANCH_NAME}.tar.gz" .
         '''
       }
@@ -191,7 +162,7 @@ pipeline {
           set -eux
           echo "[check] Running a short sanity-check invocation (no heavy work expected)."
           # Example of a quick, no-op style run if your app supports it:
-          # "$DOTNET" "${PUBLISH_DIR}/POIneer.Render.dll" --help
+          # dotnet "${PUBLISH_DIR}/POIneer.Render.dll" --help
         '''
       }
     }
