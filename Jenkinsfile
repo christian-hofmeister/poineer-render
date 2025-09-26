@@ -104,17 +104,11 @@ pipeline {
       }
       steps {
         sh '''
-          set -eux
-          # Discover and test all test projects if you have them under tests/
-          if ls tests/**/**/*.csproj tests/**/*.csproj tests/*.csproj >/dev/null 2>&1; then
-            for t in $(ls tests/**/**/*.csproj tests/**/*.csproj tests/*.csproj 2>/dev/null || true); do
-              echo "Running tests for $t"
-              # TRX is fine to archive; JUnit would require a logger package
-              "$DOTNET" test "$t" -c Release --no-build --nologo --logger "trx;LogFileName=test-results.trx"
-            done
-          else
-            echo "No test projects found (tests/*.csproj). Skipping."
-          fi
+          set -eu
+          [ -f "${WORKSPACE}/.env-dotnet" ] && set -a && . "${WORKSPACE}/.env-dotnet" && set +a
+          RS_ARG=""
+          [ -f coverlet.runsettings ] && RS_ARG="--settings coverlet.runsettings --collect:\"XPlat Code Coverage\""
+          "$DOTNET" test POIneerRender.sln -c Release --no-build --nologo --logger "trx;LogFileName=test-results.trx" ${RS_ARG}
         '''
       }
       post {
