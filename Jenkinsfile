@@ -113,8 +113,15 @@ pipeline {
       }
       post {
         always {
-          // Archive any TRX files so you can review them
-          archiveArtifacts artifacts: '**/TestResults/**/*.trx', fingerprint: true, onlyIfSuccessful: false
+          // Keine Fehler mehr, wenn nichts da ist:
+          archiveArtifacts artifacts: '**/TestResults/**/*.trx',
+                            allowEmptyArchive: true,
+                            fingerprint: true,
+                            onlyIfSuccessful: false
+          archiveArtifacts artifacts: '**/TestResults/**/coverage.cobertura.xml',
+                            allowEmptyArchive: true,
+                            fingerprint: true,
+                            onlyIfSuccessful: false
         }
       }
     }
