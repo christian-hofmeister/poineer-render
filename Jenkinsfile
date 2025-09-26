@@ -82,11 +82,11 @@ pipeline {
             # Einfach: alles über die Solution testen
             if [ -f coverlet.runsettings ]; then
               dotnet test POIneerRender.sln -c Release --nologo \
-                --logger "trx;LogFileName=test-results.trx" \
+                --logger "junit;LogFileName=test-results.junit.xml" \
                 --settings coverlet.runsettings --collect:"XPlat Code Coverage"
             else
               dotnet test POIneerRender.sln -c Release --nologo \
-                --logger "trx;LogFileName=test-results.trx"
+                --logger "junit;LogFileName=test-results.junit.xml" \
             fi
           else
             # Fallback: einzelne Testprojekte
@@ -98,11 +98,11 @@ pipeline {
             for p in $PROJECTS; do
               if [ -f coverlet.runsettings ]; then
                 dotnet test "$p" -c Release --nologo \
-                  --logger "trx;LogFileName=test-results.trx" \
+                  --logger "junit;LogFileName=test-results.junit.xml" \
                   --settings coverlet.runsettings --collect:"XPlat Code Coverage"
               else
                 dotnet test "$p" -c Release --nologo \
-                  --logger "trx;LogFileName=test-results.trx"
+                --logger "junit;LogFileName=test-results.junit.xml" \
               fi
             done
           fi
@@ -110,8 +110,11 @@ pipeline {
       }
       post {
         always {
-          archiveArtifacts artifacts: '**/TestResults/**/*.trx', allowEmptyArchive: true, fingerprint: true, onlyIfSuccessful: false
-          archiveArtifacts artifacts: '**/TestResults/**/coverage.cobertura.xml', allowEmptyArchive: true, fingerprint: true, onlyIfSuccessful: false
+          junit '**/TestResults/**/test-results.junit.xml'
+          recordCoverage(
+            tools: [[parser: 'COBERTURA', pattern: '**/TestResults/**/coverage.cobertura.xml']],
+            sourceCodeRetention: 'LAST_BUILD'
+          )
         }
       }
     }
