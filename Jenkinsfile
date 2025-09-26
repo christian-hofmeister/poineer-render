@@ -70,48 +70,52 @@ pipeline {
     }
 
     stage('Test') {
-      when { branch 'develop' }
       steps {
         sh '''
-          set -eu
+          set -eux
 
-          # dotnet-Umgebung aus vorheriger Stage laden (falls vorhanden)
-          if [ -f "${WORKSPACE}/.env-dotnet" ]; then set -a; . "${WORKSPACE}/.env-dotnet"; set +a; fi
+          echo "BRANCH_NAME=${BRANCH_NAME:-?}"
+          # (Optional) einmal zeigen, was es gibt:
+          find tests -type f -name '*Tests.csproj' -print | sed 's|^| - |' || true
 
-          # Testprojekte zuverlässig finden
-          PROJECTS="$(find tests -type f -name '*Tests.csproj' | sort || true)"
-
-          if [ -z "${PROJECTS}" ]; then
-            echo "[info] No test projects under ./tests - skipping tests."
-            exit 0
-          fi
-
-          echo "[info] Test projects:"
-          echo "${PROJECTS}"
-
-          for proj in ${PROJECTS}; do
-            echo "[test] Running ${proj}"
+          if [ -f POIneerRender.sln ]; then
+            # Einfach: alles über die Solution testen
             if [ -f coverlet.runsettings ]; then
-              # Collector-Args DIREKT (korrekt gequotet) an dotnet test hängen
-              dotnet test "${proj}" -c Release --no-build --nologo \
+              dotnet test POIneerRender.sln -c Release --nologo \
                 --logger "trx;LogFileName=test-results.trx" \
                 --settings coverlet.runsettings --collect:"XPlat Code Coverage"
             else
-              dotnet test "${proj}" -c Release --no-build --nologo \
+              dotnet test POIneerRender.sln -c Release --nologo \
                 --logger "trx;LogFileName=test-results.trx"
             fi
-          done
+          else
+            # Fallback: einzelne Testprojekte
+            PROJECTS="$(find tests -type f -name '*Tests.csproj' | sort || true)"
+            if [ -z "$PROJECTS" ]; then
+              echo "[info] No test projects - skipping."
+              exit 0
+            fi
+            for p in $PROJECTS; do
+              if [ -f coverlet.runsettings ]; then
+                dotnet test "$p" -c Release --nologo \
+                  --logger "trx;LogFileName=test-results.trx" \
+                  --settings coverlet.runsettings --collect:"XPlat Code Coverage"
+              else
+                dotnet test "$p" -c Release --nologo \
+                  --logger "trx;LogFileName=test-results.trx"
+              fi
+            done
+          fi
         '''
       }
       post {
         always {
-          archiveArtifacts artifacts: '**/TestResults/**/*.trx',
-                            allowEmptyArchive: true, fingerprint: true, onlyIfSuccessful: false
-          archiveArtifacts artifacts: '**/TestResults/**/coverage.cobertura.xml',
-                            allowEmptyArchive: true, fingerprint: true, onlyIfSuccessful: false
+          archiveArtifacts artifacts: '**/TestResults/**/*.trx', allowEmptyArchive: true, fingerprint: true, onlyIfSuccessful: false
+          archiveArtifacts artifacts: '**/TestResults/**/coverage.cobertura.xml', allowEmptyArchive: true, fingerprint: true, onlyIfSuccessful: false
         }
       }
     }
+
 
 
     stage('Publish (App)') {
