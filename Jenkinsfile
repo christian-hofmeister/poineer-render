@@ -25,6 +25,7 @@ pipeline {
     // Project paths
     RENDER_CSProj = 'src/POIneer.Render/POIneer.Render.csproj'
     PUBLISH_DIR = 'out/POIneer.Render'
+    COVERAGE_MIN = '25'   // später z. B. auf 40/50/60 anheben
   }
 
   stages {
@@ -71,50 +72,70 @@ pipeline {
 
     stage('Test') {
       steps {
-        sh '''
+        sh """
           set -eux
+          echo "BRANCH_NAME=\${BRANCH_NAME:-?}"
 
-          echo "BRANCH_NAME=${BRANCH_NAME:-?}"
-          # (Optional) einmal zeigen, was es gibt:
-          find tests -type f -name '*Tests.csproj' -print | sed 's|^| - |' || true
+          # Feste Zielpfade für Coverage
+          COV_DIR="TestResults/Coverage"
+          COV_FILE="$COV_DIR/coverage.cobertura.xml"
+          mkdir -p "$COV_DIR"
 
           if [ -f POIneerRender.sln ]; then
-            # Einfach: alles über die Solution testen
-            if [ -f coverlet.runsettings ]; then
-              dotnet test POIneerRender.sln -c Release --nologo \
-                --logger "junit;LogFileName=test-results.junit.xml" \
-                --settings coverlet.runsettings --collect:"XPlat Code Coverage"
-            else
-              dotnet test POIneerRender.sln -c Release --nologo \
-                --logger "junit;LogFileName=test-results.junit.xml"
-            fi
+            dotnet test POIneerRender.sln -c Release --nologo \
+              /p:CollectCoverage=true \
+              /p:CoverletOutputFormat=cobertura \
+              /p:CoverletOutput="$COV_DIR/coverage" \
+              /p:Threshold=\${COVERAGE_MIN} /p:ThresholdType=line /p:ThresholdStat=total \
+              --logger "junit;LogFileName=test-results.junit.xml"
           else
-            # Fallback: einzelne Testprojekte
-            PROJECTS="$(find tests -type f -name '*Tests.csproj' | sort || true)"
-            if [ -z "$PROJECTS" ]; then
+            PROJECTS="\$(find tests -type f -name '*Tests.csproj' | sort || true)"
+            if [ -z "\$PROJECTS" ]; then
               echo "[info] No test projects - skipping."
               exit 0
             fi
-            for p in $PROJECTS; do
-              if [ -f coverlet.runsettings ]; then
-                dotnet test "$p" -c Release --nologo \
-                  --logger "junit;LogFileName=test-results.junit.xml" \
-                  --settings coverlet.runsettings --collect:"XPlat Code Coverage"
-              else
-                dotnet test "$p" -c Release --nologo \
-                --logger "junit;LogFileName=test-results.junit.xml" 
-              fi
+            for p in \$PROJECTS; do
+              # Für jedes Testprojekt separate Reports zulassen (werden zusammen eingesammelt)
+              OUT_DIR="\$(dirname "\$p")/TestResults/Coverage"
+              mkdir -p "\$OUT_DIR"
+              dotnet test "\$p" -c Release --nologo \
+                /p:CollectCoverage=true \
+                /p:CoverletOutputFormat=cobertura \
+                /p:CoverletOutput="\$OUT_DIR/coverage" \
+                /p:Threshold=\${COVERAGE_MIN} /p:ThresholdType=line /p:ThresholdStat=total \
+                --logger "junit;LogFileName=test-results.junit.xml"
             done
           fi
-        '''
+        """
       }
       post {
         always {
           junit '**/TestResults/**/test-results.junit.xml'
+          // Coverage-Plugin liest Cobertura-XMLs ein
           recordCoverage(
             tools: [[parser: 'COBERTURA', pattern: '**/TestResults/**/coverage.cobertura.xml']],
             sourceCodeRetention: 'LAST_BUILD'
           )
+        }
+      }
+    }
+
+    stage('Coverage Report (HTML)') {
+      when { expression { return fileExists('TestResults/Coverage/coverage.cobertura.xml') } }
+      steps {
+        sh '''
+          set -eux
+          dotnet tool update -g dotnet-reportgenerator-globaltool || dotnet tool install -g dotnet-reportgenerator-globaltool
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          reportgenerator \
+            -reports:**/TestResults/**/coverage.cobertura.xml \
+            -targetdir:CoverageReport \
+            -reporttypes:Html
+        '''
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'CoverageReport/**', fingerprint: false
         }
       }
     }
