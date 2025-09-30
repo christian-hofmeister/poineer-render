@@ -72,11 +72,11 @@ pipeline {
 
     stage('Test') {
       steps {
-        sh """
+        sh '''
           set -eux
-          echo "BRANCH_NAME=\${BRANCH_NAME:-?}"
+          echo "BRANCH_NAME=${BRANCH_NAME:-?}"
 
-          # Feste Zielpfade für Coverage
+          # Feste Zielpfade für Coverage (Shell-Variablen)
           COV_DIR="TestResults/Coverage"
           COV_FILE="$COV_DIR/coverage.cobertura.xml"
           mkdir -p "$COV_DIR"
@@ -86,32 +86,30 @@ pipeline {
               /p:CollectCoverage=true \
               /p:CoverletOutputFormat=cobertura \
               /p:CoverletOutput="$COV_DIR/coverage" \
-              /p:Threshold=\${COVERAGE_MIN} /p:ThresholdType=line /p:ThresholdStat=total \
+              /p:Threshold=$COVERAGE_MIN /p:ThresholdType=line /p:ThresholdStat=total \
               --logger "junit;LogFileName=test-results.junit.xml"
           else
-            PROJECTS="\$(find tests -type f -name '*Tests.csproj' | sort || true)"
-            if [ -z "\$PROJECTS" ]; then
+            PROJECTS="$(find tests -type f -name '*Tests.csproj' | sort || true)"
+            if [ -z "$PROJECTS" ]; then
               echo "[info] No test projects - skipping."
               exit 0
             fi
-            for p in \$PROJECTS; do
-              # Für jedes Testprojekt separate Reports zulassen (werden zusammen eingesammelt)
-              OUT_DIR="\$(dirname "\$p")/TestResults/Coverage"
-              mkdir -p "\$OUT_DIR"
-              dotnet test "\$p" -c Release --nologo \
+            for p in $PROJECTS; do
+              OUT_DIR="$(dirname "$p")/TestResults/Coverage"
+              mkdir -p "$OUT_DIR"
+              dotnet test "$p" -c Release --nologo \
                 /p:CollectCoverage=true \
                 /p:CoverletOutputFormat=cobertura \
-                /p:CoverletOutput="\$OUT_DIR/coverage" \
-                /p:Threshold=\${COVERAGE_MIN} /p:ThresholdType=line /p:ThresholdStat=total \
+                /p:CoverletOutput="$OUT_DIR/coverage" \
+                /p:Threshold=$COVERAGE_MIN /p:ThresholdType=line /p:ThresholdStat=total \
                 --logger "junit;LogFileName=test-results.junit.xml"
             done
           fi
-        """
+        '''
       }
       post {
         always {
           junit '**/TestResults/**/test-results.junit.xml'
-          // Coverage-Plugin liest Cobertura-XMLs ein
           recordCoverage(
             tools: [[parser: 'COBERTURA', pattern: '**/TestResults/**/coverage.cobertura.xml']],
             sourceCodeRetention: 'LAST_BUILD'
@@ -119,6 +117,7 @@ pipeline {
         }
       }
     }
+
 
     stage('Coverage Report (HTML)') {
       when { expression { return fileExists('TestResults/Coverage/coverage.cobertura.xml') } }
