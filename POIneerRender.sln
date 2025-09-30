@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "POIneer.Render.ContractTest
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "POIneer.Render.IntegrationTests", "tests\POIneer.Render.IntegrationTests\POIneer.Render.IntegrationTests.csproj", "{7C504690-531F-4D0A-AFE7-B68B1D94B46B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "POIneer.Render.TestHelpers", "tests\POIneer.Render.TestHelpers\POIneer.Render.TestHelpers.csproj", "{04A1DC36-98C6-4105-8A2C-655869AA66F8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -75,6 +77,18 @@ Global
 		{7C504690-531F-4D0A-AFE7-B68B1D94B46B}.Release|x64.Build.0 = Release|Any CPU
 		{7C504690-531F-4D0A-AFE7-B68B1D94B46B}.Release|x86.ActiveCfg = Release|Any CPU
 		{7C504690-531F-4D0A-AFE7-B68B1D94B46B}.Release|x86.Build.0 = Release|Any CPU
+		{04A1DC36-98C6-4105-8A2C-655869AA66F8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{04A1DC36-98C6-4105-8A2C-655869AA66F8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{04A1DC36-98C6-4105-8A2C-655869AA66F8}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{04A1DC36-98C6-4105-8A2C-655869AA66F8}.Debug|x64.Build.0 = Debug|Any CPU
+		{04A1DC36-98C6-4105-8A2C-655869AA66F8}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{04A1DC36-98C6-4105-8A2C-655869AA66F8}.Debug|x86.Build.0 = Debug|Any CPU
+		{04A1DC36-98C6-4105-8A2C-655869AA66F8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{04A1DC36-98C6-4105-8A2C-655869AA66F8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{04A1DC36-98C6-4105-8A2C-655869AA66F8}.Release|x64.ActiveCfg = Release|Any CPU
+		{04A1DC36-98C6-4105-8A2C-655869AA66F8}.Release|x64.Build.0 = Release|Any CPU
+		{04A1DC36-98C6-4105-8A2C-655869AA66F8}.Release|x86.ActiveCfg = Release|Any CPU
+		{04A1DC36-98C6-4105-8A2C-655869AA66F8}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -85,6 +99,7 @@ Global
 		{8EEAF1D3-4347-4720-BC22-6E5C6FB4EECC} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{C32DF142-467E-40C3-9CFD-56F7871800B7} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{7C504690-531F-4D0A-AFE7-B68B1D94B46B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{04A1DC36-98C6-4105-8A2C-655869AA66F8} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {CD41D2A6-340D-40A8-A3DF-38B7B6069F9C}
