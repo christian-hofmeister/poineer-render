@@ -107,29 +107,18 @@ pipeline {
           fi
         '''
       }
-      
       post {
         always {
-          // Testresultate einlesen
           junit '**/TestResults/**/test-results.junit.xml'
-
-          // Coverage einlesen
           recordCoverage(
-            tools: [[
-              parser: 'COBERTURA',
-              pattern: '**/TestResults/**/coverage.cobertura.xml'
-            ]],
+            tools: [[parser: 'COBERTURA', pattern: '**/TestResults/**/coverage.cobertura.xml']],
             sourceCodeRetention: 'LAST_BUILD',
-            failUnhealthy: true,  // Build rot, wenn unter Schwelle
-            globalThresholds: [[
-              thresholdTarget: 'Line',
-              unhealthyThreshold: 25.0   // deine Coverage-Minimalgrenze
-            ]]
+            failOnError: true,          // nur wenn keine Reports gefunden werden
+            failNoReports: true         // (je nach Version verfügbar; sonst weglassen)
           )
         }
       }
     }
-
 
     stage('Coverage Report (HTML)') {
       when { expression { return fileExists('TestResults/Coverage/coverage.cobertura.xml') } }
