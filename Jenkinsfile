@@ -115,6 +115,12 @@ pipeline {
             sourceCodeRetention: 'LAST_BUILD',
             failOnError: true
           )
+          publishCoverage(
+            adapters: [coberturaAdapter('**/TestResults/**/coverage.cobertura.xml')],
+            sourceFileResolver: sourceFiles('STORE_LAST_BUILD'), // oder 'STORE_ALL_BUILD' wenn du Historie willst
+            failNoReports: true,                                  // Build rot, wenn kein Report gefunden wird
+            calculateDiffForChangeRequests: true                  // PRs: Diff-Ansicht
+          )
         }
       }
     }
