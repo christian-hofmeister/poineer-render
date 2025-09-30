@@ -79,3 +79,23 @@ Code style/formatting (no logic change).
 Performance improvement.
 
 <code>perf(repository): optimize query for listing with incidents</code>
+
+
+# Scopes
+
+- core – Domain-/Kernlogik (Use-Cases, Services)
+- adapters – Adapter & IO (Dateisystem, OSM-Reader, CLI)
+- osm – Spezifisch OSM-Parsen/Modelle
+- tiles – Tile-/Chunk-/Grid-Logik
+- db – SQLite, Schema, Migrations, Writer
+- config – Konfiguration/Settings/Validation
+- logging – Logging, Diagnostics, Telemetry
+- cli – Kommandozeile/Runner/Program
+- build – Buildsystem (csproj, SDK, TargetFramework)
+- deps – Dependency-Updates (NuGet)
+- tests – Tests allgemein
+- unit-tests, integration-tests, contract-tests – falls du feiner trennen willst
+- test-helpers – euer neues Helpers-Projekt
+- ci – Jenkinsfile, Pipeline, Coverage
+- docs – README, Doku
+- scripts – Repo-Skripte (scripts/...)
