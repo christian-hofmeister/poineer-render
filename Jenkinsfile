@@ -108,12 +108,25 @@ pipeline {
         '''
       }
       post {
-        always {
-          junit '**/TestResults/**/test-results.junit.xml'
-          recordCoverage(
-            tools: [[parser: 'COBERTURA', pattern: '**/TestResults/**/coverage.cobertura.xml']],
-            sourceCodeRetention: 'LAST_BUILD'
-          )
+          post {
+          always {
+            // Testresultate einlesen
+            junit '**/TestResults/**/test-results.junit.xml'
+
+            // Coverage einlesen
+            recordCoverage(
+              tools: [[
+                parser: 'COBERTURA',
+                pattern: '**/TestResults/**/coverage.cobertura.xml'
+              ]],
+              sourceCodeRetention: 'LAST_BUILD',
+              failUnhealthy: true,  // Build rot, wenn unter Schwelle
+              globalThresholds: [[
+                thresholdTarget: 'Line',
+                unhealthyThreshold: 25.0   // deine Coverage-Minimalgrenze
+              ]]
+            )
+          }
         }
       }
     }
@@ -138,16 +151,6 @@ pipeline {
         }
       }
     }
-
-    recordCoverage(
-      tools: [[parser: 'COBERTURA', pattern: '**/TestResults/**/coverage.cobertura.xml']],
-      sourceCodeRetention: 'LAST_BUILD',
-      failUnhealthy: true,
-      globalThresholds: [[thresholdTarget: 'Line', unhealthyThreshold: $COVERAGE_MIN, unstableThreshold: $COVERAGE_MIN]]
-    )
-    
-
-
 
     stage('Publish (App)') {
       steps {
