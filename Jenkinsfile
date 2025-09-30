@@ -107,26 +107,25 @@ pipeline {
           fi
         '''
       }
+      
       post {
-          post {
-          always {
-            // Testresultate einlesen
-            junit '**/TestResults/**/test-results.junit.xml'
+        always {
+          // Testresultate einlesen
+          junit '**/TestResults/**/test-results.junit.xml'
 
-            // Coverage einlesen
-            recordCoverage(
-              tools: [[
-                parser: 'COBERTURA',
-                pattern: '**/TestResults/**/coverage.cobertura.xml'
-              ]],
-              sourceCodeRetention: 'LAST_BUILD',
-              failUnhealthy: true,  // Build rot, wenn unter Schwelle
-              globalThresholds: [[
-                thresholdTarget: 'Line',
-                unhealthyThreshold: 25.0   // deine Coverage-Minimalgrenze
-              ]]
-            )
-          }
+          // Coverage einlesen
+          recordCoverage(
+            tools: [[
+              parser: 'COBERTURA',
+              pattern: '**/TestResults/**/coverage.cobertura.xml'
+            ]],
+            sourceCodeRetention: 'LAST_BUILD',
+            failUnhealthy: true,  // Build rot, wenn unter Schwelle
+            globalThresholds: [[
+              thresholdTarget: 'Line',
+              unhealthyThreshold: 25.0   // deine Coverage-Minimalgrenze
+            ]]
+          )
         }
       }
     }
