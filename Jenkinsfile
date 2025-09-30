@@ -139,6 +139,14 @@ pipeline {
       }
     }
 
+    recordCoverage(
+      tools: [[parser: 'COBERTURA', pattern: '**/TestResults/**/coverage.cobertura.xml']],
+      sourceCodeRetention: 'LAST_BUILD',
+      failUnhealthy: true,
+      globalThresholds: [[thresholdTarget: 'Line', unhealthyThreshold: $COVERAGE_MIN, unstableThreshold: $COVERAGE_MIN]]
+    )
+    
+
 
 
     stage('Publish (App)') {

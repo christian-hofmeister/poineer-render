@@ -56,3 +56,9 @@ nunit-*.xml
 *.sqlite
 
 db/sqlite/poineer.db
+
+# Coverage reports
+**/TestResults/
+**/coverage.cobertura.xml
+**/coverage.opencover.xml
+**/CoverageReport/
