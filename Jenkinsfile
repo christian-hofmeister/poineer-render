@@ -113,8 +113,7 @@ pipeline {
           recordCoverage(
             tools: [[parser: 'COBERTURA', pattern: '**/TestResults/**/coverage.cobertura.xml']],
             sourceCodeRetention: 'LAST_BUILD',
-            failOnError: true,          // nur wenn keine Reports gefunden werden
-            failNoReports: true         // (je nach Version verfügbar; sonst weglassen)
+            failOnError: true
           )
         }
       }
