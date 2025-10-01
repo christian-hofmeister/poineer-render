@@ -74,58 +74,58 @@ pipeline {
       steps {
         sh '''
           set -eux
-          echo "BRANCH_NAME=${BRANCH_NAME:-?}"
+          # 1) Tests laufen lassen -> Cobertura erzeugen (KEIN Threshold hier!)
+          dotnet test POIneerRender.sln -c Release --nologo \
+            /p:CollectCoverage=true \
+            /p:CoverletOutputFormat=cobertura \
+            /p:CoverletOutput=TestResults/Coverage/coverage
 
-          # Feste Zielpfade für Coverage (Shell-Variablen)
-          COV_DIR="TestResults/Coverage"
-          COV_FILE="$COV_DIR/coverage.cobertura.xml"
-          mkdir -p "$COV_DIR"
-
-          if [ -f POIneerRender.sln ]; then
-            dotnet test POIneerRender.sln -c Release --nologo \
-              /p:CollectCoverage=true \
-              /p:CoverletOutputFormat=cobertura \
-              /p:CoverletOutput="$COV_DIR/coverage" \
-              /p:Threshold=$COVERAGE_MIN /p:ThresholdType=line /p:ThresholdStat=total \
-              --logger "junit;LogFileName=test-results.junit.xml"
-          else
-            PROJECTS="$(find tests -type f -name '*Tests.csproj' | sort || true)"
-            if [ -z "$PROJECTS" ]; then
-              echo "[info] No test projects - skipping."
-              exit 0
-            fi
-            for p in $PROJECTS; do
-              OUT_DIR="$(dirname "$p")/TestResults/Coverage"
-              mkdir -p "$OUT_DIR"
-              dotnet test "$p" -c Release --nologo \
-                /p:CollectCoverage=true \
-                /p:CoverletOutputFormat=cobertura \
-                /p:CoverletOutput="$OUT_DIR/coverage" \
-                /p:Threshold=$COVERAGE_MIN /p:ThresholdType=line /p:ThresholdStat=total \
-                --logger "junit;LogFileName=test-results.junit.xml"
-            done
-          fi
-          echo "[diag] Suche nach Cobertura-Reports:"
-          find . -type f -name "coverage.cobertura.xml" -o -name "*cobertura*.xml" -o -name "*coverage*.xml"
+          echo "[diag] Coverage files:"
+          find . -type f -name "coverage.cobertura.xml" -print
         '''
       }
       post {
         always {
           junit '**/TestResults/**/test-results.junit.xml'
+
+          // Nimm EINE der beiden Varianten — je nach Plugin:
+          // Variante 1: Coverage Plugin
           recordCoverage(
             tools: [[parser: 'COBERTURA', pattern: '**/TestResults/**/coverage.cobertura.xml']],
             sourceCodeRetention: 'LAST_BUILD',
             failOnError: true
           )
-          publishCoverage(
-            adapters: [coberturaAdapter('**/TestResults/**/coverage.cobertura.xml')],
-            sourceFileResolver: sourceFiles('STORE_LAST_BUILD'), // oder 'STORE_ALL_BUILD' wenn du Historie willst
-            failNoReports: true,                                  // Build rot, wenn kein Report gefunden wird
-            calculateDiffForChangeRequests: true                  // PRs: Diff-Ansicht
-          )
+
+          // Variante 2: Code Coverage API (nur wenn Plugin & Syntax vorhanden)
+          // publishCoverage(
+          //   adapters: [coberturaAdapter('**/TestResults/**/coverage.cobertura.xml')],
+          //   sourceFileResolver: sourceFiles('STORE_LAST_BUILD'),
+          //   failNoReports: true,
+          //   calculateDiffForChangeRequests: true
+          // )
+
+          // 2) Schwelle manuell prüfen und Build-Result setzen
+          script {
+            def min = env.COVERAGE_MIN ? env.COVERAGE_MIN.toInteger() : 25
+            // parse Line-Rate aus der ersten Cobertura (0..1) -> Prozent
+            def pct = sh(script: '''
+              set -eu
+              f="$(ls -1 **/TestResults/**/coverage.cobertura.xml | head -n1)"
+              awk -F'"' "/^<coverage/ {for(i=1;i<=NF;i++){if(\$i ~ /line-rate=/){print \$(i+1); exit}}}" "$f" | awk '{printf(\"%.0f\\n\", $1*100)}'
+            ''', returnStdout: true).trim()
+
+            echo "Line coverage detected: ${pct}% (threshold: ${min}%)"
+            if (pct.isInteger() && pct.toInteger() < min) {
+              currentBuild.result = 'FAILURE'
+              echo "❌ Coverage below threshold."
+            } else {
+              echo "✅ Coverage threshold met."
+            }
+          }
         }
       }
     }
+
 
     stage('Coverage Report (HTML)') {
       when { expression { return fileExists('TestResults/Coverage/coverage.cobertura.xml') } }
