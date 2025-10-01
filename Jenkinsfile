@@ -106,7 +106,7 @@ pipeline {
             done
           fi
           echo "[diag] Suche nach Cobertura-Reports:"
-          find . -type f \( -name "coverage.cobertura.xml" -o -name "*cobertura*.xml" -o -name "*coverage*.xml" \) -printf " - %p\n"
+          find . -type f -name "coverage.cobertura.xml" -o -name "*cobertura*.xml" -o -name "*coverage*.xml"
         '''
       }
       post {
