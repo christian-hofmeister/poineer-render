@@ -62,3 +62,4 @@ db/sqlite/poineer.db
 **/coverage.cobertura.xml
 **/coverage.opencover.xml
 **/CoverageReport/
+coverage-report/
