@@ -29,9 +29,30 @@ jobs:
 
       - name: Verify formatting
         # Fails if formatting differs from dotnet-format rules
+        shell: bash
         run: |
+          set -euo pipefail
+
+          # 1) Neues CLI verfügbar? -> nutzt --verify-no-changes
+          if dotnet help format >/dev/null 2>&1; then
+            echo "Using built-in 'dotnet format'..."
+            dotnet format --verify-no-changes --no-restore
+            exit 0
+          fi
+
+          # 2) Fallback: Globales Tool (ältere SDKs) -> nutzt --check
+          echo "Falling back to global tool 'dotnet-format'..."
           dotnet tool install -g dotnet-format
-          ~/.dotnet/tools/dotnet-format --verify-no-changes
+
+          # Workspace ermitteln: bevorzugt .sln, sonst Ordner
+          SLN="$(find . -maxdepth 3 -type f -name '*.sln' -print -quit || true)"
+          if [ -n "${SLN}" ]; then
+            echo "Running dotnet-format on solution: ${SLN}"
+            ~/.dotnet/tools/dotnet-format --check "${SLN}"
+          else
+            echo "No solution found; running on folder."
+            ~/.dotnet/tools/dotnet-format --check --folder .
+          fi
 
       - name: Build (Release)
         run: dotnet build --configuration Release --no-restore /warnaserror
