@@ -8,7 +8,9 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <Exclude>[xunit.*]*,[NUnit.*]*,[FluentAssertions]*</Exclude>
-  <ExcludeByFile>**/Program.cs;**/*Designer.cs;**/Migrations/*.cs;**/Generated/**/*.cs</ExcludeByFile>
+    <ExcludeByFile>**/bin/**/*,**/obj/**/*,**/*.g.cs,**/Program.cs,**/*Designer.cs,**/Migrations/*.cs,**/Generated/**/*.cs</ExcludeByFile>
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>cobertura</CoverletOutputFormat>
   </PropertyGroup>
 
   <ItemGroup>
