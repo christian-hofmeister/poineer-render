@@ -61,10 +61,10 @@ jobs:
         shell: bash
         run: |
           dotnet test --configuration Release --no-build \
-            /p:CollectCoverage=true \
-            /p:CoverletOutputFormat=cobertura \
-            /p:ExcludeByFile="**/bin/**/*;**/obj/**/*;**/*.g.cs"
- 
+            -p:CollectCoverage=true \
+            -p:CoverletOutputFormat=cobertura \
+            -p:ExcludeByFile='**/bin/**/*;**/obj/**/*;**/*.g.cs'
+
       - name: Enforce minimum coverage (60%)
         # Simple threshold check using reportgenerator's summary
         run: |
