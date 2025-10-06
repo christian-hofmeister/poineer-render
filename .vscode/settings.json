@@ -1,0 +1,13 @@
+{
+    // Global default
+  "editor.formatOnSave": true,
+
+  // C#-spezifisch
+  "[csharp]": {
+    "editor.defaultFormatter": "ms-dotnettools.csharp",
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": true,    // remove unused usings, sort
+      "source.fixAll": true              // apply available code fixes
+    }
+  }
+}

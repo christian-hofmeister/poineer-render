@@ -14,7 +14,8 @@ public sealed class OsmiumPolygonCutter : IPolygonCutter
         {
             FileName = "osmium",
             ArgumentList = { "extract", "-p", polyPath, pbfPath, "-o", output },
-            RedirectStandardError = true, RedirectStandardOutput = true
+            RedirectStandardError = true,
+            RedirectStandardOutput = true
         };
         using var proc = Process.Start(psi)!;
         await proc.WaitForExitAsync(ct);

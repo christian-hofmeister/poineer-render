@@ -32,18 +32,18 @@ public sealed class Runner
     {
         var contentRoot = _hostEnvironment.ContentRootPath;
 
-        string Resolve(string p)  => Path.IsPathRooted(p) ? p : Path.GetFullPath(Path.Combine(contentRoot, p));
+        string Resolve(string p) => Path.IsPathRooted(p) ? p : Path.GetFullPath(Path.Combine(contentRoot, p));
 
         var regionsPath = Resolve(_rendererOptions.RegionsJson);
-        var workDir     = Resolve(_rendererOptions.WorkDir);
-        var outDir      = Resolve(_rendererOptions.OutDir);
+        var workDir = Resolve(_rendererOptions.WorkDir);
+        var outDir = Resolve(_rendererOptions.OutDir);
 
         _logger.LogInformation("POIneer.Render starting (env: {Env})", _hostEnvironment.EnvironmentName);
         _logger.LogInformation("Using content root: {ContentRoot}", contentRoot);
         _logger.LogInformation("Regions file: {RegionsPath}", regionsPath);
         _logger.LogInformation("Work directory: {WorkDir}", workDir);
         _logger.LogInformation("Output directory: {OutDir}", outDir);
-        
+
 
         _logger.LogInformation("Creating directories (if not exists)...");
         Directory.CreateDirectory(workDir);
@@ -52,7 +52,7 @@ public sealed class Runner
         _logger.LogInformation("Directories created: {WorkDir}, {OutDir}", workDir, outDir);
 
         _logger.LogInformation("Using regions file: {RegionsPath}", regionsPath);
-        
+
         if (!File.Exists(regionsPath))
             throw new FileNotFoundException($"Regions file not found: {regionsPath}");
 

@@ -29,11 +29,11 @@ public sealed class SqliteExporter : IExporter
         using var tx = conn.BeginTransaction();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "INSERT INTO poi (osm_id,name,category,lon,lat) VALUES (@o,@n,@c,@x,@y)";
-        var pO = cmd.CreateParameter(); pO.ParameterName="@o"; cmd.Parameters.Add(pO);
-        var pN = cmd.CreateParameter(); pN.ParameterName="@n"; cmd.Parameters.Add(pN);
-        var pC = cmd.CreateParameter(); pC.ParameterName="@c"; cmd.Parameters.Add(pC);
-        var pX = cmd.CreateParameter(); pX.ParameterName="@x"; cmd.Parameters.Add(pX);
-        var pY = cmd.CreateParameter(); pY.ParameterName="@y"; cmd.Parameters.Add(pY);
+        var pO = cmd.CreateParameter(); pO.ParameterName = "@o"; cmd.Parameters.Add(pO);
+        var pN = cmd.CreateParameter(); pN.ParameterName = "@n"; cmd.Parameters.Add(pN);
+        var pC = cmd.CreateParameter(); pC.ParameterName = "@c"; cmd.Parameters.Add(pC);
+        var pX = cmd.CreateParameter(); pX.ParameterName = "@x"; cmd.Parameters.Add(pX);
+        var pY = cmd.CreateParameter(); pY.ParameterName = "@y"; cmd.Parameters.Add(pY);
 
         await foreach (var poi in pois.WithCancellation(ct))
         {
