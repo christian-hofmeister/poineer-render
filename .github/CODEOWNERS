@@ -1,0 +1,7 @@
+# Default owner (falls niemand anderes matcht)
+* @choxberg
+
+# Beispiel: Bereiche gezielt zuordnen
+/src/POIneer.Render/ @choxberg
+/tests/ @choxberg
+/.github/workflows/ @choxberg

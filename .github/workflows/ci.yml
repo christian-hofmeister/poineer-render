@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ develop, main, 'release/**' ]
+  push:
+    branches: [ develop ]
+
+jobs:
+  build_test:
+    # This job name will be used as a required check in branch protection
+    name: build-and-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          dotnet-version: |
+            9.0.x
+            8.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Verify formatting
+        # Fails if formatting differs from dotnet-format rules
+        run: |
+          dotnet tool install -g dotnet-format
+          ~/.dotnet/tools/dotnet-format --verify-no-changes
+
+      - name: Build (Release)
+        run: dotnet build --configuration Release --no-restore /warnaserror
+
+      - name: Test with coverage
+        # Generates cobertura reports for PR decoration by plugins if needed
+        run: |
+          dotnet test --configuration Release --no-build \
+            /p:CollectCoverage=true \
+            /p:CoverletOutputFormat=cobertura \
+            /p:ExcludeByFile="**/bin/**,**/obj/**,**/*.g.cs"
+
+      - name: Enforce minimum coverage (60%)
+        # Simple threshold check using reportgenerator's summary
+        run: |
+          dotnet tool install -g dotnet-reportgenerator-globaltool
+          reportgenerator -reports:**/coverage.cobertura.xml -targetdir:coverage-report -reporttypes:TextSummary
+          echo "==== Coverage Summary ===="
+          cat coverage-report/Summary.txt
+          # Parse line coverage percent
+          PCT=$(grep -Eo 'Line coverage: [0-9]+\.[0-9]+' coverage-report/Summary.txt | awk '{print $3}')
+          # Convert to integer by truncating decimals
+          PCT_INT=${PCT%.*}
+          echo "Line coverage = ${PCT}%"
+          if [ "${PCT_INT}" -lt 60 ]; then
+            echo "Coverage below threshold (60%). Failing."
+            exit 1
+          fi
