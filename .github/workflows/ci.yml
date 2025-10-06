@@ -58,13 +58,13 @@ jobs:
         run: dotnet build --configuration Release --no-restore /warnaserror
 
       - name: Test with coverage
-        # Generates cobertura reports for PR decoration by plugins if needed
+        shell: bash
         run: |
           dotnet test --configuration Release --no-build \
             /p:CollectCoverage=true \
             /p:CoverletOutputFormat=cobertura \
-            /p:ExcludeByFile="**/bin/**,**/obj/**,**/*.g.cs"
-
+            /p:ExcludeByFile="**/bin/**/*;**/obj/**/*;**/*.g.cs"
+ 
       - name: Enforce minimum coverage (60%)
         # Simple threshold check using reportgenerator's summary
         run: |
