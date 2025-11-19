@@ -21,7 +21,7 @@ pipeline {
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
     NUGET_PACKAGES = "${WORKSPACE}/.nuget/packages"
     // Desired SDK version for the project; adjust if you bump SDK
-    DOTNET_SDK_VERSION = '9.0.305'
+    DOTNET_SDK_VERSION = '10.0.100'
     // Project paths
     RENDER_CSProj = 'src/POIneer.Render/POIneer.Render.csproj'
     PUBLISH_DIR = 'out/POIneer.Render'

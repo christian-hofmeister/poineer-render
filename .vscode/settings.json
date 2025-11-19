@@ -6,8 +6,8 @@
   "[csharp]": {
     "editor.defaultFormatter": "ms-dotnettools.csharp",
     "editor.codeActionsOnSave": {
-      "source.organizeImports": true,    // remove unused usings, sort
-      "source.fixAll": true              // apply available code fixes
+      "source.organizeImports": "explicit",
+      "source.fixAll": "explicit"
     }
   }
 }
