@@ -1,3 +1,13 @@
 namespace POIneer.Render.Domain.Models;
 
-public sealed record Poi(long OsmId, string? Name, Category Category, double Lon, double Lat);
+/// <summary>
+/// Represents a Point of Interest (POI) with relevant details.
+/// </summary>
+public sealed record Poi(
+    long Id,
+    string OsmId,
+    string? Name,
+    string Amenity,
+    double Latitude,
+    double Longitude
+);

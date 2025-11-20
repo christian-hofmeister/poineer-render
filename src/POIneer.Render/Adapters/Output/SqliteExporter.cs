@@ -1,11 +1,15 @@
 namespace POIneer.Render.Adapters.Output;
+
 using System.Data.SQLite;
 using POIneer.Render.Ports;
 using POIneer.Render.Application.Contracts;
 
 public sealed class SqliteExporter : IExporter
 {
-    public async Task ExportAsync(IAsyncEnumerable<PoiDto> pois, string outputSqlitePath, CancellationToken ct = default)
+    public async Task ExportAsync(
+        IAsyncEnumerable<PoiDto> pois,
+        string outputSqlitePath,
+        CancellationToken ct = default)
     {
         if (File.Exists(outputSqlitePath)) File.Delete(outputSqlitePath);
 
