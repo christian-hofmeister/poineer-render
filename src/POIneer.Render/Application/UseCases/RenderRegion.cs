@@ -1,4 +1,5 @@
 namespace POIneer.Render.Application.UseCases;
+
 using Microsoft.Extensions.Logging;
 using POIneer.Render.Ports;
 using POIneer.Render.Application.Contracts;

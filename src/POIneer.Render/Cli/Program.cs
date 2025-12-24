@@ -25,6 +25,8 @@ internal class Program
             .AddEnvironmentVariables(prefix: "POINEER_RENDER__")
             .AddCommandLine(args);
 
+
+
         // Bind Options
         // Prefer "Renderer" section; if not present, bind from root (fallback to keep compatibility)
         builder.Services

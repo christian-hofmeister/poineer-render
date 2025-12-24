@@ -1,4 +1,5 @@
 namespace POIneer.Render.Adapters.Input;
+
 using System.Diagnostics;
 using POIneer.Render.Ports;
 

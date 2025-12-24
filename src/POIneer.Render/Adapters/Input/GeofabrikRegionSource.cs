@@ -1,4 +1,5 @@
 namespace POIneer.Render.Adapters.Input;
+
 using System.Text.Json;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Ports;

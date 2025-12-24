@@ -12,47 +12,5 @@
     "country": "Germany",
     "category": "Outdoor",
     "pbfUrl": "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf"
-  },
-  {
-    "id": "paris",
-    "name": "Paris",
-    "country": "France",
-    "category": "City",
-    "pbfUrl": "https://download.geofabrik.de/europe/france/ile-de-france-latest.osm.pbf"
-  },
-  {
-    "id": "nepal",
-    "name": "Nepal",
-    "country": "Nepal",
-    "category": "Trekking",
-    "pbfUrl": "https://download.geofabrik.de/asia/nepal-latest.osm.pbf"
-  },
-  {
-    "id": "patagonia",
-    "name": "Patagonia (Southern Chile/Argentina)",
-    "country": "Chile/Argentina",
-    "category": "Outdoor",
-    "pbfUrl": "https://download.geofabrik.de/south-america/argentina-latest.osm.pbf"
-  },
-  {
-    "id": "norway",
-    "name": "Norway",
-    "country": "Norway",
-    "category": "Outdoor",
-    "pbfUrl": "https://download.geofabrik.de/europe/norway-latest.osm.pbf"
-  },
-  {
-    "id": "vienna",
-    "name": "Vienna",
-    "country": "Austria",
-    "category": "City",
-    "pbfUrl": "https://download.geofabrik.de/europe/austria-latest.osm.pbf"
-  },
-  {
-    "id": "cape_town",
-    "name": "Cape Town",
-    "country": "South Africa",
-    "category": "City",
-    "pbfUrl": "https://download.geofabrik.de/africa/south-africa-latest.osm.pbf"
   }
 ]

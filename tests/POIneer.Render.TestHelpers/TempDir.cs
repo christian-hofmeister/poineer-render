@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 
 namespace POIneer.Render.TestHelpers;
+
 public sealed class TempDir : IDisposable
 {
     public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "poineer-test-" + Guid.NewGuid());
