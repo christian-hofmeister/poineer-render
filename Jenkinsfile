@@ -76,6 +76,8 @@ pipeline {
           set -eux
           # 1) Tests laufen lassen -> Cobertura erzeugen (KEIN Threshold hier!)
           dotnet test POIneerRender.sln -c Release --nologo \
+            --results-directory TestResults \
+            --logger "junit;LogFilePath=test-results.junit.xml" \
             /p:CollectCoverage=true \
             /p:CoverletOutputFormat=cobertura \
             /p:CoverletOutput=TestResults/Coverage/coverage
