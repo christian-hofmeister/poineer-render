@@ -55,7 +55,9 @@ nunit-*.xml
 
 *.sqlite
 
-db/sqlite/poineer.db
+# rendered output folders 
+src/**/output/
+src/**/work/
 
 # Coverage reports
 **/TestResults/
