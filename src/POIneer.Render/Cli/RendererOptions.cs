@@ -6,6 +6,6 @@ public sealed class RendererOptions
     // Default fallbacks if nothing is configured
     public string WorkDir { get; init; } = "work";
     public string OutDir { get; init; } = "output";
-    public string RegionsJson { get; init; } = "config/regions.renderOptions.json";
+    public string RegionsJson { get; init; } = "src/POIneer.Render/Cli/config/regions.production.json";
     public string? OnlyRegionId { get; init; }
 }
