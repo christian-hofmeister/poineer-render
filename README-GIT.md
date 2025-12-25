@@ -261,3 +261,9 @@ Performance improvement.
 - ci – Jenkinsfile, Pipeline, Coverage
 - docs – README, Doku
 - scripts – Repo-Skripte (scripts/...)
+
+
+spickzettel:
+
+git push -d <remote_name> <branchname>   # Delete remote
+git branch -d <branchname>               # Delete local
