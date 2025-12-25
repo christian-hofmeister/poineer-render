@@ -56,7 +56,7 @@ public sealed class Runner
         if (!File.Exists(regionsPath))
             throw new FileNotFoundException($"Regions file not found: {regionsPath}");
 
-        var regions = await _regionSource.GetRegionsAsync(regionsPath, ct);
+        var regions = await _regionSource.GetRegionsAsync(regionsPath, _logger, ct);
 
         foreach (var r in regions.Where(r => string.IsNullOrEmpty(_rendererOptions.OnlyRegionId) || r.Id == _rendererOptions.OnlyRegionId))
         {
