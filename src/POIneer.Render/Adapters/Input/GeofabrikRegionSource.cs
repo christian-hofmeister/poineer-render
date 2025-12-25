@@ -7,14 +7,17 @@ using POIneer.Render.Ports;
 
 public sealed class GeofabrikRegionSource : IRegionSource
 {
-    ILogger<Runner> _logger;
+    private readonly ILogger<GeofabrikRegionSource> _logger;
+
+    public GeofabrikRegionSource(ILogger<GeofabrikRegionSource> logger)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
 
     public async Task<IReadOnlyList<RegionDto>> GetRegionsAsync(
         string regionsJsonPath,
-        ILogger<Runner> log,
         CancellationToken cancellationToken = default)
     {
-        _logger = log;
         _logger.LogInformation("Loading regions from JSON file: {RegionsJsonPath}", regionsJsonPath);
 
         await using var fileStream = File.OpenRead(regionsJsonPath);
