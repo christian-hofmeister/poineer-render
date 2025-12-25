@@ -70,14 +70,15 @@ pipeline {
       }
     }
 
-    stage('Test') {
+    stage('Test with Coverage'){
       steps {
         sh '''
           set -eux
-          # 1) Tests laufen lassen -> Cobertura erzeugen (KEIN Threshold hier!)
+
+          # Tests ausführen
           dotnet test POIneerRender.sln -c Release --nologo \
             --results-directory TestResults \
-            --logger "junit;LogFilePath=test-results.junit.xml" \
+            --logger "junit;LogFilePath=TestResults/test-results.junit.xml" \
             /p:CollectCoverage=true \
             /p:CoverletOutputFormat=cobertura \
             /p:CoverletOutput=TestResults/Coverage/coverage
@@ -94,35 +95,32 @@ pipeline {
       }
       post {
         always {
+          // ✅ JUnit korrekt einsammeln
           junit '**/TestResults/**/test-results.junit.xml'
 
-          // Nimm EINE der beiden Varianten — je nach Plugin:
-          // Variante 1: Coverage Plugin
+          // ✅ Cobertura Coverage publizieren
           recordCoverage(
             tools: [[parser: 'COBERTURA', pattern: '**/TestResults/**/coverage.cobertura.xml']],
             sourceCodeRetention: 'LAST_BUILD',
             failOnError: true
           )
 
-          // Variante 2: Code Coverage API (nur wenn Plugin & Syntax vorhanden)
-          // publishCoverage(
-          //   adapters: [coberturaAdapter('**/TestResults/**/coverage.cobertura.xml')],
-          //   sourceFileResolver: sourceFiles('STORE_LAST_BUILD'),
-          //   failNoReports: true,
-          //   calculateDiffForChangeRequests: true
-          // )
-
-          // 2) Schwelle manuell prüfen und Build-Result setzen
+          // ✅ Manuelle Coverage-Schwelle
           script {
             def min = env.COVERAGE_MIN ? env.COVERAGE_MIN.toInteger() : 25
-            // parse Line-Rate aus der ersten Cobertura (0..1) -> Prozent
-            def pct = sh(script: '''
-              set -eu
-              f="$(ls -1 **/TestResults/**/coverage.cobertura.xml | head -n1)"
-              awk -F'"' "/^<coverage/ {for(i=1;i<=NF;i++){if(\$i ~ /line-rate=/){print \$(i+1); exit}}}" "$f" | awk '{printf(\"%.0f\\n\", $1*100)}'
-            ''', returnStdout: true).trim()
+
+            def pct = sh(
+              script: '''
+                set -eu
+                f="$(ls -1 **/TestResults/**/coverage.cobertura.xml | head -n1)"
+                awk -F'"' "/^<coverage/ {for(i=1;i<=NF;i++){if(\\$i ~ /line-rate=/){print \\$(i+1); exit}}}" "$f" \
+                  | awk '{printf("%.0f\\n", $1*100)}'
+              ''',
+              returnStdout: true
+            ).trim()
 
             echo "Line coverage detected: ${pct}% (threshold: ${min}%)"
+
             if (pct.isInteger() && pct.toInteger() < min) {
               currentBuild.result = 'FAILURE'
               echo "❌ Coverage below threshold."
