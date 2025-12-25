@@ -1,16 +1,16 @@
 [
   {
-    "id": "berlin",
-    "name": "Berlin",
-    "country": "Germany",
-    "category": "City",
-    "pbfUrl": "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf"
+    "Id": "berlin",
+    "Name": "Berlin",
+    "Country": "Germany",
+    "ategory": "City",
+    "PbfUrl": "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf"
   },
   {
-    "id": "alps",
-    "name": "Alps (South Bavaria)",
-    "country": "Germany",
-    "category": "Outdoor",
-    "pbfUrl": "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf"
+    "Id": "mittelfranken",
+    "Name": "Mittelfranken",
+    "Country": "Germany",
+    "Category": "District",
+    "PbfUrl": "https://download.geofabrik.de/europe/germany/bayern/mittelfranken-latest.osm.pbf"
   }
 ]
