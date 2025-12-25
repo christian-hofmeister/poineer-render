@@ -1,10 +1,11 @@
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using POIneer.Render.Application.Contracts;
+using POIneer.Render.Application.UseCases;
 using POIneer.Render.Ports;
 using Xunit;
 
-namespace POIneer.Render.UnitTests.Application.UseCases.RenderRegion;
+namespace POIneer.Render.UnitTests.Application.UseCases.RenderRegions;
 
 public sealed class RenderRegionTests
 {
@@ -134,6 +135,67 @@ public sealed class RenderRegionTests
             Path.Combine(outDir, $"{region.Id}.sqlite"),
             ct);
     }
+
+    [Fact]
+    public async Task RunAsync_HappyPath_CutsReadsAndExports_WithExpectedPaths()
+    {
+        // Arrange
+        var logger = Substitute.For<ILogger<RenderRegion>>();
+        var polygonCutter = Substitute.For<IPolygonCutter>();
+        var osmReader = Substitute.For<IOsmReader>();
+        var exporter = Substitute.For<IExporter>();
+
+        var sut = new RenderRegion(
+            logger,
+            polygonCutter,
+            osmReader,
+            exporter);
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf",
+            Poly: "berlin.poly");
+
+        using var tmp = new TempDir();
+        var workDir = tmp.CreateSubDir("work");
+        var outDir = tmp.CreateSubDir("out");
+
+        // Dummy input PBF (existence is what matters)
+        var pbfPath = Path.Combine(workDir, $"{region.Id}.osm.pbf");
+        File.WriteAllText(pbfPath, "dummy");
+
+        // Cut result
+        var cutPbfPath = Path.Combine(workDir, $"{region.Id}.cut.osm.pbf");
+        polygonCutter
+            .CutAsync(pbfPath, region.Poly, Arg.Any<CancellationToken>())
+            .Returns(cutPbfPath);
+
+        // Reader returns some POIs
+        var pois = new[]
+        {
+            new PoiDto(1, "Café A", "cafe", 13.404954, 52.520008),
+            new PoiDto(2, "Bäckerei B", "bakery", 13.401000, 52.519000)
+        }.ToAsyncEnumerable();
+
+        osmReader
+            .ReadAsync(cutPbfPath, Arg.Any<CancellationToken>())
+            .Returns(pois);
+
+        // Act
+        await sut.RunAsync(region, workDir, outDir, CancellationToken.None);
+
+        // Assert
+        var expectedOutPath = Path.Combine(outDir, $"{region.Id}.sqlite");
+
+        Received.InOrder(() =>
+        {
+            polygonCutter.CutAsync(pbfPath, region.Poly, Arg.Any<CancellationToken>());
+            osmReader.ReadAsync(cutPbfPath, Arg.Any<CancellationToken>());
+            exporter.ExportAsync(pois, expectedOutPath, Arg.Any<CancellationToken>());
+        });
+    }
+
 }
 
 /// <summary>
