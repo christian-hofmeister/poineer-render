@@ -85,6 +85,14 @@ pipeline {
           echo "[diag] Coverage files:"
           find . -type f -name "coverage.cobertura.xml" -print
         '''
+        echo "[diag] JUnit files:"
+        find . -type f -name "test-results.junit.xml" -print
+
+        echo "[diag] TRX files:"
+        find . -type f -name "*.trx" -print
+
+        echo "[diag] Any junit xml:"
+        find . -type f \( -name "*junit*.xml" -o -name "junit*.xml" \) -print
       }
       post {
         always {
