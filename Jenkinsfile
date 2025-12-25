@@ -159,7 +159,12 @@ pipeline {
           set -eux
           rm -rf "${PUBLISH_DIR}"
           dotnet publish "${RENDER_CSProj}" -c Release -o "${PUBLISH_DIR}" --no-build --nologo
-          tar -C "${PUBLISH_DIR}" -czf "poineer-render_${BRANCH_NAME}.tar.gz" .
+          # BRANCH name safe machen (slashes -> underscores)
+          SAFE_BRANCH="$(echo "$BRANCH_NAME" | tr '/ ' '__')"
+          ARCHIVE="poineer-render_${SAFE_BRANCH}.tar.gz"
+
+          tar -C out/POIneer.Render -czf "$ARCHIVE" .
+          echo "Created archive: $ARCHIVE"
         '''
       }
       post {
