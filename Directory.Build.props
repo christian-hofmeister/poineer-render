@@ -2,4 +2,16 @@
   <PropertyGroup>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
+    <PropertyGroup Condition="'$(IsTestProject)' != 'true'">
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>cobertura</CoverletOutputFormat>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(IsTestProject)' = 'true'">
+    <CollectCoverage>false</CollectCoverage>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsTestProject)' != 'true'">
+    <ExcludeByFile Include="**/Program.cs;**/*Dto.cs;**/*Migrations/*.cs;**/*Designer.cs;**/*.g.cs;**/*.generated.cs" />
+  </ItemGroup>
 </Project>
