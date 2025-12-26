@@ -63,6 +63,7 @@ jobs:
           dotnet test --configuration Release --no-build \
             /p:CollectCoverage=true \
             /p:CoverletOutputFormat=cobertura \
+            /p:Exclude="[POIneer.Render.TestHelpers]*" \
             /p:CoverletOutput=./TestResults/Coverage/
 
       - name: Enforce minimum coverage (60%)
