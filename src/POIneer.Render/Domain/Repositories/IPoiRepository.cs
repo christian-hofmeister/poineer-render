@@ -4,5 +4,6 @@ namespace POIneer.Render.Domain;
 
 public interface IPoiRepository
 {
-    Task<IReadOnlyList<Poi>> GetAllAsync(int limit = 100);
+    Task AddAsync(Poi poi, CancellationToken ct = default);
+    Task<IReadOnlyList<Poi>> GetAllAsync(int limit = 100, CancellationToken ct = default);
 }

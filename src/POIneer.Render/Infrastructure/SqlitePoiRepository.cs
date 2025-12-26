@@ -25,8 +25,34 @@ public sealed class SqlitePoiRepository : IPoiRepository
         _connectionString = $"Data Source={databasePath}";
     }
 
+    public async Task AddAsync(
+        Poi poi,
+        CancellationToken ct = default)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        const string sql = @"
+INSERT INTO poi (id, osm_id, name, amenity, latitude, longitude)
+VALUES (@id, @osm_id, @name, @amenity, @latitude, @longitude);
+";
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("@id", poi.Id);
+        command.Parameters.AddWithValue("@osm_id", poi.OsmId);
+        command.Parameters.AddWithValue("@name", poi.Name);
+        command.Parameters.AddWithValue("@amenity", poi.Amenity);
+        command.Parameters.AddWithValue("@latitude", poi.Latitude);
+        command.Parameters.AddWithValue("@longitude", poi.Longitude);
+
+        await command.ExecuteNonQueryAsync();
+    }
+
     // Retrieves all POIs from the SQLite database up to the specified limit.
-    public async Task<IReadOnlyList<Poi>> GetAllAsync(int limit = 100)
+    public async Task<IReadOnlyList<Poi>> GetAllAsync(
+        int limit = 100,
+        CancellationToken ct = default)
     {
         var result = new List<Poi>();
 
@@ -61,7 +87,6 @@ LIMIT @limit;
 
             result.Add(poi);
         }
-
         return result;
     }
 }
