@@ -1,7 +1,12 @@
 using System.Net;
+using FluentAssertions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using POIneer.Render.Adapters.Input;
 using Xunit;
 
@@ -9,45 +14,42 @@ namespace POIneer.Render.IntegrationTests.Adapters.Input;
 
 public class FileDownloaderTests
 {
-    private static (TestServer Server, string Url) CreateServer(byte[] payload, string path = "/file.bin")
-    {
-        var builder = new WebHostBuilder()
-            .Configure(app =>
-            {
-                app.Run(async ctx =>
-                {
-                    if (ctx.Request.Path != path)
-                    {
-                        ctx.Response.StatusCode = (int)HttpStatusCode.NotFound;
-                        return;
-                    }
-
-                    ctx.Response.StatusCode = (int)HttpStatusCode.OK;
-                    await ctx.Response.Body.WriteAsync(payload);
-                });
-            });
-
-        var server = new TestServer(builder);
-        var url = server.BaseAddress.ToString().TrimEnd('/') + path;
-        return (server, url);
-    }
-
     [Fact]
     public async Task DownloadAsync_HappyPath_WritesFileAndReturnsTargetPath()
     {
-        var payload = new byte[] { 1, 2, 3, 4, 5 };
-        var (server, url) = CreateServer(payload);
-        var client = server.CreateClient();
-        using var _ = server; // dispose
+        // Arrange: start a real HTTP server on a random free port
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0"); // 0 => choose free port
 
-        var dir = Path.Combine(Path.GetTempPath(), "poineer-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        var targetPath = Path.Combine(dir, "download.bin");
+        var app = builder.Build();
 
-        var returnedPath = await FileDownloader.DownloadAsync(url, targetPath, CancellationToken.None, client);
+        var payload = "hello"u8.ToArray();
+        app.MapGet("/file", () => Results.Bytes(payload, "application/octet-stream"));
 
-        Assert.Equal(targetPath, returnedPath);
-        Assert.True(File.Exists(targetPath));
-        Assert.Equal(payload, await File.ReadAllBytesAsync(targetPath));
+        await app.StartAsync();
+
+        try
+        {
+            var server = app.Services.GetRequiredService<IServer>();
+            var addresses = server.Features.Get<IServerAddressesFeature>()!;
+            var baseUrl = addresses.Addresses.Single(); // e.g. http://127.0.0.1:51234
+
+            var url = $"{baseUrl}/file";
+
+            var targetPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".bin");
+
+            // Act
+            var returnedPath = await FileDownloader.DownloadAsync(url, targetPath);
+
+            // Assert
+            returnedPath.Should().Be(targetPath);
+            File.Exists(targetPath).Should().BeTrue();
+            (await File.ReadAllBytesAsync(targetPath)).Should().Equal(payload);
+        }
+        finally
+        {
+            await app.StopAsync();
+            await app.DisposeAsync();
+        }
     }
 }
