@@ -10,6 +10,8 @@
     <ExcludeByFile>**/bin/**/*,**/obj/**/*,**/*.g.cs,**/Program.cs,**/*Designer.cs,**/Migrations/*.cs,**/Generated/**/*.cs</ExcludeByFile>
     <CollectCoverage>true</CollectCoverage>
     <CoverletOutputFormat>cobertura</CoverletOutputFormat>
+    <IsTestProject>true</IsTestProject>
+    <ExcludeFromCodeCoverage>true</ExcludeFromCodeCoverage>
   </PropertyGroup>
 
   <ItemGroup>

@@ -60,18 +60,19 @@ jobs:
       - name: Test with coverage
         shell: bash
         run: |
-          dotnet test --configuration Release --no-build
+          dotnet test --configuration Release --no-build \
+            /p:CollectCoverage=true \
+            /p:CoverletOutputFormat=cobertura \
+            /p:Exclude="[POIneer.Render.TestHelpers]*" \
+            /p:CoverletOutput=./TestResults/Coverage/
 
       - name: Enforce minimum coverage (60%)
-        # Simple threshold check using reportgenerator's summary
         run: |
           dotnet tool install -g dotnet-reportgenerator-globaltool
-          reportgenerator -reports:**/coverage.cobertura.xml -targetdir:coverage-report -reporttypes:TextSummary
+          reportgenerator "-reports:**/TestResults/Coverage/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:TextSummary
           echo "==== Coverage Summary ===="
           cat coverage-report/Summary.txt
-          # Parse line coverage percent
           PCT=$(grep -Eo 'Line coverage: [0-9]+\.[0-9]+' coverage-report/Summary.txt | awk '{print $3}')
-          # Convert to integer by truncating decimals
           PCT_INT=${PCT%.*}
           echo "Line coverage = ${PCT}%"
           if [ "${PCT_INT}" -lt 60 ]; then

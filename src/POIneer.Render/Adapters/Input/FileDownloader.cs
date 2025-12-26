@@ -6,11 +6,13 @@ public static class FileDownloader
     public static async Task<string> DownloadAsync(
         string url,
         string targetPath,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        HttpClient? httpClient = null
+        )
     {
-        using var http = new HttpClient();
+        httpClient ??= new HttpClient();
         await using var fileStream = File.Create(targetPath);
-        using var stream = await http.GetStreamAsync(url, ct);
+        using var stream = await httpClient.GetStreamAsync(url, ct);
         await stream.CopyToAsync(fileStream, ct);
         return targetPath;
     }
