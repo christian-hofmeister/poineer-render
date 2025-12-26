@@ -2,16 +2,28 @@
   <PropertyGroup>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
-    <PropertyGroup Condition="'$(IsTestProject)' != 'true'">
+
+ <!-- Non-test projects: collect coverage -->
+  <PropertyGroup Condition="'$(IsTestProject)' != 'true'">
     <CollectCoverage>true</CollectCoverage>
     <CoverletOutputFormat>cobertura</CoverletOutputFormat>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(IsTestProject)' = 'true'">
+  <!-- Test projects: no self-coverage -->
+  <PropertyGroup Condition="'$(IsTestProject)' == 'true'">
     <CollectCoverage>false</CollectCoverage>
   </PropertyGroup>
 
+  <!-- Exclude boilerplate / generated code from coverage -->
   <ItemGroup Condition="'$(IsTestProject)' != 'true'">
-    <ExcludeByFile Include="**/Program.cs;**/*Dto.cs;**/*Migrations/*.cs;**/*Designer.cs;**/*.g.cs;**/*.generated.cs" />
+    <ExcludeByFile Include="
+      **/Program.cs;
+      **/*Dto.cs;
+      **/*Migrations/*.cs;
+      **/*Designer.cs;
+      **/*.g.cs;
+      **/*.generated.cs
+    " />
   </ItemGroup>
+
 </Project>
