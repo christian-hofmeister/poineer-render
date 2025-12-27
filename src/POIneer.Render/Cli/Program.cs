@@ -8,6 +8,7 @@ using POIneer.Render.Adapters.Osm;
 using POIneer.Render.Adapters.Output;
 using POIneer.Render.Application.UseCases;
 using POIneer.Render.Infrastructure;
+using POIneer.Render.Abstractions.InfrastructureAbstractions;
 
 internal class Program
 {
@@ -46,6 +47,7 @@ internal class Program
         builder.Services.AddSingleton<IOsmReader, OsmPbfReader>();
         builder.Services.AddSingleton<ISqliteDatabaseInitializer, FlywaySqliteDatabaseInitializer>();
         builder.Services.AddSingleton<IExporter, SqliteExporter>();
+        builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
         builder.Services.AddSingleton<RenderRegion>();
 
         // CLI entry point
