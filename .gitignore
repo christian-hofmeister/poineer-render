@@ -56,8 +56,8 @@ nunit-*.xml
 *.sqlite
 
 # rendered output folders 
-src/**/render-work-dir/
-src/**/render-out-dir/
+src/**/renderer-work-dir/
+src/**/renderer-out-dir/
 
 # Coverage reports
 **/TestResults/
