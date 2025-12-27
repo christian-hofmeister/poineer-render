@@ -7,6 +7,7 @@ using POIneer.Render.Adapters.Input;
 using POIneer.Render.Adapters.Osm;
 using POIneer.Render.Adapters.Output;
 using POIneer.Render.Application.UseCases;
+using POIneer.Render.Infrastructure;
 
 internal class Program
 {
@@ -43,6 +44,7 @@ internal class Program
         builder.Services.AddSingleton<IRegionSource, GeofabrikRegionSource>();
         builder.Services.AddSingleton<IPolygonCutter, OsmiumPolygonCutter>();
         builder.Services.AddSingleton<IOsmReader, OsmPbfReader>();
+        builder.Services.AddSingleton<ISqliteDatabaseInitializer, FlywaySqliteDatabaseInitializer>();
         builder.Services.AddSingleton<IExporter, SqliteExporter>();
         builder.Services.AddSingleton<RenderRegion>();
 

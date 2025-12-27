@@ -1,0 +1,5 @@
+[flyway]
+#url = "jdbc:sqlite:output/poi.sqlite"
+locations = ["filesystem:sql/poi"]
+baselineOnMigrate = false
+cleanDisabled = false

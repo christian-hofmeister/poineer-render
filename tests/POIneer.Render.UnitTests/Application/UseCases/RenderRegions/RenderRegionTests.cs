@@ -14,10 +14,16 @@ public sealed class RenderRegionTests
 
     private readonly IPolygonCutter _polygonCutter = Substitute.For<IPolygonCutter>();
     private readonly IOsmReader _osmReader = Substitute.For<IOsmReader>();
+    private readonly ISqliteDatabaseInitializer _dbInit = Substitute.For<ISqliteDatabaseInitializer>();
     private readonly IExporter _exporter = Substitute.For<IExporter>();
 
     private POIneer.Render.Application.UseCases.RenderRegion CreateSut()
-        => new(_logger, _polygonCutter, _osmReader, _exporter);
+        => new(
+            _logger,
+            _polygonCutter,
+            _dbInit,
+            _osmReader,
+            _exporter);
 
     [Fact]
     public async Task RunAsync_ThrowsFileNotFoundException_WhenPbfDoesNotExist()
@@ -143,11 +149,13 @@ public sealed class RenderRegionTests
         var logger = Substitute.For<ILogger<RenderRegion>>();
         var polygonCutter = Substitute.For<IPolygonCutter>();
         var osmReader = Substitute.For<IOsmReader>();
+        var initDb = Substitute.For<ISqliteDatabaseInitializer>();
         var exporter = Substitute.For<IExporter>();
 
         var sut = new RenderRegion(
             logger,
             polygonCutter,
+            initDb,
             osmReader,
             exporter);
 

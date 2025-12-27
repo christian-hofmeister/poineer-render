@@ -7,6 +7,9 @@ namespace POIneer.Render.IntegrationTests.Infrastructure;
 
 public sealed class SqlitePoiRepositoryTests
 {
+    // var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+    // Directory.CreateDirectory(tempDir);
+
     /*    [Fact]
        public async Task AddAndList_ReturnsInsertedPoi()
        {
