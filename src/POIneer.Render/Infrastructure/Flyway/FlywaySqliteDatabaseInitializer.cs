@@ -1,59 +1,43 @@
-using System.Diagnostics;
-using Microsoft.Extensions.Logging;
-using POIneer.Render.Abstractions.InfrastructureAbstractions;
-using POIneer.Render.Infrastructure.Pathing;
-using POIneer.Render.Ports;
+namespace POIneer.Render.Infrastructure.Flyway;
 
-namespace POIneer.Render.Infrastructure;
+using System.Diagnostics;
+using POIneer.Render.Abstractions.InfrastructureAbstractions;
+using POIneer.Render.Application.Contracts;
+using POIneer.Render.Ports;
 
 public sealed class FlywaySqliteDatabaseInitializer : ISqliteDatabaseInitializer
 {
-    private readonly ILogger<FlywaySqliteDatabaseInitializer> _logger;
-    private readonly IProcessRunner _processRunner;
+    private readonly IProcessRunner _runner;
 
-    public FlywaySqliteDatabaseInitializer(
-        IProcessRunner processRunner,
-        ILogger<FlywaySqliteDatabaseInitializer> log)
+    public FlywaySqliteDatabaseInitializer(IProcessRunner runner)
+        => _runner = runner;
+
+    public async Task InitializeAsync(FlywayInvocation inv, CancellationToken ct = default)
     {
-        _logger = log;
-        _processRunner = processRunner;
-    }
+        // inv.ExtraArgs should already contain everything (including command if you put it there),
+        // OR you keep command separate - but don't duplicate flags here.
+        var args = new List<string>();
 
-    public async Task InitializeAsync(FlywayInvocation invocation, CancellationToken ct = default)
-    {
-        _logger.LogInformation("Running Flyway migrations...");
+        if (inv.ExtraArgs is { Count: > 0 })
+            args.AddRange(inv.ExtraArgs);
 
+        // If you model command separately, append it exactly once:
+        args.Add(inv.Command);
 
-        _logger.LogInformation("Flyway Working directory: {WorkingDirectory}", invocation.WorkingDirectory);
-        _logger.LogInformation("flyway url: -url=jdbc:sqlite:{outputSqlitePathFull} ", invocation.OutputSqliteFullPath);
-
-        if (!File.Exists(invocation.ConfigFileFullPath))
-            throw new FileNotFoundException("Flyway config file not found", invocation.ConfigFileFullPath);
-
-        var psi = new ProcessStartInfo
+        var startInfo = new ProcessStartInfo
         {
-            FileName = invocation.Executable,
-            WorkingDirectory = invocation.WorkingDirectory,
+            FileName = inv.FlywayExe,
+            WorkingDirectory = inv.WorkingDirectory,
+            Arguments = string.Join(' ', args),
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
-            CreateNoWindow = true
         };
 
-        psi.ArgumentList.Add("-X");
-        psi.ArgumentList.Add($"-configFiles={invocation.ConfigFileFullPath}");
-        psi.ArgumentList.Add($"-url=jdbc:sqlite:{invocation.OutputSqliteFullPath}");
-        psi.ArgumentList.Add("migrate");
-
-        _logger.LogInformation("psi.arguments: '{psi.Arguments}'", psi.Arguments);
-
-        var result = await _processRunner.RunAsync(psi, ct);
+        var result = await _runner.RunAsync(startInfo, ct);
 
         if (result.ExitCode != 0)
-        {
-            _logger.LogError("Flyway failed: {ExitCode}\nSTDOUT:\n{StdOut}\nSTDERR:\n{StdErr}",
-                result.ExitCode, result.StdOut, result.StdErr);
-            throw new InvalidOperationException($"Flyway failed with exit code {result.ExitCode}.");
-        }
+            throw new InvalidOperationException(
+                $"Flyway failed (ExitCode={result.ExitCode}). StdErr: {result.StandardError}");
     }
 }

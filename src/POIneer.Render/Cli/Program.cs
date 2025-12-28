@@ -7,8 +7,8 @@ using POIneer.Render.Adapters.Input;
 using POIneer.Render.Adapters.Osm;
 using POIneer.Render.Adapters.Output;
 using POIneer.Render.Application.UseCases;
-using POIneer.Render.Infrastructure;
 using POIneer.Render.Abstractions.InfrastructureAbstractions;
+using POIneer.Render.Infrastructure.Flyway;
 
 internal class Program
 {

@@ -1,6 +1,6 @@
 namespace POIneer.Render.Infrastructure.Flyway;
 
-using POIneer.Render.Infrastructure.Pathing;
+using POIneer.Render.Application.Contracts;
 
 public static class FlywayInvocationBuilder
 {
@@ -16,21 +16,19 @@ public static class FlywayInvocationBuilder
         var configDir = Path.GetDirectoryName(configFileFullPath)
                        ?? throw new InvalidOperationException("Config directory not found.");
 
-        // Important: Flyway CLI expects -configFiles (plural) and for TOML that's fine.
-        // Also: keep args ordering stable.
-        var args = string.Join(' ',
-            options.Debug ? "-X" : "",
-            $"-configFiles=\"{configFileFullPath}\"",
-            $"-url=jdbc:sqlite:{outputSqliteFullPath}",
-            "migrate"
-        ).Trim();
+        // Build args in a single place.
+        var args = new List<string>();
+
+        // NOTE: Flyway CLI uses -configFiles (plural) for multiple files.
+        args.Add($"-configFiles=\"{configFileFullPath}\"");
+        args.Add($"-url=jdbc:sqlite:{outputSqliteFullPath}");
 
         return new FlywayInvocation(
-            Executable: options.Executable,
+            FlywayExe: options.Executable,
             WorkingDirectory: configDir,
             ConfigFileFullPath: configFileFullPath,
-            OutputSqliteFullPath: outputSqliteFullPath,
-            Arguments: args
+            SqliteDbFullPath: outputSqliteFullPath,
+            ExtraArgs: args
         );
     }
 }
