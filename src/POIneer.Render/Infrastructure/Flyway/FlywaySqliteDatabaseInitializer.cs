@@ -14,21 +14,16 @@ public sealed class FlywaySqliteDatabaseInitializer : ISqliteDatabaseInitializer
 
     public async Task InitializeAsync(FlywayInvocation inv, CancellationToken ct = default)
     {
-        // inv.ExtraArgs should already contain everything (including command if you put it there),
-        // OR you keep command separate - but don't duplicate flags here.
-        var args = new List<string>();
+        var allArgs = new List<string>();
 
-        if (inv.ExtraArgs is { Count: > 0 })
-            args.AddRange(inv.ExtraArgs);
-
-        // If you model command separately, append it exactly once:
-        args.Add(inv.Command);
+        if (inv.Arguments is { Count: > 0 })
+            allArgs.AddRange(inv.Arguments);
 
         var startInfo = new ProcessStartInfo
         {
-            FileName = inv.FlywayExe,
+            FileName = inv.Executable,
             WorkingDirectory = inv.WorkingDirectory,
-            Arguments = string.Join(' ', args),
+            Arguments = string.Join(' ', allArgs),
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

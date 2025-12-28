@@ -62,7 +62,7 @@ public sealed class RenderRegion
 
         _logger.LogInformation("({Id}) Initializing SQLite database: {Out}", regionDto.Id, outRegionPath);
 
-        var flywayInvocation = FlywayInvocationBuilder.BuildForSqliteMigrate(
+        var flywayInvocation = FlywayInvocationBuilder.BuildSqliteMigrate(
             flywayOptions,
             repoRoot,
             outputSqlitePathFull);
