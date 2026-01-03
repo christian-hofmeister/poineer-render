@@ -1,0 +1,7 @@
+[flyway]
+locations = ["filesystem:sql/poi"]
+baselineOnMigrate = false
+cleanDisabled = false
+
+[environments.temp]
+url = "${POINEER_FLYWAY_URL}"
