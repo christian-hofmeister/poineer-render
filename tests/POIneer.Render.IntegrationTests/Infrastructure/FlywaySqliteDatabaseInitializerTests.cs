@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using POIneer.Render.Abstractions.InfrastructureAbstractions;
 using POIneer.Render.Application.Contracts;
+using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
 using Xunit;
 
@@ -16,8 +17,8 @@ public sealed class FlywaySqliteDatabaseInitializerTests
         if (!IsFlywayAvailable())
             return;
 
-        await using var temp = TempDir.Create("poineer-flyway-it-");
-        var root = temp.Path;
+        await using var temp = TemporaryDirectory.Create("poineer-flyway-it-");
+        var root = temp.DirectoryPath;
 
         // Create migrations layout:
         // root/
