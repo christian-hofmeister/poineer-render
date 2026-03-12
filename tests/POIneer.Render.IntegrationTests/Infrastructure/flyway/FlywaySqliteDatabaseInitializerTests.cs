@@ -3,7 +3,6 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
-using POIneer.Render.Infrastructure.Process;
 using Xunit;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure.Flyway;

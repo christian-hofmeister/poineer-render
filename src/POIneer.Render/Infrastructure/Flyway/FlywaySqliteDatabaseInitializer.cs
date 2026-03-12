@@ -3,6 +3,8 @@ using POIneer.Render.Infrastructure.Flyway;
 using POIneer.Render.Infrastructure.Process;
 using POIneer.Render.Ports;
 
+namespace POIneer.Render.Infrastructure.Flyway;
+
 public sealed class FlywaySqliteDatabaseInitializer : ISqliteDatabaseInitializer
 {
     private readonly IProcessRunner _runner;
