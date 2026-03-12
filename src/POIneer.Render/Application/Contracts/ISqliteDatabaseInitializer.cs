@@ -1,8 +1,8 @@
 namespace POIneer.Render.Ports;
 
-using POIneer.Render.Application.Contracts;
+using POIneer.Render.Infrastructure.Flyway;
 
 public interface ISqliteDatabaseInitializer
 {
-    Task InitializeAsync(FlywayInvocation invocation, CancellationToken ct = default);
+    Task InitializeAsync(string sqliteFilePath, CancellationToken ct);
 }

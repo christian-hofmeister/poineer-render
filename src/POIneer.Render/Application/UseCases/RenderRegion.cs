@@ -3,10 +3,8 @@ namespace POIneer.Render.Application.UseCases;
 using Microsoft.Extensions.Logging;
 using POIneer.Render.Ports;
 using POIneer.Render.Application.Contracts;
-using POIneer.Render.Infrastructure.Pathing;
-using POIneer.Render.Infrastructure.Flyway;
 
-public sealed class RenderRegion
+public sealed class RenderRegion : IRenderRegion
 {
     private readonly ILogger<RenderRegion> _logger;
     private readonly IPolygonCutter _polygonCutter;
@@ -51,24 +49,24 @@ public sealed class RenderRegion
 
         var outRegionPath = Path.Combine(regionOutDir, "poi.sqlite");
 
-        var repoRoot = RepoRootLocator.Find();
+        //var repoRoot = RepoRootLocator.Find();
         var outputSqlitePathFull = Path.GetFullPath(outRegionPath);
 
-        var flywayOptions = new FlywayOptions(
-            Executable: "flyway",
-            ConfigFileRelativePath: "migrations/flyway-poi.toml",
-            Debug: true // oder aus config
-        );
+        /*  var flywayOptions = new FlywayOptions(
+             Executable: "flyway",
+             ConfigFileRelativePath: "migrations/flyway-poi.toml",
+             Debug: true // oder aus config
+         ); */
 
         _logger.LogInformation("({Id}) Initializing SQLite database: {Out}", regionDto.Id, outRegionPath);
 
-        var flywayInvocation = FlywayInvocationBuilder.BuildSqliteMigrate(
-            flywayOptions,
-            repoRoot,
-            outputSqlitePathFull);
+        /*         var flywayInvocation = FlywayInvocationBuilder.BuildSqliteMigrate(
+                    flywayOptions,
+                    repoRoot,
+                    outputSqlitePathFull); */
 
         await _dbInit.InitializeAsync(
-            flywayInvocation,
+            outputSqlitePathFull,
             ct);
 
         // _logger.LogInformation("({Id}) Exporting to SQLite: {Out}", regionDto.Id, outPath);

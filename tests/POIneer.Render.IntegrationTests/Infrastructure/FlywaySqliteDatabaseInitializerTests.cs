@@ -1,29 +1,28 @@
 using System.Diagnostics;
 using Microsoft.Data.Sqlite;
-using POIneer.Render.Abstractions.InfrastructureAbstractions;
-using POIneer.Render.Application.Contracts;
+using Microsoft.Extensions.Options;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
+using POIneer.Render.Infrastructure.Process;
 using Xunit;
 
-namespace POIneer.Render.IntegrationTests.Infrastructure;
+namespace POIneer.Render.IntegrationTests.Infrastructure.Flyway;
 
 public sealed class FlywaySqliteDatabaseInitializerTests
 {
     [Fact]
     public async Task InitializeAsync_creates_poi_table()
     {
-        // Skip if Flyway is not available.
         if (!IsFlywayAvailable())
             return;
-
         await using var temp = TemporaryDirectory.Create("poineer-flyway-it-");
         var root = temp.DirectoryPath;
 
-        // Create migrations layout:
+        // Layout:
         // root/
         //   flyway-poi.toml
         //   sql/poi/V1__create_poi_table.sql
+
         var sqlDir = Path.Combine(root, "sql", "poi");
         Directory.CreateDirectory(sqlDir);
 
@@ -41,40 +40,42 @@ public sealed class FlywaySqliteDatabaseInitializerTests
             CREATE INDEX IF NOT EXISTS idx_poi_amenity ON poi (amenity);
             """);
 
-        // Output db path
         var dbPath = Path.Combine(root, "out", "poi.sqlite");
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 
-        // Flyway TOML config (locations relative to config file directory).
-        // If you're using .conf instead, adjust accordingly.
         var tomlPath = Path.Combine(root, "flyway-poi.toml");
         await File.WriteAllTextAsync(tomlPath, """
             [flyway]
-            # IMPORTANT: locations are relative to the config file location
             locations = ["filesystem:sql/poi"]
             cleanDisabled = false
             baselineOnMigrate = true
             """);
 
-        // Real runner (integration test).
-        var runner = new RealProcessRunner();
-        var sut = new FlywaySqliteDatabaseInitializer(runner);
-        var options = new FlywayOptions(ConfigFileRelativePath: tomlPath, Debug: true);
+        // Arrange SUT (integration: real process runner)
+        var runner = new ProcessRunner();
 
-        var invocation = FlywayInvocationBuilder.BuildSqliteMigrate(
-            options,
-            root,
-            dbPath);
+        var env = new FakeHostEnvironment { ContentRootPath = root };
 
-        // Act
-        await sut.InitializeAsync(invocation);
+        var options = Options.Create(new FlywayOptions
+        {
+            Executable = "flyway",
+            ConfigFileRelativePath = "flyway.toml",
+            Debug = true
+        });
 
-        // Assert: table exists
+
+        var builder = new FlywayInvocationBuilder(options, env);
+
+        var sut = new FlywaySqliteDatabaseInitializer(runner, builder);
+
+
+        await sut.InitializeAsync(dbPath);
+
+        // Assert
         Assert.True(await TableExistsAsync(dbPath, "poi"), "Expected table 'poi' to exist.");
-
-        // (Optional) Assert: schema history exists too
         Assert.True(await TableExistsAsync(dbPath, "flyway_schema_history"));
     }
+
 
     private static bool IsFlywayAvailable()
     {
@@ -116,26 +117,6 @@ public sealed class FlywaySqliteDatabaseInitializerTests
 
         var result = await cmd.ExecuteScalarAsync();
         return result is not null;
-    }
-
-    private sealed class RealProcessRunner : IProcessRunner
-    {
-        public async Task<ProcessResult> RunAsync(ProcessStartInfo psi, CancellationToken ct)
-        {
-            using var p = new Process { StartInfo = psi };
-
-            p.Start();
-
-            var stdOutTask = p.StandardOutput.ReadToEndAsync();
-            var stdErrTask = p.StandardError.ReadToEndAsync();
-
-            await p.WaitForExitAsync(ct);
-
-            var stdout = await stdOutTask;
-            var stderr = await stdErrTask;
-
-            return new ProcessResult(p.ExitCode, stdout, stderr);
-        }
     }
 }
 

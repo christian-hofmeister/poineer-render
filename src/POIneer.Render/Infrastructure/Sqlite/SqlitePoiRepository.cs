@@ -2,7 +2,7 @@ using Microsoft.Data.Sqlite;
 using POIneer.Render.Domain;
 using POIneer.Render.Domain.Models;
 
-namespace POIneer.Render.Infrastructure;
+namespace POIneer.Render.Infrastructure.Sqlite;
 
 // Repository implementation that reads from a SQLite database file
 /// to retrieve Point of Interest (POI) data.

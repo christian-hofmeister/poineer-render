@@ -1,4 +1,4 @@
-namespace POIneer.Render.Application.Contracts;
+namespace POIneer.Render.Infrastructure.Flyway;
 
 public sealed record FlywayInvocation(
     string Executable,

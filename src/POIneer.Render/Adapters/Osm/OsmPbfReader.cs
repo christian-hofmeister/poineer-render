@@ -9,7 +9,7 @@ public sealed class OsmPbfReader : IOsmReader
 {
     public async IAsyncEnumerable<PoiDto> ReadAsync(
         string pbfPath,
-        [EnumeratorCancellation] System.Threading.CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
         // NOTE: Replace with real implementation; this is a stub.
         // Simulate reading PBF and yielding POIs

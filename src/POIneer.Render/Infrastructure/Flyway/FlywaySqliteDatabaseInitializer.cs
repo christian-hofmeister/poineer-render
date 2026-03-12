@@ -1,29 +1,32 @@
-namespace POIneer.Render.Infrastructure.Flyway;
-
 using System.Diagnostics;
-using POIneer.Render.Abstractions.InfrastructureAbstractions;
-using POIneer.Render.Application.Contracts;
+using POIneer.Render.Infrastructure.Flyway;
+using POIneer.Render.Infrastructure.Process;
 using POIneer.Render.Ports;
 
 public sealed class FlywaySqliteDatabaseInitializer : ISqliteDatabaseInitializer
 {
     private readonly IProcessRunner _runner;
+    private readonly IFlywayInvocationBuilder _invocationBuilder;
 
-    public FlywaySqliteDatabaseInitializer(IProcessRunner runner)
-        => _runner = runner;
-
-    public async Task InitializeAsync(FlywayInvocation inv, CancellationToken ct = default)
+    public FlywaySqliteDatabaseInitializer(
+        IProcessRunner runner,
+        IFlywayInvocationBuilder invocationBuilder)
     {
-        var allArgs = new List<string>();
+        _runner = runner;
+        _invocationBuilder = invocationBuilder;
+    }
 
-        if (inv.Arguments is { Count: > 0 })
-            allArgs.AddRange(inv.Arguments);
+    public async Task InitializeAsync(
+        string sqliteFilePath,
+        CancellationToken ct = default)
+    {
+        var inv = _invocationBuilder.BuildForSqlite(sqliteFilePath);
 
         var startInfo = new ProcessStartInfo
         {
             FileName = inv.Executable,
             WorkingDirectory = inv.WorkingDirectory,
-            Arguments = string.Join(' ', allArgs),
+            Arguments = string.Join(' ', inv.Arguments ?? Array.Empty<string>()),
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

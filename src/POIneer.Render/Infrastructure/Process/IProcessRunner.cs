@@ -1,6 +1,7 @@
 using System.Diagnostics;
 
-namespace POIneer.Render.Abstractions.InfrastructureAbstractions
+
+namespace POIneer.Render.Infrastructure.Process
 {
     public interface IProcessRunner
     {

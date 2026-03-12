@@ -1,4 +1,4 @@
-namespace POIneer.Render.Abstractions.InfrastructureAbstractions
+namespace POIneer.Render.Infrastructure.Process
 {
     public sealed record ProcessResult(
         int ExitCode,

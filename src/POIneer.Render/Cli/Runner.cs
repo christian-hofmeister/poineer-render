@@ -11,18 +11,22 @@ public sealed class Runner
     private readonly IHostEnvironment _hostEnvironment;
     private readonly ILogger<Runner> _logger;
     private readonly IRegionSource _regionSource;
-    private readonly RenderRegion _renderRegionUseCase;
+    private readonly IRenderRegion _renderRegionUseCase;
     private readonly RendererOptions _rendererOptions;
+
+    private readonly IFileDownloader _fileDownloader;
 
     public Runner(
         IHostEnvironment hostEnvironment,
         ILogger<Runner> log,
+        IFileDownloader fileDownloader,
         IRegionSource regionSource,
-        RenderRegion renderRegionUseCase,
+        IRenderRegion renderRegionUseCase,
         IOptions<RendererOptions> rendererOptions)
     {
         _hostEnvironment = hostEnvironment;
         _logger = log;
+        _fileDownloader = fileDownloader;
         _regionSource = regionSource;
         _renderRegionUseCase = renderRegionUseCase;
         _rendererOptions = rendererOptions.Value;
@@ -66,7 +70,7 @@ public sealed class Runner
                 if (!File.Exists(pbfPath))
                 {
                     _logger.LogInformation("Downloading PBF for {Region} ... to {TargetPath}", r.Id, pbfPath);
-                    await FileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
+                    await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
                 }
                 await _renderRegionUseCase.RunAsync(r, _rendererOptions.WorkDir, _rendererOptions.OutDir, ct);
             }
