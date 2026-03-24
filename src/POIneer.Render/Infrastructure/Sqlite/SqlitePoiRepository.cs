@@ -17,19 +17,19 @@ namespace POIneer.Render.Infrastructure.Sqlite;
 /// </remarks>
 public sealed class SqlitePoiRepository : IPoiRepository
 {
-    private readonly string _connectionString;
+    //private readonly string _connectionString;
+    private readonly Func<SqliteConnection> _connectionFactory;
 
-    public SqlitePoiRepository(string databasePath)
+    public SqlitePoiRepository(Func<SqliteConnection> connectionFactory)
     {
-        // Example: "output/berlin_v1.sqlite"
-        _connectionString = $"Data Source={databasePath}";
+        _connectionFactory = connectionFactory;
     }
 
     public async Task AddAsync(
         Poi poi,
         CancellationToken ct = default)
     {
-        await using var connection = new SqliteConnection(_connectionString);
+        await using var connection = _connectionFactory();
         await connection.OpenAsync();
 
         const string sql = @"
@@ -56,7 +56,7 @@ VALUES (@id, @osm_id, @name, @amenity, @latitude, @longitude);
     {
         var result = new List<Poi>();
 
-        await using var connection = new SqliteConnection(_connectionString);
+        await using var connection = _connectionFactory();
         await connection.OpenAsync();
 
         // SQL query to select POI data
