@@ -17,14 +17,15 @@ namespace POIneer.Render.Infrastructure.Sqlite;
 /// </remarks>
 public sealed class SqlitePoiRepository : IPoiRepository
 {
-    //private readonly string _connectionString;
     private readonly Func<SqliteConnection> _connectionFactory;
 
+    // Constructor that accepts a factory function to create SQLite connections.
     public SqlitePoiRepository(Func<SqliteConnection> connectionFactory)
     {
         _connectionFactory = connectionFactory;
     }
 
+    // Adds a new POI to the SQLite database.
     public async Task AddAsync(
         Poi poi,
         CancellationToken ct = default)

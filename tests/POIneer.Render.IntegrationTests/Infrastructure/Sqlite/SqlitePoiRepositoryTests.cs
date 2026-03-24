@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using POIneer.Render.Domain.Models;
 using POIneer.Render.Infrastructure.FileSystem;
+using POIneer.Render.Infrastructure.Process;
 using POIneer.Render.Infrastructure.Sqlite;
 using Xunit;
 
@@ -13,8 +14,11 @@ public sealed class SqlitePoiRepositoryTests
     public async Task AddAndList_ReturnsInsertedPoi()
     {
         // Arrange
-        //if (!IsFlywayAvailable())
-        //    return;
+        if (!ProcessUtils.IsExecutableAvailable("/usr/local/bin/flyway"))
+        {
+            Console.WriteLine("Flyway not available – skipping test.");
+            return;
+        }
         await using var temp = TemporaryDirectory.Create("poineer-flyway-it-", true);
         var root = temp.DirectoryPath;
         var dbPath = Path.Combine(root, $"{Guid.NewGuid():N}.sqlite");
@@ -38,11 +42,7 @@ public sealed class SqlitePoiRepositoryTests
                """;
             await cmd.ExecuteNonQueryAsync();
         }
-
-        // TODO: create your repository with the same connection string
-        // e.g. var sut = new SqlitePoiRepository(cs);
         var sut = CreateSut(dbPath);
-
         var poiId = 1234L;
 
         // Act
@@ -75,29 +75,4 @@ public sealed class SqlitePoiRepositoryTests
 
         return new SqliteConnection(cs);
     });
-
-    //private sealed record Poi(string Id, string Name, double Lat, double Lon); 
-
-    private static bool IsFlywayAvailable()
-    {
-        try
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = "flyway",
-                Arguments = "-v",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-            using var p = Process.Start(psi);
-            if (p is null) return false;
-            p.WaitForExit(3000);
-            return p.ExitCode == 0;
-        }
-        catch
-        {
-            return false;
-        }
-    }
 }

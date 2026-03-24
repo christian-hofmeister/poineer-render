@@ -3,6 +3,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
+using POIneer.Render.Infrastructure.Process;
 using Xunit;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure.Flyway;
@@ -12,7 +13,7 @@ public sealed class FlywaySqliteDatabaseInitializerTests
     [Fact]
     public async Task InitializeAsync_creates_poi_table()
     {
-        if (!IsFlywayAvailable())
+        if (!ProcessUtils.IsExecutableAvailable("/usr/local/bin/flyway"))
             return;
         await using var temp = TemporaryDirectory.Create("poineer-flyway-it-");
         var root = temp.DirectoryPath;
@@ -73,30 +74,6 @@ public sealed class FlywaySqliteDatabaseInitializerTests
         // Assert
         Assert.True(await TableExistsAsync(dbPath, "poi"), "Expected table 'poi' to exist.");
         Assert.True(await TableExistsAsync(dbPath, "flyway_schema_history"));
-    }
-
-
-    private static bool IsFlywayAvailable()
-    {
-        try
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = "flyway",
-                Arguments = "-v",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-            using var p = Process.Start(psi);
-            if (p is null) return false;
-            p.WaitForExit(3000);
-            return p.ExitCode == 0;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     private static async Task<bool> TableExistsAsync(string sqlitePath, string tableName)
