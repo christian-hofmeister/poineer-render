@@ -59,7 +59,8 @@ public sealed class SqlitePoiRepositoryTests
 
 
         // Assert
-        Assert.Contains(all, p => p.Id == poiId && p.Name == "Test POI");
+        Assert.Contains(all, p => p.Id == poiId && p.Name == "Test POI"); // Ensure the inserted POI is returned
+        Assert.Single(all); // Ensure only one record exists
 
         // Cleanup
         if (File.Exists(dbPath))
