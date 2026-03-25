@@ -14,12 +14,7 @@ public sealed class SqlitePoiRepositoryTests
     public async Task AddAndList_ReturnsInsertedPoi()
     {
         // Arrange
-        if (!ProcessUtils.IsExecutableAvailable("/usr/local/bin/flyway"))
-        {
-            Console.WriteLine("Flyway not available – skipping test.");
-            return;
-        }
-        await using var temp = TemporaryDirectory.Create("poineer-flyway-it-", true);
+        await using var temp = TemporaryDirectory.Create("poineer-flyway-it-", false);
         var root = temp.DirectoryPath;
         var dbPath = Path.Combine(root, $"{Guid.NewGuid():N}.sqlite");
         var cs = new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString();
