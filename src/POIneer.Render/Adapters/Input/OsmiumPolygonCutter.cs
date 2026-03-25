@@ -5,7 +5,10 @@ using POIneer.Render.Ports;
 
 public sealed class OsmiumPolygonCutter : IPolygonCutter
 {
-    public async Task<string> CutAsync(string pbfPath, string? polyPath, CancellationToken ct = default)
+    public async Task<string> CutAsync(
+        string pbfPath,
+        string? polyPath,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(polyPath) || !File.Exists(polyPath))
             return pbfPath;

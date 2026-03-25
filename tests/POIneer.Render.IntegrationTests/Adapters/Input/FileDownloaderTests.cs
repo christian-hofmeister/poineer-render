@@ -27,6 +27,7 @@ public class FileDownloaderTests
         app.MapGet("/file", () => Results.Bytes(payload, "application/octet-stream"));
 
         await app.StartAsync();
+        var targetPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".bin");
 
         try
         {
@@ -36,10 +37,12 @@ public class FileDownloaderTests
 
             var url = $"{baseUrl}/file";
 
-            var targetPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".bin");
+            using var httpClient = new HttpClient();
+            var sut = new HttpFileDownloader(httpClient);
 
             // Act
-            var returnedPath = await FileDownloader.DownloadAsync(url, targetPath);
+            var returnedPath = await sut.DownloadAsync(url, targetPath);
+
 
             // Assert
             returnedPath.Should().Be(targetPath);
