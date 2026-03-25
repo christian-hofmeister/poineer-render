@@ -16,14 +16,14 @@ public sealed class GeofabrikRegionSource : IRegionSource
 
     public async Task<IReadOnlyList<RegionDto>> GetRegionsAsync(
         string regionsJsonPath,
-        CancellationToken cancellationToken = default)
+        CancellationToken ct = default)
     {
         _logger.LogInformation("Loading regions from JSON file: {RegionsJsonPath}", regionsJsonPath);
 
         await using var fileStream = File.OpenRead(regionsJsonPath);
         var regions = await JsonSerializer.DeserializeAsync<List<RegionDto>>(
             fileStream,
-            cancellationToken: cancellationToken)
+            cancellationToken: ct)
                       ?? new();
 
         _logger.LogInformation("Loaded {RegionCount} regions from JSON file.", regions.Count);

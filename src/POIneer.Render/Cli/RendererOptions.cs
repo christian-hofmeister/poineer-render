@@ -4,8 +4,8 @@ namespace POIneer.Render.Cli;
 public sealed class RendererOptions
 {
     // Default fallbacks if nothing is configured
-    public string WorkDir { get; init; } = "work";
-    public string OutDir { get; init; } = "output";
+    public string WorkDir { get; init; } = "renderer-work-dir-fallback";
+    public string OutDir { get; init; } = "renderer-out-dir-fallback";
     public string RegionsJson { get; init; } = "src/POIneer.Render/Cli/config/regions.production.json";
     public string? OnlyRegionId { get; init; }
 }

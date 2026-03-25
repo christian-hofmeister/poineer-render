@@ -2,7 +2,7 @@ using Microsoft.Data.Sqlite;
 using POIneer.Render.Domain;
 using POIneer.Render.Domain.Models;
 
-namespace POIneer.Render.Infrastructure;
+namespace POIneer.Render.Infrastructure.Sqlite;
 
 // Repository implementation that reads from a SQLite database file
 /// to retrieve Point of Interest (POI) data.
@@ -17,19 +17,20 @@ namespace POIneer.Render.Infrastructure;
 /// </remarks>
 public sealed class SqlitePoiRepository : IPoiRepository
 {
-    private readonly string _connectionString;
+    private readonly Func<SqliteConnection> _connectionFactory;
 
-    public SqlitePoiRepository(string databasePath)
+    // Constructor that accepts a factory function to create SQLite connections.
+    public SqlitePoiRepository(Func<SqliteConnection> connectionFactory)
     {
-        // Example: "output/berlin_v1.sqlite"
-        _connectionString = $"Data Source={databasePath}";
+        _connectionFactory = connectionFactory;
     }
 
+    // Adds a new POI to the SQLite database.
     public async Task AddAsync(
         Poi poi,
         CancellationToken ct = default)
     {
-        await using var connection = new SqliteConnection(_connectionString);
+        await using var connection = _connectionFactory();
         await connection.OpenAsync();
 
         const string sql = @"
@@ -56,7 +57,7 @@ VALUES (@id, @osm_id, @name, @amenity, @latitude, @longitude);
     {
         var result = new List<Poi>();
 
-        await using var connection = new SqliteConnection(_connectionString);
+        await using var connection = _connectionFactory();
         await connection.OpenAsync();
 
         // SQL query to select POI data

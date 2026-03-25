@@ -1,6 +1,5 @@
 namespace POIneer.Render.Ports;
 
-using Microsoft.Extensions.Logging;
 using POIneer.Render.Application.Contracts;
 
 public interface IRegionSource
