@@ -8,9 +8,7 @@
 
 ## 🔗 Related Issues
 
-<!-- Link issues like: Closes #123 -->
-
-*
+Closes #
 
 ---
 
