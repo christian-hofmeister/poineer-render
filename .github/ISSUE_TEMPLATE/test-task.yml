@@ -1,0 +1,58 @@
+name: "🧪 Test Task"
+description: "Add or improve automated tests"
+title: "[Test]: "
+labels: ["tests", "backlog"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What should be tested?
+      placeholder: Describe the missing or desired test coverage.
+    validations:
+      required: true
+
+  - type: textarea
+    id: target
+    attributes:
+      label: Target area
+      description: Which project, class, use case, or workflow is affected?
+      placeholder: Example: RenderRegion, FlywayInvocationBuilder, /api/regions
+    validations:
+      required: true
+
+  - type: dropdown
+    id: test_type
+    attributes:
+      label: Test type
+      options:
+        - Unit test
+        - Integration test
+        - Contract test
+        - End-to-end test
+        - Regression test
+    validations:
+      required: true
+
+  - type: textarea
+    id: scenarios
+    attributes:
+      label: Scenarios to cover
+      placeholder: |
+        - Happy path
+        - Invalid input
+        - Missing file
+        - Database already exists
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - [ ] Tests added
+        - [ ] Tests pass locally
+        - [ ] CI passes
+    validations:
+      required: false

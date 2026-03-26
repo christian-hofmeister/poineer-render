@@ -1,0 +1,72 @@
+name: "🔥 MVP Task"
+description: "Create a high-priority task required for the MVP"
+title: "[MVP]: "
+labels: ["mvp", "backlog"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What must be delivered?
+      placeholder: Describe the task and the desired result.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reason
+    attributes:
+      label: Why is this part of the MVP?
+      description: Explain why this is essential for the first usable release.
+      placeholder: This is required because...
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is explicitly included?
+      placeholder: |
+        Included:
+        - ...
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: What is explicitly not part of this task?
+      placeholder: |
+        Not included:
+        - ...
+        - ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+        - [ ] Criterion 3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Render
+        - Server
+        - Mobile
+        - Admin
+        - Docs
+        - CI/CD
+        - Infrastructure
+    validations:
+      required: true
