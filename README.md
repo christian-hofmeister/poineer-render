@@ -158,6 +158,10 @@ build a clean and reproducible rendering pipeline
 
 
 ---
+## Releated Documents
+- [Git - Branch Flow Guide](README-GIT-FLOW.md)
+- [Git - Pull Requests Flow Guide](README-GIT-PR)
+- [Git - Handling Dependabot Branches](README-GIT-DEPENDABOT.md)
 
 ### Optional next improvements
 If you want, we can next:
