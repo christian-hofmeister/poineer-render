@@ -1,0 +1,51 @@
+name: "⚙️ Tech Task"
+description: "Track technical work such as refactoring, CI/CD, infrastructure, or maintenance"
+title: "[Tech]: "
+labels: ["tech-debt", "backlog"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What technical work is needed?
+      placeholder: Describe the task clearly.
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why should this be done?
+      placeholder: Explain the technical reason or benefit.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      placeholder: |
+        Included:
+        - ...
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks / Impact
+      placeholder: Describe possible risks, side effects, or migration impact.
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+    validations:
+      required: false
