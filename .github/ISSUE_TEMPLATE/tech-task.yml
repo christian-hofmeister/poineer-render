@@ -1,7 +1,7 @@
 name: "⚙️ Tech Task"
 description: "Track technical work such as refactoring, CI/CD, infrastructure, or maintenance"
 title: "[Tech]: "
-labels: ["tech-debt", "backlog"]
+labels: ["tech-debt"]
 body:
   - type: textarea
     id: summary
