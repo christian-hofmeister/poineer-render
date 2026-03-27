@@ -1,5 +1,5 @@
 [flyway]
-locations = ["filesystem:sql/poi"]
+locations = ["filesystem:migrations/sql/poi"]
 baselineOnMigrate = false
 cleanDisabled = false
 
