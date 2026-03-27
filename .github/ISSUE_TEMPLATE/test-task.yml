@@ -1,7 +1,7 @@
 name: "🧪 Test Task"
 description: "Add or improve automated tests"
 title: "[Test]: "
-labels: ["tests", "backlog"]
+labels: ["tests"]
 body:
   - type: textarea
     id: summary

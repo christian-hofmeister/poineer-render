@@ -1,7 +1,7 @@
 name: "🔥 MVP Task"
 description: "Create a high-priority task required for the MVP"
 title: "[MVP]: "
-labels: ["mvp", "backlog"]
+labels: ["mvp"]
 body:
   - type: textarea
     id: goal
