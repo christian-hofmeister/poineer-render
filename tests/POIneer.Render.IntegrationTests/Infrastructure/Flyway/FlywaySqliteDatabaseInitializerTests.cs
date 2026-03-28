@@ -1,20 +1,32 @@
-using System.Diagnostics;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
 using POIneer.Render.Infrastructure.Process;
+using POIneer.Render.TestHelpers;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure.Flyway;
 
-public sealed class FlywaySqliteDatabaseInitializerTests
+public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper output)
 {
+    private readonly ITestOutputHelper _output = output;
+
     [Fact]
     public async Task InitializeAsync_creates_poi_table()
     {
+        var logger = new XunitLogger<FlywaySqliteDatabaseInitializer>(_output);
+
+        logger.LogInformation("Starting FlywaySqliteDatabaseInitializerTests.InitializeAsync_creates_poi_table test.");
         if (!ProcessUtils.IsExecutableAvailable("/usr/local/bin/flyway"))
+        {
+            logger.LogWarning("Flyway executable not found. Skipping test.");
             return;
+        }
+
+
         await using var temp = TemporaryDirectory.Create("poineer-flyway-it-");
         var root = temp.DirectoryPath;
 
@@ -66,7 +78,7 @@ public sealed class FlywaySqliteDatabaseInitializerTests
 
         var builder = new FlywayInvocationBuilder(options, env);
 
-        var sut = new FlywaySqliteDatabaseInitializer(runner, builder);
+        var sut = new FlywaySqliteDatabaseInitializer(runner, builder, logger);
 
 
         await sut.InitializeAsync(dbPath);

@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Adapters.Output;
 using POIneer.Render.Application.Contracts;
@@ -38,9 +39,11 @@ public sealed class SqliteExporterTests
 
         var processRunner = new ProcessRunner();
         var invocationBuilder = new FlywayInvocationBuilder(options, env);
+        var logger = new LoggerFactory().CreateLogger<FlywaySqliteDatabaseInitializer>();
         var databaseInitializer = new FlywaySqliteDatabaseInitializer(
             processRunner,
-            invocationBuilder);
+            invocationBuilder,
+            logger);
 
         await databaseInitializer.InitializeAsync(dbPath, CancellationToken.None);
 

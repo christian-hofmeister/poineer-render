@@ -9,6 +9,7 @@ using POIneer.Render.Adapters.Output;
 using POIneer.Render.Application.UseCases;
 using POIneer.Render.Infrastructure.Flyway;
 using POIneer.Render.Infrastructure.Process;
+using Microsoft.Extensions.Logging;
 
 internal class Program
 {
@@ -53,7 +54,9 @@ internal class Program
         // Wire ports/adapters + use cases
         builder.Services.AddHttpClient(); // oder AddHttpClient<HttpFileDownloader>()
         builder.Services.AddSingleton<IFileDownloader, HttpFileDownloader>();
-
+        builder.Logging.ClearProviders();
+        builder.Logging.AddConsole();
+        builder.Logging.SetMinimumLevel(LogLevel.Debug);
         builder.Services.AddSingleton<IRegionSource, GeofabrikRegionSource>();
         builder.Services.AddSingleton<IPolygonCutter, OsmiumPolygonCutter>();
         builder.Services.AddSingleton<IOsmReader, OsmPbfReader>();
