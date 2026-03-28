@@ -28,6 +28,8 @@ public sealed class FlywayInvocationBuilder : IFlywayInvocationBuilder
 
         var workingDir = Path.GetDirectoryName(configFile)
             ?? throw new InvalidOperationException("Config directory not found.");
+        var migrationsPath = Path.GetFullPath(
+            Path.Combine(_root, "migrations", "sql", "poi"));
 
         var args = new List<string>();
 
@@ -36,6 +38,7 @@ public sealed class FlywayInvocationBuilder : IFlywayInvocationBuilder
 
         args.Add($"-configFiles=\"{configFile}\"");
         args.Add($"-url=\"jdbc:sqlite:{Path.GetFullPath(sqliteFilePath)}\"");
+        args.Add($"-locations=filesystem:{migrationsPath}");
         args.Add("migrate");
 
         return new FlywayInvocation(
