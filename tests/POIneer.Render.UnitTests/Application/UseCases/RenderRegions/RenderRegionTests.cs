@@ -183,8 +183,8 @@ public sealed class RenderRegionTests
         // Reader returns some POIs
         var pois = new[]
         {
-            new PoiDto(1, "Café A", "cafe", 13.404954, 52.520008),
-            new PoiDto(2, "Bäckerei B", "bakery", 13.401000, 52.519000)
+            new PoiDto("1", "Café A", "cafe", 13.404954, 52.520008),
+            new PoiDto("2", "Bäckerei B", "bakery", 13.401000, 52.519000)
         }.ToAsyncEnumerable();
 
         osmReader
