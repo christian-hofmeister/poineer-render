@@ -44,6 +44,11 @@ public sealed class SqliteExporterTests
 
         await databaseInitializer.InitializeAsync(dbPath, CancellationToken.None);
 
+        Assert.True(File.Exists(dbPath));
+        var tables = await GetTableNamesAsync(dbPath);
+        Assert.Contains("flyway_schema_history", tables);
+        Assert.Contains("poi", tables);
+
         var sut = new SqliteExporter();
 
         var pois = ToAsyncEnumerable(
@@ -130,5 +135,32 @@ public sealed class SqliteExporterTests
         public string ApplicationName { get; set; } = "Tests";
         public string ContentRootPath { get; set; } = Directory.GetCurrentDirectory();
         public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
+
+    private static async Task<List<string>> GetTableNamesAsync(string dbPath)
+    {
+        var result = new List<string>();
+
+        await using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString());
+
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table'
+        ORDER BY name;
+        """;
+
+        await using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            result.Add(reader.GetString(0));
+        }
+
+        return result;
     }
 }
