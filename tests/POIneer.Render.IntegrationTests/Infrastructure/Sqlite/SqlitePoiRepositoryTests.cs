@@ -31,7 +31,7 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
         ITemporaryDirectoryFactory tempDirectoryFactory =
             new TemporaryDirectoryFactory(tempDirOptions);
 
-        await using var tempDir = tempDirectoryFactory.Create("flyway-sqlite-database-initializer-tests");
+        await using var tempDir = tempDirectoryFactory.Create("sqlite-poi-repository-tests");
 
         var root = tempDir.DirectoryPath;
         var dbPath = Path.Combine(root, $"{Guid.NewGuid():N}.sqlite");
@@ -41,7 +41,6 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
         {
             await con.OpenAsync();
 
-            // Minimal schema for happy path - adapt to your real table/columns
             var cmd = con.CreateCommand();
             cmd.CommandText = """
                 CREATE TABLE poi (
