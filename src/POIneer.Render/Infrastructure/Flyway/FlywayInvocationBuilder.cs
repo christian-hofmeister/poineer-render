@@ -29,7 +29,7 @@ public sealed class FlywayInvocationBuilder : IFlywayInvocationBuilder
         var workingDir = Path.GetDirectoryName(configFile)
             ?? throw new InvalidOperationException("Config directory not found.");
         var migrationsPath = Path.GetFullPath(
-            Path.Combine(_root, "migrations", "sql", "poi"));
+            Path.Combine(_root, _options.MigrationsRelativePath));
 
         var args = new List<string>();
 

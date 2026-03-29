@@ -17,6 +17,8 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
     [Fact]
     public async Task InitializeAsync_creates_poi_table()
     {
+        var logger = new XunitLogger<FlywaySqliteDatabaseInitializer>(_output);
+
         var tempDirOptions = Options.Create(new TempOptions
         {
             RootFolderName = "poineer-tests",
@@ -28,10 +30,8 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
 
         await using var tempDir = tempDirectoryFactory.Create("flyway-sqlite-database-initializer-tests");
 
-        var logger = new XunitLogger<FlywaySqliteDatabaseInitializer>(_output);
-
         string executable = "flyway";
-        logger.LogInformation("Starting FlywaySqliteDatabaseInitializerTests.InitializeAsync_creates_poi_table test.");
+        logger.LogInformation($"Starting FlywaySqliteDatabaseInitializerTests.InitializeAsync_creates_poi_table test. Executable: '{executable}'");
 
         if (!ProcessUtils.IsExecutableAvailable(executable))
         {
@@ -45,10 +45,7 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
             throw new InvalidOperationException(
                 $"Flyway executable not found: {executable}");
         }
-
-
-        await using var temp = TemporaryDirectory.Create("poineer-flyway-it-");
-        var root = temp.DirectoryPath;
+        var root = tempDir.DirectoryPath;
 
         // Layout:
         // root/
@@ -88,15 +85,16 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
 
         var env = new FakeHostEnvironment { ContentRootPath = root };
 
-        var options = Options.Create(new FlywayOptions
+        var flywayOptions = Options.Create(new FlywayOptions
         {
             Executable = "flyway",
-            ConfigFileRelativePath = "flyway.toml",
+            MigrationsRelativePath = "sql/poi",
+            ConfigFileRelativePath = "flyway-poi.toml",
             Debug = true
         });
 
 
-        var builder = new FlywayInvocationBuilder(options, env);
+        var builder = new FlywayInvocationBuilder(flywayOptions, env);
 
         var sut = new FlywaySqliteDatabaseInitializer(runner, builder, logger);
 
