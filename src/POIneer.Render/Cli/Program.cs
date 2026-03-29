@@ -1,15 +1,17 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Configuration;
-using POIneer.Render.Cli;
-using POIneer.Render.Ports;
+using Microsoft.Extensions.Logging;
 using POIneer.Render.Adapters.Input;
 using POIneer.Render.Adapters.Osm;
 using POIneer.Render.Adapters.Output;
 using POIneer.Render.Application.UseCases;
+using POIneer.Render.Cli;
+using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
 using POIneer.Render.Infrastructure.Process;
-using Microsoft.Extensions.Logging;
+using POIneer.Render.Ports;
+
 
 internal class Program
 {
@@ -55,8 +57,16 @@ internal class Program
         builder.Services.AddHttpClient(); // oder AddHttpClient<HttpFileDownloader>()
         builder.Services.AddSingleton<IFileDownloader, HttpFileDownloader>();
         builder.Logging.ClearProviders();
-        builder.Logging.AddConsole();
+        builder.Logging.AddSimpleConsole(options =>
+        {
+            options.TimestampFormat = "yyyy-MM-dd HH:mm:ss ";
+            options.SingleLine = true;
+            options.IncludeScopes = false;
+        });
         builder.Logging.SetMinimumLevel(LogLevel.Debug);
+        builder.Services.Configure<TempOptions>(
+            builder.Configuration.GetSection("Temp"));
+        builder.Services.AddSingleton<ITemporaryDirectoryFactory, TemporaryDirectoryFactory>();
         builder.Services.AddSingleton<IRegionSource, GeofabrikRegionSource>();
         builder.Services.AddSingleton<IPolygonCutter, OsmiumPolygonCutter>();
         builder.Services.AddSingleton<IOsmReader, OsmPbfReader>();

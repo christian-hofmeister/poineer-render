@@ -17,13 +17,33 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
     [Fact]
     public async Task InitializeAsync_creates_poi_table()
     {
+        var tempDirOptions = Options.Create(new TempOptions
+        {
+            RootFolderName = "poineer-tests",
+            KeepOnDispose = true
+        });
+
+        ITemporaryDirectoryFactory tempDirectoryFactory =
+            new TemporaryDirectoryFactory(tempDirOptions);
+
+        await using var tempDir = tempDirectoryFactory.Create("flyway-sqlite-database-initializer-tests");
+
         var logger = new XunitLogger<FlywaySqliteDatabaseInitializer>(_output);
 
+        string executable = "flyway";
         logger.LogInformation("Starting FlywaySqliteDatabaseInitializerTests.InitializeAsync_creates_poi_table test.");
-        if (!ProcessUtils.IsExecutableAvailable("/usr/local/bin/flyway"))
+
+        if (!ProcessUtils.IsExecutableAvailable(executable))
         {
-            logger.LogWarning("Flyway executable not found. Skipping test.");
-            return;
+            var path = Environment.GetEnvironmentVariable("PATH");
+
+            logger.LogError(
+            "Flyway executable not found. Executable: {Executable}, PATH: {Path}",
+            executable,
+            path);
+
+            throw new InvalidOperationException(
+                $"Flyway executable not found: {executable}");
         }
 
 

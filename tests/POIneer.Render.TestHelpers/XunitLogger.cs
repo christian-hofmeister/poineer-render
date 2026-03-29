@@ -1,22 +1,23 @@
 using Microsoft.Extensions.Logging;
 using Xunit.Abstractions;
 
-namespace POIneer.Render.TestHelpers;
-
 public sealed class XunitLogger<T> : ILogger<T>
 {
     private readonly ITestOutputHelper _output;
+    private readonly string _categoryName;
 
     public XunitLogger(ITestOutputHelper output)
     {
         _output = output;
+        _categoryName = typeof(T).Name;
     }
 
     public IDisposable BeginScope<TState>(TState state)
         where TState : notnull
         => NullScope.Instance;
 
-    public bool IsEnabled(LogLevel logLevel) => true;
+    public bool IsEnabled(LogLevel logLevel)
+        => true; // später evtl. filterbar
 
     public void Log<TState>(
         LogLevel logLevel,
@@ -25,8 +26,11 @@ public sealed class XunitLogger<T> : ILogger<T>
         Exception? exception,
         Func<TState, Exception?, string> formatter)
     {
+        var timestamp = DateTime.Now.ToString("HH:mm:ss");
         var message = formatter(state, exception);
-        _output.WriteLine($"[{logLevel}] {message}");
+
+        var logLine = $"[{timestamp}] [{logLevel}] [{_categoryName}] {message}";
+        _output.WriteLine(logLine);
 
         if (exception is not null)
         {
@@ -37,9 +41,6 @@ public sealed class XunitLogger<T> : ILogger<T>
     private sealed class NullScope : IDisposable
     {
         public static readonly NullScope Instance = new();
-
-        public void Dispose()
-        {
-        }
+        public void Dispose() { }
     }
 }

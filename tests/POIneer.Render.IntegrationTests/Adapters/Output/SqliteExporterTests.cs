@@ -14,12 +14,52 @@ namespace POIneer.Render.IntegrationTests.Adapters.Output;
 
 public sealed class SqliteExporterTests
 {
+
+    [Fact]
+    public async Task ExportAsync_creates_sqlite_file()
+    {
+        // Arrange
+        var options = Options.Create(new TempOptions
+        {
+            RootFolderName = "poineer-tests",
+            KeepOnDispose = false
+        });
+
+        ITemporaryDirectoryFactory tempDirectoryFactory =
+            new TemporaryDirectoryFactory(options);
+
+        await using var tempDir = tempDirectoryFactory.Create("sqlite-exporter-tests");
+
+        var sqliteFilePath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
+
+        var exporter = new SqliteExporter();
+
+        var pois = ToAsyncEnumerable(
+            new PoiDto("node/1001", "Test Cafe", "cafe", 52.5200, 13.4050),
+            new PoiDto("node/1002", "Test Pharmacy", "pharmacy", 52.5205, 13.4055));
+
+        // Act
+        await exporter.ExportAsync(pois, sqliteFilePath, CancellationToken.None);
+
+        // Assert
+        Assert.True(File.Exists(sqliteFilePath));
+    }
+
     [Fact]
     public async Task ExportAsync_HappyPath_InsertsMultiplePois()
     {
-        var root = FindRepositoryRoot();
+        var tempDirOptions = Options.Create(new TempOptions
+        {
+            RootFolderName = "poineer-tests",
+            KeepOnDispose = false
+        });
 
-        await using var tempDir = TemporaryDirectory.Create("sqlite-exporter-test", true);
+        ITemporaryDirectoryFactory tempDirectoryFactory =
+            new TemporaryDirectoryFactory(tempDirOptions);
+
+        await using var tempDir = tempDirectoryFactory.Create("sqlite-exporter-tests");
+
+        var root = FindRepositoryRoot();
         var dbPath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
 
         var options = Options.Create(new FlywayOptions

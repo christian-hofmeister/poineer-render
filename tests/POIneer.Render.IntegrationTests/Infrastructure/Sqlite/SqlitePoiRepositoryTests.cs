@@ -10,12 +10,19 @@ namespace POIneer.Render.IntegrationTests.Infrastructure.Sqlite;
 
 public sealed class SqlitePoiRepositoryTests
 {
+    private readonly ITemporaryDirectoryFactory _temporaryDirectoryFactory;
+
+    public SqlitePoiRepositoryTests(ITemporaryDirectoryFactory temporaryDirectoryFactory)
+    {
+        _temporaryDirectoryFactory = temporaryDirectoryFactory;
+    }
+
     [Fact]
     public async Task AddAndList_ReturnsInsertedPoi()
     {
         // Arrange
-        await using var temp = TemporaryDirectory.Create("poineer-flyway-it-", false);
-        var root = temp.DirectoryPath;
+        await using var tempDir = _temporaryDirectoryFactory.Create("render-region");
+        var root = tempDir.DirectoryPath;
         var dbPath = Path.Combine(root, $"{Guid.NewGuid():N}.sqlite");
         var cs = new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString();
 
