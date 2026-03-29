@@ -9,20 +9,25 @@ using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
 using POIneer.Render.Infrastructure.Process;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace POIneer.Render.IntegrationTests.Adapters.Output;
 
-public sealed class SqliteExporterTests
+public sealed class SqliteExporterTests(ITestOutputHelper output)
 {
+    private readonly ITestOutputHelper _output = output;
 
     [Fact]
     public async Task ExportAsync_creates_sqlite_file()
     {
+        var logger = new XunitLogger<SqliteExporterTests>(_output);
+        logger.LogInformation("Starting SqliteExporterTests.ExportAsync_creates_sqlite_file test.");
+
         // Arrange
         var options = Options.Create(new TempOptions
         {
             RootFolderName = "poineer-tests",
-            KeepOnDispose = false
+            KeepOnDispose = true
         });
 
         ITemporaryDirectoryFactory tempDirectoryFactory =
