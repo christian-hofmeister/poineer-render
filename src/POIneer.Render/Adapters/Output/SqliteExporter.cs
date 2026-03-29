@@ -1,8 +1,8 @@
-namespace POIneer.Render.Adapters.Output;
-
 using Microsoft.Data.Sqlite;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Ports;
+
+namespace POIneer.Render.Adapters.Output;
 
 public sealed class SqliteExporter : IExporter
 {
