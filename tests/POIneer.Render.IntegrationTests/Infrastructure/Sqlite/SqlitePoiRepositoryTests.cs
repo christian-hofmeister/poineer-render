@@ -1,27 +1,38 @@
 using System.Diagnostics;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using POIneer.Render.Domain.Models;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Process;
 using POIneer.Render.Infrastructure.Sqlite;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure.Sqlite;
 
-public sealed class SqlitePoiRepositoryTests
+public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
 {
-    private readonly ITemporaryDirectoryFactory _temporaryDirectoryFactory;
-
-    public SqlitePoiRepositoryTests(ITemporaryDirectoryFactory temporaryDirectoryFactory)
-    {
-        _temporaryDirectoryFactory = temporaryDirectoryFactory;
-    }
+    private readonly ITestOutputHelper _output = output;
 
     [Fact]
     public async Task AddAndList_ReturnsInsertedPoi()
     {
+        var logger = new XunitLogger<SqlitePoiRepositoryTests>(_output);
+        logger.LogInformation("Starting SqlitePoiRepositoryTests.AddAndList_ReturnsInsertedPoi test.");
+
         // Arrange
-        await using var tempDir = _temporaryDirectoryFactory.Create("render-region");
+        var tempDirOptions = Options.Create(new TempOptions
+        {
+            RootFolderName = "poineer-tests",
+            KeepOnDispose = false
+        });
+
+        ITemporaryDirectoryFactory tempDirectoryFactory =
+            new TemporaryDirectoryFactory(tempDirOptions);
+
+        await using var tempDir = tempDirectoryFactory.Create("flyway-sqlite-database-initializer-tests");
+
         var root = tempDir.DirectoryPath;
         var dbPath = Path.Combine(root, $"{Guid.NewGuid():N}.sqlite");
         var cs = new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString();
