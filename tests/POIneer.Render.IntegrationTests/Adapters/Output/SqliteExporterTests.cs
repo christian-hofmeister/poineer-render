@@ -18,12 +18,8 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
     private readonly ITestOutputHelper _output = output;
 
     [Fact]
-    public async Task ExportAsync_creates_sqlite_file()
+    public async Task ExportAsync_inserts_rows_into_existing_poi_table()
     {
-        var logger = new XunitLogger<SqliteExporterTests>(_output);
-        logger.LogInformation("Starting SqliteExporterTests.ExportAsync_creates_sqlite_file test.");
-
-        // Arrange
         var options = Options.Create(new TempOptions
         {
             RootFolderName = "poineer-tests",
@@ -37,17 +33,18 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
 
         var sqliteFilePath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
 
-        var exporter = new SqliteExporter();
+        await CreatePoiSchemaAsync(sqliteFilePath);
+
+        var sut = new SqliteExporter();
 
         var pois = ToAsyncEnumerable(
             new PoiDto("node/1001", "Test Cafe", "cafe", 52.5200, 13.4050),
             new PoiDto("node/1002", "Test Pharmacy", "pharmacy", 52.5205, 13.4055));
 
-        // Act
-        await exporter.ExportAsync(pois, sqliteFilePath, CancellationToken.None);
+        await sut.ExportAsync(pois, sqliteFilePath, CancellationToken.None);
 
-        // Assert
-        Assert.True(File.Exists(sqliteFilePath));
+        var count = await GetPoiCountAsync(sqliteFilePath);
+        Assert.Equal(2, count);
     }
 
     [Fact]
@@ -56,7 +53,7 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
         var tempDirOptions = Options.Create(new TempOptions
         {
             RootFolderName = "poineer-tests",
-            KeepOnDispose = false
+            KeepOnDispose = true
         });
 
         ITemporaryDirectoryFactory tempDirectoryFactory =
@@ -210,5 +207,45 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
         }
 
         return result;
+    }
+
+    private static async Task CreatePoiSchemaAsync(string dbPath)
+    {
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = dbPath
+        }.ToString();
+
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+        CREATE TABLE poi (
+            osm_id TEXT NOT NULL,
+            name TEXT NULL,
+            amenity TEXT NULL,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL
+        );
+        """;
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<long> GetPoiCountAsync(string dbPath)
+    {
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = dbPath
+        }.ToString();
+
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM poi;";
+
+        return (long)(await command.ExecuteScalarAsync())!;
     }
 }
