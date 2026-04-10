@@ -58,6 +58,8 @@ nunit-*.xml
 # rendered output folders 
 src/**/renderer-work-dir/
 src/**/renderer-out-dir/
+renderer-work-dir-fallback/
+renderer-out-dir-fallback/  
 
 # Coverage reports
 **/TestResults/
