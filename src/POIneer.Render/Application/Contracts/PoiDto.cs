@@ -2,8 +2,8 @@ namespace POIneer.Render.Application.Contracts;
 
 // Data Transfer Object for Points of Interest (POIs)
 public sealed record PoiDto(
-    long OsmId,
+    string OsmId,
     string? Name,
-    string Category,
-    double Lon,
-    double Lat);
+    string? Amenity,
+    double Latitude,
+    double Longitude);

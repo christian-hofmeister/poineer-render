@@ -8,7 +8,7 @@ public sealed class ProcessTests
     [Fact]
     public void IsExecutableAvailable_ReturnsTrue_ForDotnet()
     {
-        var result = ProcessUtils.IsExecutableAvailable("dotnet", "--version");
+        var result = ProcessUtils.IsExecutableAvailable("dotnet");
 
         Assert.True(result, "Expected dotnet to be available.");
     }

@@ -1,8 +1,8 @@
-namespace POIneer.Render.Adapters.Output;
-
-using System.Data.SQLite;
-using POIneer.Render.Ports;
+using Microsoft.Data.Sqlite;
 using POIneer.Render.Application.Contracts;
+using POIneer.Render.Ports;
+
+namespace POIneer.Render.Adapters.Output;
 
 public sealed class SqliteExporter : IExporter
 {
@@ -11,41 +11,40 @@ public sealed class SqliteExporter : IExporter
         string outputSqlitePath,
         CancellationToken ct = default)
     {
-        if (File.Exists(outputSqlitePath)) File.Delete(outputSqlitePath);
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = outputSqlitePath
+        }.ToString();
 
-        SQLiteConnection.CreateFile(outputSqlitePath);
-        using var conn = new SQLiteConnection($"Data Source={outputSqlitePath};Journal Mode=WAL;");
+        await using var conn = new SqliteConnection(connectionString);
         await conn.OpenAsync(ct);
 
-        using var cmdCreate = conn.CreateCommand();
-        cmdCreate.CommandText = """
-            CREATE TABLE poi (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              osm_id INTEGER,
-              name TEXT,
-              category TEXT,
-              lon REAL,
-              lat REAL
-            );
-            """;
-        await cmdCreate.ExecuteNonQueryAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+        await using var cmd = conn.CreateCommand();
 
-        using var tx = conn.BeginTransaction();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO poi (osm_id,name,category,lon,lat) VALUES (@o,@n,@c,@x,@y)";
-        var pO = cmd.CreateParameter(); pO.ParameterName = "@o"; cmd.Parameters.Add(pO);
-        var pN = cmd.CreateParameter(); pN.ParameterName = "@n"; cmd.Parameters.Add(pN);
-        var pC = cmd.CreateParameter(); pC.ParameterName = "@c"; cmd.Parameters.Add(pC);
-        var pX = cmd.CreateParameter(); pX.ParameterName = "@x"; cmd.Parameters.Add(pX);
-        var pY = cmd.CreateParameter(); pY.ParameterName = "@y"; cmd.Parameters.Add(pY);
+        cmd.Transaction = (SqliteTransaction?)tx;
+        cmd.CommandText = """
+            INSERT INTO poi (osm_id, name, amenity, latitude, longitude)
+            VALUES (@osm_id, @name, @amenity, @latitude, @longitude);
+            """;
+
+        cmd.Parameters.AddWithValue("@osm_id", "");
+        cmd.Parameters.AddWithValue("@name", "");
+        cmd.Parameters.AddWithValue("@amenity", "");
+        cmd.Parameters.AddWithValue("@latitude", 0d);
+        cmd.Parameters.AddWithValue("@longitude", 0d);
 
         await foreach (var poi in pois.WithCancellation(ct))
         {
-            pO.Value = poi.OsmId; pN.Value = poi.Name ?? (object)DBNull.Value;
-            pC.Value = poi.Category; pX.Value = poi.Lon; pY.Value = poi.Lat;
+            cmd.Parameters["@osm_id"].Value = poi.OsmId;
+            cmd.Parameters["@name"].Value = poi.Name ?? (object)DBNull.Value;
+            cmd.Parameters["@amenity"].Value = poi.Amenity ?? (object)DBNull.Value;
+            cmd.Parameters["@latitude"].Value = poi.Latitude;
+            cmd.Parameters["@longitude"].Value = poi.Longitude;
+
             await cmd.ExecuteNonQueryAsync(ct);
         }
 
-        tx.Commit();
+        await tx.CommitAsync(ct);
     }
 }

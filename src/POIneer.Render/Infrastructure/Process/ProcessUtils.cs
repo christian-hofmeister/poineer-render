@@ -4,49 +4,33 @@ namespace POIneer.Render.Infrastructure.Process;
 
 public static class ProcessUtils
 {
-    public static bool IsExecutableAvailable(string executable, string arguments = "--version")
+    public static bool IsExecutableAvailable(string executable)
     {
-        try
+        if (string.IsNullOrWhiteSpace(executable))
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = executable,
-                Arguments = arguments,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-
-            using var process = System.Diagnostics.Process.Start(psi);
-            if (process is null)
-                return false;
-
-            if (!process.WaitForExit(3000))
-            {
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch
-                {
-                }
-
-                return false;
-            }
-
-            var stdout = process.StandardOutput.ReadToEnd();
-            var stderr = process.StandardError.ReadToEnd();
-
-            Console.WriteLine($"ExitCode: {process.ExitCode}");
-            Console.WriteLine($"StdOut: {stdout}");
-            Console.WriteLine($"StdErr: {stderr}");
-
-            return process.ExitCode == 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex);
             return false;
         }
+
+        if (Path.IsPathRooted(executable))
+        {
+            return File.Exists(executable);
+        }
+
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        foreach (var directory in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var candidate = Path.Combine(directory, executable);
+            if (File.Exists(candidate))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

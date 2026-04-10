@@ -8,7 +8,6 @@ on:
 
 jobs:
   build_test:
-    # This job name will be used as a required check in branch protection
     name: build-and-test
     runs-on: ubuntu-latest
 
@@ -24,27 +23,44 @@ jobs:
             9.0.x
             8.0.x
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Flyway
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/flyway/*.sh
+          sudo ./scripts/flyway/flyway-setup.sh
+
+      - name: Verify Flyway
+        shell: bash
+        run: |
+          set -euo pipefail
+          which flyway
+          flyway -v
+
       - name: Restore
         run: dotnet restore
 
       - name: Verify formatting
-        # Fails if formatting differs from dotnet-format rules
         shell: bash
         run: |
           set -euo pipefail
-
-          # 1) Neues CLI verfügbar? -> nutzt --verify-no-changes
+          # Check if 'dotnet format' is available as a built-in command (introduced in .NET 7)
           if dotnet help format >/dev/null 2>&1; then
             echo "Using built-in 'dotnet format'..."
             dotnet format --verify-no-changes --no-restore
             exit 0
           fi
 
-          # 2) Fallback: Globales Tool (ältere SDKs) -> nutzt --check
           echo "Falling back to global tool 'dotnet-format'..."
           dotnet tool install -g dotnet-format
 
-          # Workspace ermitteln: bevorzugt .sln, sonst Ordner
+          # Try to find a solution file within the repository (up to 3 levels deep)
           SLN="$(find . -maxdepth 3 -type f -name '*.sln' -print -quit || true)"
           if [ -n "${SLN}" ]; then
             echo "Running dotnet-format on solution: ${SLN}"
@@ -60,6 +76,7 @@ jobs:
       - name: Test with coverage
         shell: bash
         run: |
+          set -euo pipefail
           dotnet test --configuration Release --no-build \
             /p:CollectCoverage=true \
             /p:CoverletOutputFormat=cobertura \
@@ -67,8 +84,11 @@ jobs:
             /p:CoverletOutput=./TestResults/Coverage/
 
       - name: Enforce minimum coverage (60%)
+        shell: bash
         run: |
+          set -euo pipefail
           dotnet tool install -g dotnet-reportgenerator-globaltool
+          export PATH="$PATH:$HOME/.dotnet/tools"
           reportgenerator "-reports:**/TestResults/Coverage/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:TextSummary
           echo "==== Coverage Summary ===="
           cat coverage-report/Summary.txt

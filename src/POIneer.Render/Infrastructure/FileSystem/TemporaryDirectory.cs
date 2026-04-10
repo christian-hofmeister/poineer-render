@@ -11,21 +11,32 @@ public sealed class TemporaryDirectory : IDisposable, IAsyncDisposable
         _keepOnDispose = keepOnDispose;
     }
 
-    public static TemporaryDirectory Create(string prefix, bool keepOnDispose = false)
+    public static TemporaryDirectory Create(
+        string prefix,
+        string? rootPath = null,
+        bool keepOnDispose = false)
     {
         prefix = CreateSafePrefix(prefix);
 
-        var path = System.IO.Path.Combine(
-            System.IO.Path.GetTempPath(),
-            prefix + Guid.NewGuid().ToString("N"));
+        rootPath ??= Path.GetTempPath();
+        Directory.CreateDirectory(rootPath);
+
+        var path = Path.Combine(
+            rootPath,
+            prefix + "-" + Guid.NewGuid().ToString("N"));
 
         Directory.CreateDirectory(path);
+
         return new TemporaryDirectory(path, keepOnDispose);
     }
 
     public void Dispose()
     {
-        if (_keepOnDispose) return;
+        if (_keepOnDispose)
+        {
+            return;
+        }
+
         TryDeleteDirectory(DirectoryPath);
     }
 
@@ -39,9 +50,11 @@ public sealed class TemporaryDirectory : IDisposable, IAsyncDisposable
     {
         try
         {
-            if (!Directory.Exists(dir)) return;
+            if (!Directory.Exists(dir))
+            {
+                return;
+            }
 
-            // Fast path: try delete directly first
             try
             {
                 Directory.Delete(dir, recursive: true);
@@ -49,13 +62,19 @@ public sealed class TemporaryDirectory : IDisposable, IAsyncDisposable
             }
             catch
             {
-                // retry after resetting file attributes (Windows edge case)
+                // Retry after resetting file attributes.
             }
 
             foreach (var file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
             {
-                try { File.SetAttributes(file, FileAttributes.Normal); }
-                catch { /* ignore */ }
+                try
+                {
+                    File.SetAttributes(file, FileAttributes.Normal);
+                }
+                catch
+                {
+                    // Ignore best-effort cleanup failures.
+                }
             }
 
             Directory.Delete(dir, recursive: true);
@@ -69,18 +88,24 @@ public sealed class TemporaryDirectory : IDisposable, IAsyncDisposable
     private static string CreateSafePrefix(string prefix)
     {
         if (string.IsNullOrWhiteSpace(prefix))
+        {
             throw new ArgumentException("Prefix must not be empty.", nameof(prefix));
+        }
 
-        foreach (var c in System.IO.Path.GetInvalidFileNameChars())
+        foreach (var c in Path.GetInvalidFileNameChars())
+        {
             prefix = prefix.Replace(c, '_');
+        }
 
         prefix = prefix
-            .Replace(System.IO.Path.DirectorySeparatorChar, '_')
-            .Replace(System.IO.Path.AltDirectorySeparatorChar, '_');
+            .Replace(Path.DirectorySeparatorChar, '_')
+            .Replace(Path.AltDirectorySeparatorChar, '_');
 
         const int maxPrefixLength = 40;
         if (prefix.Length > maxPrefixLength)
+        {
             prefix = prefix[..maxPrefixLength];
+        }
 
         return prefix;
     }

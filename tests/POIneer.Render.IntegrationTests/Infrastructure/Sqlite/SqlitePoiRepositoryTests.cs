@@ -1,21 +1,39 @@
 using System.Diagnostics;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using POIneer.Render.Domain.Models;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Process;
 using POIneer.Render.Infrastructure.Sqlite;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure.Sqlite;
 
-public sealed class SqlitePoiRepositoryTests
+public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
 {
+    private readonly ITestOutputHelper _output = output;
+
     [Fact]
     public async Task AddAndList_ReturnsInsertedPoi()
     {
+        var logger = new XunitLogger<SqlitePoiRepositoryTests>(_output);
+        logger.LogInformation("Starting SqlitePoiRepositoryTests.AddAndList_ReturnsInsertedPoi test.");
+
         // Arrange
-        await using var temp = TemporaryDirectory.Create("poineer-flyway-it-", false);
-        var root = temp.DirectoryPath;
+        var tempDirOptions = Options.Create(new TempOptions
+        {
+            RootFolderName = "poineer-tests",
+            KeepOnDispose = false
+        });
+
+        ITemporaryDirectoryFactory tempDirectoryFactory =
+            new TemporaryDirectoryFactory(tempDirOptions);
+
+        await using var tempDir = tempDirectoryFactory.Create("sqlite-poi-repository-tests");
+
+        var root = tempDir.DirectoryPath;
         var dbPath = Path.Combine(root, $"{Guid.NewGuid():N}.sqlite");
         var cs = new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString();
 
@@ -23,7 +41,6 @@ public sealed class SqlitePoiRepositoryTests
         {
             await con.OpenAsync();
 
-            // Minimal schema for happy path - adapt to your real table/columns
             var cmd = con.CreateCommand();
             cmd.CommandText = """
                 CREATE TABLE poi (

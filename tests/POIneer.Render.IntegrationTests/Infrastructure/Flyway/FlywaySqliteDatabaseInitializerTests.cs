@@ -1,22 +1,51 @@
-using System.Diagnostics;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
 using POIneer.Render.Infrastructure.Process;
+using POIneer.Render.TestHelpers;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure.Flyway;
 
-public sealed class FlywaySqliteDatabaseInitializerTests
+public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper output)
 {
+    private readonly ITestOutputHelper _output = output;
+
     [Fact]
     public async Task InitializeAsync_creates_poi_table()
     {
-        if (!ProcessUtils.IsExecutableAvailable("/usr/local/bin/flyway"))
-            return;
-        await using var temp = TemporaryDirectory.Create("poineer-flyway-it-");
-        var root = temp.DirectoryPath;
+        var logger = new XunitLogger<FlywaySqliteDatabaseInitializer>(_output);
+
+        var tempDirOptions = Options.Create(new TempOptions
+        {
+            RootFolderName = "poineer-tests",
+            KeepOnDispose = true
+        });
+
+        ITemporaryDirectoryFactory tempDirectoryFactory =
+            new TemporaryDirectoryFactory(tempDirOptions);
+
+        await using var tempDir = tempDirectoryFactory.Create("flyway-sqlite-database-initializer-tests");
+
+        string executable = "flyway";
+        logger.LogInformation($"Starting FlywaySqliteDatabaseInitializerTests.InitializeAsync_creates_poi_table test. Executable: '{executable}'");
+
+        if (!ProcessUtils.IsExecutableAvailable(executable))
+        {
+            var path = Environment.GetEnvironmentVariable("PATH");
+
+            logger.LogError(
+            "Flyway executable not found. Executable: {Executable}, PATH: {Path}",
+            executable,
+            path);
+
+            throw new InvalidOperationException(
+                $"Flyway executable not found: {executable}");
+        }
+        var root = tempDir.DirectoryPath;
 
         // Layout:
         // root/
@@ -56,17 +85,18 @@ public sealed class FlywaySqliteDatabaseInitializerTests
 
         var env = new FakeHostEnvironment { ContentRootPath = root };
 
-        var options = Options.Create(new FlywayOptions
+        var flywayOptions = Options.Create(new FlywayOptions
         {
             Executable = "flyway",
-            ConfigFileRelativePath = "flyway.toml",
+            MigrationsRelativePath = "sql/poi",
+            ConfigFileRelativePath = "flyway-poi.toml",
             Debug = true
         });
 
 
-        var builder = new FlywayInvocationBuilder(options, env);
+        var builder = new FlywayInvocationBuilder(flywayOptions, env);
 
-        var sut = new FlywaySqliteDatabaseInitializer(runner, builder);
+        var sut = new FlywaySqliteDatabaseInitializer(runner, builder, logger);
 
 
         await sut.InitializeAsync(dbPath);

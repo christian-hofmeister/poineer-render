@@ -1,121 +1,251 @@
-using System.Data.SQLite;
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using POIneer.Render.Adapters.Output;
 using POIneer.Render.Application.Contracts;
+using POIneer.Render.Infrastructure.FileSystem;
+using POIneer.Render.Infrastructure.Flyway;
+using POIneer.Render.Infrastructure.Process;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace POIneer.Render.IntegrationTests.Adapters.Output;
 
-public sealed class SqliteExporterTests
+public sealed class SqliteExporterTests(ITestOutputHelper output)
 {
+    private readonly ITestOutputHelper _output = output;
+
     [Fact]
-    public async Task ExportAsync_CreatesDbAndInsertsPois_AndHandlesNullName()
+    public async Task ExportAsync_inserts_rows_into_existing_poi_table()
     {
-        // Arrange
-        var tempDir = CreateTempDir();
-        var sqlitePath = Path.Combine(tempDir, "out.sqlite");
-
-        var exporter = new SqliteExporter();
-
-        // A small async stream of POIs
-        async IAsyncEnumerable<PoiDto> Pois()
+        var options = Options.Create(new TempOptions
         {
-            yield return new PoiDto(
-                OsmId: 1,
-                Name: "Cafe Central",
-                Category: "cafe",
-                Lon: 13.404954,
-                Lat: 52.520008);
+            RootFolderName = "poineer-tests",
+            KeepOnDispose = true
+        });
 
-            yield return new PoiDto(
-                OsmId: 2,
-                Name: null, // important: should become NULL in DB
-                Category: "bench",
-                Lon: 13.40,
-                Lat: 52.52);
+        ITemporaryDirectoryFactory tempDirectoryFactory =
+            new TemporaryDirectoryFactory(options);
 
-            await Task.CompletedTask;
-        }
+        await using var tempDir = tempDirectoryFactory.Create("sqlite-exporter-tests");
 
-        // Act
-        await exporter.ExportAsync(Pois(), sqlitePath);
+        var sqliteFilePath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
 
-        // Assert
-        Assert.True(File.Exists(sqlitePath));
+        await CreatePoiSchemaAsync(sqliteFilePath);
 
-        using var conn = new SQLiteConnection($"Data Source={sqlitePath};");
-        await conn.OpenAsync();
+        var sut = new SqliteExporter();
 
-        // 1) Table exists?
-        using (var cmd = conn.CreateCommand())
+        var pois = ToAsyncEnumerable(
+            new PoiDto("node/1001", "Test Cafe", "cafe", 52.5200, 13.4050),
+            new PoiDto("node/1002", "Test Pharmacy", "pharmacy", 52.5205, 13.4055));
+
+        await sut.ExportAsync(pois, sqliteFilePath, CancellationToken.None);
+
+        var count = await GetPoiCountAsync(sqliteFilePath);
+        Assert.Equal(2, count);
+    }
+
+    [Fact]
+    public async Task ExportAsync_HappyPath_InsertsMultiplePois()
+    {
+        var tempDirOptions = Options.Create(new TempOptions
         {
-            cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='poi';";
-            var tableName = (string?)await cmd.ExecuteScalarAsync();
-            Assert.Equal("poi", tableName);
-        }
+            RootFolderName = "poineer-tests",
+            KeepOnDispose = true
+        });
 
-        // 2) Row count = 2
-        using (var cmd = conn.CreateCommand())
+        ITemporaryDirectoryFactory tempDirectoryFactory =
+            new TemporaryDirectoryFactory(tempDirOptions);
+
+        await using var tempDir = tempDirectoryFactory.Create("sqlite-exporter-tests");
+
+        var root = FindRepositoryRoot();
+        var dbPath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
+
+        var options = Options.Create(new FlywayOptions
         {
-            cmd.CommandText = "SELECT COUNT(*) FROM poi;";
-            var count = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+            Executable = "flyway",
+            ConfigFileRelativePath = "migrations/flyway-poi.toml",
+            Debug = false
+        });
+
+
+        IHostEnvironment env = new FakeHostEnvironment
+        {
+            ContentRootPath = root,
+            EnvironmentName = "Test",
+            ApplicationName = "POIneer.Render.IntegrationTests"
+        };
+
+        var processRunner = new ProcessRunner();
+        var invocationBuilder = new FlywayInvocationBuilder(options, env);
+        var logger = new LoggerFactory().CreateLogger<FlywaySqliteDatabaseInitializer>();
+        var databaseInitializer = new FlywaySqliteDatabaseInitializer(
+            processRunner,
+            invocationBuilder,
+            logger);
+
+        await databaseInitializer.InitializeAsync(dbPath, CancellationToken.None);
+
+        Assert.True(File.Exists(dbPath));
+        var tables = await GetTableNamesAsync(dbPath);
+        Assert.Contains("flyway_schema_history", tables);
+        Assert.Contains("poi", tables);
+
+        var sut = new SqliteExporter();
+
+        var pois = ToAsyncEnumerable(
+            new PoiDto("node/1001", "Test Cafe", "cafe", 52.5200, 13.4050),
+            new PoiDto("node/1002", "Test Pharmacy", "pharmacy", 52.5205, 13.4055));
+
+        await sut.ExportAsync(pois, dbPath, CancellationToken.None);
+
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = dbPath
+        }.ToString();
+
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        await using (var countCommand = connection.CreateCommand())
+        {
+            countCommand.CommandText = "SELECT COUNT(*) FROM poi;";
+            var count = (long)(await countCommand.ExecuteScalarAsync())!;
             Assert.Equal(2, count);
         }
 
-        // 3) Verify second row has NULL name and correct category
-        using (var cmd = conn.CreateCommand())
+        await using (var selectCommand = connection.CreateCommand())
         {
-            cmd.CommandText = "SELECT osm_id, name, category FROM poi WHERE osm_id = 2;";
-            using var reader = await cmd.ExecuteReaderAsync();
+            selectCommand.CommandText = """
+                SELECT osm_id, name, amenity, latitude, longitude
+                FROM poi
+                ORDER BY osm_id;
+                """;
+
+            await using var reader = await selectCommand.ExecuteReaderAsync();
 
             Assert.True(await reader.ReadAsync());
+            Assert.Equal("node/1001", reader.GetString(0));
+            Assert.Equal("Test Cafe", reader.GetString(1));
+            Assert.Equal("cafe", reader.GetString(2));
+            Assert.Equal(52.5200, reader.GetDouble(3));
+            Assert.Equal(13.4050, reader.GetDouble(4));
 
-            var osmId = reader.GetInt64(0);
-            Assert.Equal(2L, osmId);
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("node/1002", reader.GetString(0));
+            Assert.Equal("Test Pharmacy", reader.GetString(1));
+            Assert.Equal("pharmacy", reader.GetString(2));
+            Assert.Equal(52.5205, reader.GetDouble(3));
+            Assert.Equal(13.4055, reader.GetDouble(4));
 
-            // name column is NULL -> reader.IsDBNull
-            Assert.True(reader.IsDBNull(1));
-
-            var category = reader.GetString(2);
-            Assert.Equal("bench", category);
+            Assert.False(await reader.ReadAsync());
         }
     }
 
-    [Fact]
-    public async Task ExportAsync_DeletesExistingFile_AndRecreatesDb()
+    private static async IAsyncEnumerable<PoiDto> ToAsyncEnumerable(params PoiDto[] pois)
     {
-        // Arrange
-        var tempDir = CreateTempDir();
-        var sqlitePath = Path.Combine(tempDir, "out.sqlite");
-
-        // Create a "dummy" existing file (not necessarily a valid sqlite db)
-        await File.WriteAllTextAsync(sqlitePath, "dummy");
-        Assert.True(File.Exists(sqlitePath));
-
-        var exporter = new SqliteExporter();
-
-        async IAsyncEnumerable<PoiDto> Pois()
+        foreach (var poi in pois)
         {
-            yield return new PoiDto(1, "A", "cafe", 1.0, 2.0);
-            await Task.CompletedTask;
+            yield return poi;
+            await Task.Yield();
         }
-
-        // Act
-        await exporter.ExportAsync(Pois(), sqlitePath);
-
-        // Assert: file exists and is a valid sqlite db with table poi
-        using var conn = new SQLiteConnection($"Data Source={sqlitePath};");
-        await conn.OpenAsync();
-
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='poi';";
-        var tableName = (string?)await cmd.ExecuteScalarAsync();
-        Assert.Equal("poi", tableName);
     }
 
-    private static string CreateTempDir()
+    private static string FindRepositoryRoot()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "poineer-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(dir);
-        return dir;
+        var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
+
+        while (dir is not null)
+        {
+            var flywayConfigPath = Path.Combine(
+                dir.FullName,
+                "migrations",
+                "flyway-poi.toml");
+
+            if (File.Exists(flywayConfigPath))
+                return dir.FullName;
+
+            dir = dir.Parent;
+        }
+
+        throw new InvalidOperationException("Repository root could not be determined.");
+    }
+
+    private sealed class FakeHostEnvironment : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = "Test";
+        public string ApplicationName { get; set; } = "Tests";
+        public string ContentRootPath { get; set; } = Directory.GetCurrentDirectory();
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
+
+    private static async Task<List<string>> GetTableNamesAsync(string dbPath)
+    {
+        var result = new List<string>();
+
+        await using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString());
+
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table'
+        ORDER BY name;
+        """;
+
+        await using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            result.Add(reader.GetString(0));
+        }
+
+        return result;
+    }
+
+    private static async Task CreatePoiSchemaAsync(string dbPath)
+    {
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = dbPath
+        }.ToString();
+
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+        CREATE TABLE poi (
+            osm_id TEXT NOT NULL,
+            name TEXT NULL,
+            amenity TEXT NULL,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL
+        );
+        """;
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<long> GetPoiCountAsync(string dbPath)
+    {
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = dbPath
+        }.ToString();
+
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM poi;";
+
+        return (long)(await command.ExecuteScalarAsync())!;
     }
 }
