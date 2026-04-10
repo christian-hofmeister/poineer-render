@@ -85,6 +85,7 @@ pipeline {
           java -version || true
 
           # Tests ausführen
+          echo "Running tests with coverage collection..."
           dotnet test POIneerRender.sln -c Release --nologo \
             --results-directory TestResults \
             --logger "junit;LogFilePath=TestResults/test-results.junit.xml" \
