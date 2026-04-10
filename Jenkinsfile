@@ -75,6 +75,15 @@ pipeline {
         sh '''
           set -eux
 
+          echo "WORKSPACE=$WORKSPACE"
+          pwd
+          echo "find maxdepth 3 directories:"
+          find . -maxdepth 3 -type d | sort
+          echo "Checking for flyway and java (if your tests need them):"
+          which flyway || true
+          flyway -v || true
+          java -version || true
+
           # Tests ausführen
           dotnet test POIneerRender.sln -c Release --nologo \
             --results-directory TestResults \
