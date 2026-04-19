@@ -81,7 +81,7 @@ LIMIT @limit;
                 Id: reader.GetInt64(0),
                 OsmId: reader.GetString(1),
                 Name: reader.IsDBNull(2) ? null : reader.GetString(2),
-                Amenity: reader.GetString(3),
+                Amenity: reader.IsDBNull(3) ? null : reader.GetString(3),
                 Latitude: reader.GetDouble(4),
                 Longitude: reader.GetDouble(5)
             );

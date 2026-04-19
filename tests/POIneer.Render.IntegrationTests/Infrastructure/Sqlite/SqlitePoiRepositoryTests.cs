@@ -1,10 +1,8 @@
-using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Domain.Models;
 using POIneer.Render.Infrastructure.FileSystem;
-using POIneer.Render.Infrastructure.Process;
 using POIneer.Render.Infrastructure.Sqlite;
 using Xunit;
 using Xunit.Abstractions;
@@ -35,7 +33,11 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
 
         var root = tempDir.DirectoryPath;
         var dbPath = Path.Combine(root, $"{Guid.NewGuid():N}.sqlite");
-        var cs = new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString();
+        var cs = new SqliteConnectionStringBuilder
+        {
+            DataSource = dbPath,
+            Pooling = false
+        }.ToString();
 
         await using (var con = new SqliteConnection(cs))
         {
@@ -74,16 +76,14 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
         Assert.Contains(all, p => p.Id == poiId && p.Name == "Test POI"); // Ensure the inserted POI is returned
         Assert.Single(all); // Ensure only one record exists
 
-        // Cleanup
-        if (File.Exists(dbPath))
-            File.Delete(dbPath);
     }
 
     private static SqlitePoiRepository CreateSut(string dbPath) => new SqlitePoiRepository(() =>
     {
         var cs = new SqliteConnectionStringBuilder
         {
-            DataSource = dbPath
+            DataSource = dbPath,
+            Pooling = false
         }.ToString();
 
         return new SqliteConnection(cs);

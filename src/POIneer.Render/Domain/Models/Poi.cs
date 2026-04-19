@@ -7,7 +7,7 @@ public sealed record Poi(
     long Id,
     string OsmId,
     string? Name,
-    string Amenity,
+    string? Amenity,
     double Latitude,
     double Longitude
 );

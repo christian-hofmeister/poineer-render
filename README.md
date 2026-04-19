@@ -69,10 +69,15 @@ The project deliberately follows clear architectural principles:
 
 ### Local Development
 
-- **.NET SDK**
-  - .NET 10.x (primary)
-  - .NET 9.x (compatible)
-  - .NET 8.x (compatible)
+- **Required SDK**
+  - .NET SDK 10.0.201
+
+- **Additional SDKs**
+  - .NET 9.x optional
+  - .NET 8.x optional
+
+> The repository uses a `global.json` file to pin the expected .NET SDK version.
+
 - **Flyway CLI**
   - Used at runtime for database migrations
 - Linux / macOS / Windows (CI runs on Linux)
@@ -97,56 +102,49 @@ dotnet test \
   /p:CoverletOutputFormat=cobertura
 ```
 
-Minimum coverage:
+### Minimum coverage:
 
 60% line coverage (enforced by CI)
 
-✅ Code Quality & CI
+- ✅ Code Quality & CI
 
-This repository enforces:
+### This repository enforces:
 
-✔ Warning-free builds (/warnaserror)
+- ✅ Warning-free builds (/warnaserror)
 
-✔ Consistent formatting (dotnet format)
+- ✅ Consistent formatting (dotnet format)
 
-✔ Successful tests
+- ✅ Successful tests
 
-✔ Minimum test coverage
+- ✅ Minimum test coverage
 
-The develop and main branches are protected — faulty code cannot be merged.
+### The develop and main branches are protected — faulty code cannot be merged.
 
-🚧 Project Status
+## 🚧 Project Status
 
-🟡 Actively under development
+### 🟡 Actively under development
 
-Current focus:
+### Current focus:
+- stable render pipeline MVP
+- clean database initialization
+- reproducible region builds (e.g. Berlin)
 
-stable render pipeline MVP
+### Planned:
+- configurable regions
+- optional tile rendering
+- Jenkins-based server pipelines
+- delivery of build artifacts to the POIneer app
 
-clean database initialization
-
-reproducible region builds (e.g. Berlin)
-
-Planned:
-
-configurable regions
-
-optional tile rendering
-
-Jenkins-based server pipelines
-
-delivery of build artifacts to the POIneer app
-
-📜 License
+## 📜 License
 
 This project is intended as a learning and open-source project.
 The final license will be defined at a later stage.
 
-🤝 Contributing
+## 🤝 Contributing
 
 Currently a solo project — however, pull requests, feedback and ideas are welcome.
 
-✨ Motivation
+## ✨ Motivation
 
 POIneer.Render was created out of the desire to:
 
@@ -162,13 +160,3 @@ build a clean and reproducible rendering pipeline
 - [Git - Branch Flow Guide](README-GIT-FLOW.md)
 - [Git - Pull Requests Flow Guide](README-GIT-PR)
 - [Git - Handling Dependabot Branches](README-GIT-DEPENDABOT.md)
-
-### Optional next improvements
-If you want, we can next:
-
-- add **CI / coverage badges**
-- add a **“Render a region (Berlin)” step-by-step section**
-- add a **Mermaid architecture diagram**
-- fine-tune wording specifically for **job applications / portfolio use**
-
-Just tell me 👍
