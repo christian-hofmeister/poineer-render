@@ -58,11 +58,12 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
         }
         var sut = CreateSut(dbPath);
         var poiId = 1234L;
+        var osmId = 5678L;
 
         // Act
         await sut.AddAsync(new Poi(
             Id: poiId,
-            OsmId: "osm123",
+            OsmId: osmId,
             Name: "Test POI",
             Amenity: "cafe",
             Latitude: 52.5200,

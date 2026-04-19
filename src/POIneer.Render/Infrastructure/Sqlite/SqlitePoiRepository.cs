@@ -1,3 +1,4 @@
+using System.Drawing;
 using Microsoft.Data.Sqlite;
 using POIneer.Render.Domain;
 using POIneer.Render.Domain.Models;
@@ -79,7 +80,7 @@ LIMIT @limit;
         {
             var poi = new Poi(
                 Id: reader.GetInt64(0),
-                OsmId: reader.GetString(1),
+                OsmId: reader.GetInt64(1),
                 Name: reader.IsDBNull(2) ? null : reader.GetString(2),
                 Amenity: reader.IsDBNull(3) ? null : reader.GetString(3),
                 Latitude: reader.GetDouble(4),

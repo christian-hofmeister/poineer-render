@@ -5,7 +5,7 @@ namespace POIneer.Render.Domain.Models;
 /// </summary>
 public sealed record Poi(
     long Id,
-    string OsmId,
+    long OsmId,
     string? Name,
     string? Amenity,
     double Latitude,
