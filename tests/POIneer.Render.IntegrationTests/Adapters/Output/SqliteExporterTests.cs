@@ -222,7 +222,8 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
         await using var command = connection.CreateCommand();
         command.CommandText = """
         CREATE TABLE poi (
-            osm_id TEXT NOT NULL,
+            id INTEGER PRIMARY KEY,
+            osm_id INTEGER NOT NULL,
             name TEXT NULL,
             amenity TEXT NULL,
             latitude REAL NOT NULL,

@@ -59,7 +59,7 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
         await File.WriteAllTextAsync(migrationFile, """
             CREATE TABLE IF NOT EXISTS poi (
                 id              INTEGER PRIMARY KEY,
-                osm_id          TEXT NOT NULL,
+                osm_id          INTEGER NOT NULL,
                 name            TEXT,
                 amenity         TEXT,
                 latitude        REAL NOT NULL,
