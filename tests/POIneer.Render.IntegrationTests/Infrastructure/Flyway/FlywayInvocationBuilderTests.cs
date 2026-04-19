@@ -19,7 +19,7 @@ public sealed class FlywayInvocationBuilderTests
             EnvironmentName = "Test",
             ApplicationName = "POIneer.Render.Tests"
         };
-        var executable = "flyway";
+        //var executable = "flyway"; TODO - make this test work on CI by using the actual flyway executable path, or mock the file system to fake it
         var options = Options.Create(new FlywayOptions
         {
             Executable = "flyway",
