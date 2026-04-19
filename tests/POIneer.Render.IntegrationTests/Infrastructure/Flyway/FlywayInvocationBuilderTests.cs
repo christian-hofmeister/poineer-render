@@ -19,7 +19,7 @@ public sealed class FlywayInvocationBuilderTests
             EnvironmentName = "Test",
             ApplicationName = "POIneer.Render.Tests"
         };
-
+        var executable = "flyway";
         var options = Options.Create(new FlywayOptions
         {
             Executable = "flyway",

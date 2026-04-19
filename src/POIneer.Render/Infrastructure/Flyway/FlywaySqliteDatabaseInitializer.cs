@@ -30,9 +30,11 @@ public sealed class FlywaySqliteDatabaseInitializer : ISqliteDatabaseInitializer
         var inv = _invocationBuilder.BuildForSqlite(sqliteFilePath);
         _logger.LogDebug("Flyway args: {Args}", string.Join(" ", inv.Arguments));
 
+        var filename = ProcessUtils.ResolveExecutablePath(inv.Executable);
+
         var startInfo = new ProcessStartInfo
         {
-            FileName = inv.Executable,
+            FileName = filename,
             WorkingDirectory = inv.WorkingDirectory,
             Arguments = string.Join(' ', inv.Arguments ?? Array.Empty<string>()),
             RedirectStandardOutput = true,
