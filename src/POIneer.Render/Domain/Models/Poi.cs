@@ -8,6 +8,5 @@ public sealed record Poi(
     long OsmId,
     string? Name,
     string? Amenity,
-    double Latitude,
-    double Longitude
+    GeoPoint Location
 );

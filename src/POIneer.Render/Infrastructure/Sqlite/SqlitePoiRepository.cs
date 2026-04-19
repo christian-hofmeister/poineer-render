@@ -18,6 +18,13 @@ namespace POIneer.Render.Infrastructure.Sqlite;
 /// </remarks>
 public sealed class SqlitePoiRepository : IPoiRepository
 {
+    private const int IdOrdinal = 0;
+    private const int OsmIdOrdinal = 1;
+    private const int NameOrdinal = 2;
+    private const int AmenityOrdinal = 3;
+    private const int LatitudeOrdinal = 4;
+    private const int LongitudeOrdinal = 5;
+
     private readonly Func<SqliteConnection> _connectionFactory;
 
     // Constructor that accepts a factory function to create SQLite connections.
@@ -45,8 +52,8 @@ VALUES (@id, @osm_id, @name, @amenity, @latitude, @longitude);
         command.Parameters.AddWithValue("@osm_id", poi.OsmId);
         command.Parameters.AddWithValue("@name", poi.Name);
         command.Parameters.AddWithValue("@amenity", poi.Amenity);
-        command.Parameters.AddWithValue("@latitude", poi.Latitude);
-        command.Parameters.AddWithValue("@longitude", poi.Longitude);
+        command.Parameters.AddWithValue("@latitude", poi.Location.Latitude);
+        command.Parameters.AddWithValue("@longitude", poi.Location.Longitude);
 
         await command.ExecuteNonQueryAsync();
     }
@@ -79,12 +86,14 @@ LIMIT @limit;
         while (await reader.ReadAsync())
         {
             var poi = new Poi(
-                Id: reader.GetInt64(0),
-                OsmId: reader.GetInt64(1),
-                Name: reader.IsDBNull(2) ? null : reader.GetString(2),
-                Amenity: reader.IsDBNull(3) ? null : reader.GetString(3),
-                Latitude: reader.GetDouble(4),
-                Longitude: reader.GetDouble(5)
+                Id: reader.GetInt64(IdOrdinal),
+                OsmId: reader.GetInt64(OsmIdOrdinal),
+                Name: reader.IsDBNull(NameOrdinal) ? null : reader.GetString(NameOrdinal),
+                Amenity: reader.IsDBNull(AmenityOrdinal) ? null : reader.GetString(AmenityOrdinal),
+                Location: new GeoPoint(
+                    Latitude: reader.GetDouble(LatitudeOrdinal),
+                    Longitude: reader.GetDouble(LongitudeOrdinal)
+                )
             );
 
             result.Add(poi);

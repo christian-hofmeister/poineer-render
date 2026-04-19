@@ -47,7 +47,7 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
             cmd.CommandText = """
                 CREATE TABLE poi (
                     id              INTEGER PRIMARY KEY,
-                    osm_id          TEXT NOT NULL,
+                    osm_id          INTEGER NOT NULL,
                     name            TEXT,
                     amenity         TEXT,
                     latitude        REAL NOT NULL,
@@ -66,8 +66,7 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
             OsmId: osmId,
             Name: "Test POI",
             Amenity: "cafe",
-            Latitude: 52.5200,
-            Longitude: 13.4050
+            Location: new GeoPoint(52.5200, 13.4050)
         ), CancellationToken.None);
 
         var all = (await sut.GetAllAsync(100, CancellationToken.None)).ToList();
