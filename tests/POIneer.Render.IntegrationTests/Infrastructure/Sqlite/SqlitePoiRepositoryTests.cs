@@ -39,23 +39,7 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
             Pooling = false
         }.ToString();
 
-        await using (var con = new SqliteConnection(cs))
-        {
-            await con.OpenAsync();
-
-            var cmd = con.CreateCommand();
-            cmd.CommandText = """
-                CREATE TABLE poi (
-                    id              INTEGER PRIMARY KEY,
-                    osm_id          INTEGER NOT NULL,
-                    name            TEXT,
-                    amenity         TEXT,
-                    latitude        REAL NOT NULL,
-                    longitude       REAL NOT NULL
-                );
-               """;
-            await cmd.ExecuteNonQueryAsync();
-        }
+        await InitializeDatabaseAsync(cs);
         var sut = CreateSut(dbPath);
 
         var osmId = 5678L;
@@ -108,23 +92,7 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
             Pooling = false
         }.ToString();
 
-        await using (var con = new SqliteConnection(cs))
-        {
-            await con.OpenAsync();
-
-            var cmd = con.CreateCommand();
-            cmd.CommandText = """
-            CREATE TABLE poi (
-                id              INTEGER PRIMARY KEY,
-                osm_id          INTEGER NOT NULL,
-                name            TEXT,
-                amenity         TEXT,
-                latitude        REAL NOT NULL,
-                longitude       REAL NOT NULL
-            );
-            """;
-            await cmd.ExecuteNonQueryAsync();
-        }
+        await InitializeDatabaseAsync(cs);
 
         var sut = CreateSut(dbPath);
         var osmId = 9876L;
@@ -153,43 +121,24 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
         Assert.Equal(location.Longitude, poi.Location.Longitude);
     }
 
-    private async Task<string> CreateDatabaseAsync()
+    private static async Task InitializeDatabaseAsync(string connectionString)
     {
-        var tempDirOptions = Options.Create(new TempOptions
-        {
-            RootFolderName = "poineer-tests",
-            KeepOnDispose = false
-        });
-
-        ITemporaryDirectoryFactory tempDirectoryFactory =
-            new TemporaryDirectoryFactory(tempDirOptions);
-
-        var tempDir = tempDirectoryFactory.Create("sqlite-poi-repository-tests");
-
-        var dbPath = Path.Combine(tempDir.DirectoryPath, $"{Guid.NewGuid():N}.sqlite");
-        var cs = new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath,
-            Pooling = false
-        }.ToString();
-
-        await using var con = new SqliteConnection(cs);
+        await using var con = new SqliteConnection(connectionString);
         await con.OpenAsync();
 
         var cmd = con.CreateCommand();
         cmd.CommandText = """
-        CREATE TABLE poi (
-            id              INTEGER PRIMARY KEY,
-            osm_id          INTEGER NOT NULL,
-            name            TEXT,
-            amenity         TEXT,
-            latitude        REAL NOT NULL,
-            longitude       REAL NOT NULL
-        );
-        """;
-        await cmd.ExecuteNonQueryAsync();
+            CREATE TABLE poi (
+                id INTEGER PRIMARY KEY,
+                osm_id INTEGER NOT NULL,
+                name TEXT,
+                amenity TEXT,
+                latitude REAL NOT NULL,
+                longitude REAL NOT NULL
+            );
+            """;
 
-        return dbPath;
+        await cmd.ExecuteNonQueryAsync();
     }
     private static SqlitePoiRepository CreateSut(string dbPath) => new SqlitePoiRepository(() =>
     {
