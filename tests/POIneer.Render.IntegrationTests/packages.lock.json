@@ -492,7 +492,7 @@
       "poineer.render.testhelpers": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Extensions.Logging.Abstractions": "[10.0.1, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.7, )",
           "xunit.abstractions": "[2.0.3, )"
         }
       }
