@@ -3,10 +3,13 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
+using POIneer.Render.Infrastructure.Pathing;
 using POIneer.Render.Infrastructure.Process;
 using POIneer.Render.TestHelpers;
 using Xunit;
 using Xunit.Abstractions;
+using FluentAssertions;
+using Microsoft.Extensions.Hosting;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure.Flyway;
 
@@ -45,7 +48,7 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
             throw new InvalidOperationException(
                 $"Flyway executable not found: {executable}");
         }
-        var root = tempDir.DirectoryPath;
+        var root = AppContext.BaseDirectory;
 
         // Layout:
         // root/
@@ -83,8 +86,6 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
         // Arrange SUT (integration: real process runner)
         var runner = new ProcessRunner();
 
-        var env = new FakeHostEnvironment { ContentRootPath = root };
-
         var flywayOptions = Options.Create(new FlywayOptions
         {
             Executable = "flyway",
@@ -94,7 +95,7 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
         });
 
 
-        var builder = new FlywayInvocationBuilder(flywayOptions, env);
+        var builder = new FlywayInvocationBuilder(flywayOptions);
 
         var sut = new FlywaySqliteDatabaseInitializer(runner, builder, logger);
 
@@ -104,6 +105,43 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
         // Assert
         Assert.True(await TableExistsAsync(dbPath, "poi"), "Expected table 'poi' to exist.");
         Assert.True(await TableExistsAsync(dbPath, "flyway_schema_history"));
+    }
+
+    [Fact]
+    public async Task InitializeAsync_AppliesPoiMigrations()
+    {
+        await using var tempDir = TestTemporaryDirectories.Create("flyway-applies-migrations", true);
+
+        var dbPath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
+
+        var repoRoot = RepoRootLocator.Find();
+
+        var processRunner = new ProcessRunner();
+
+        var options = Options.Create(new FlywayOptions
+        {
+            Executable = "flyway",
+            MigrationsRelativePath = Path.Combine("migrations", "sql", "poi"),
+            ConfigFileRelativePath = Path.Combine("migrations", "flyway-poi.toml"),
+            Debug = true
+        });
+
+        var migrationsPath = Path.Combine(repoRoot, options.Value.MigrationsRelativePath);
+        Directory.Exists(migrationsPath).Should().BeTrue("because migrations must be present for Flyway to apply them");
+
+        var invocationBuilder = new FlywayInvocationBuilder(options);
+        var logger = new LoggerFactory().CreateLogger<FlywaySqliteDatabaseInitializer>();
+        var databaseInitializer = new FlywaySqliteDatabaseInitializer(
+            processRunner,
+            invocationBuilder,
+            logger);
+
+        await databaseInitializer.InitializeAsync(dbPath, CancellationToken.None);
+
+        Assert.True(File.Exists(dbPath), "Expected SQLite database file to be created.");
+
+        // Verify that the 'poi' table exists, which indicates that migrations were applied
+        Assert.True(await TableExistsAsync(dbPath, "poi"), "Expected table 'poi' to exist after migrations are applied.");
     }
 
     private static async Task<bool> TableExistsAsync(string sqlitePath, string tableName)

@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace POIneer.Render.Infrastructure.Flyway;
@@ -6,19 +5,21 @@ namespace POIneer.Render.Infrastructure.Flyway;
 public sealed class FlywayInvocationBuilder : IFlywayInvocationBuilder
 {
     private readonly FlywayOptions _options;
-    private readonly string _root;
+    private readonly string _applicationBasePath;
 
-    public FlywayInvocationBuilder(
-        IOptions<FlywayOptions> options,
-        IHostEnvironment env)
+    public FlywayInvocationBuilder(IOptions<FlywayOptions> options)
     {
         _options = options.Value;
-        _root = env.ContentRootPath;
+        _applicationBasePath = AppContext.BaseDirectory;
     }
 
     public FlywayInvocation BuildForSqlite(string sqliteFilePath)
-        => BuildSqliteMigrate(_options, _root, sqliteFilePath);
-    public FlywayInvocation BuildSqliteMigrate(FlywayOptions options, string root, string sqliteFilePath)
+        => BuildSqliteMigrate(_options, _applicationBasePath, sqliteFilePath);
+
+    private static FlywayInvocation BuildSqliteMigrate(
+        FlywayOptions options,
+        string root,
+        string sqliteFilePath)
     {
         if (string.IsNullOrWhiteSpace(sqliteFilePath))
             throw new ArgumentException("SQLite file path must not be empty.", nameof(sqliteFilePath));
@@ -26,10 +27,24 @@ public sealed class FlywayInvocationBuilder : IFlywayInvocationBuilder
         var configFile = Path.GetFullPath(
             Path.Combine(root, options.ConfigFileRelativePath));
 
+        if (!File.Exists(configFile))
+        {
+            throw new FileNotFoundException(
+                $"Flyway config file was not found. Expected path: {configFile}",
+                configFile);
+        }
+
+        var migrationsPath = Path.GetFullPath(
+            Path.Combine(root, options.MigrationsRelativePath));
+
+        if (!Directory.Exists(migrationsPath))
+        {
+            throw new DirectoryNotFoundException(
+                $"Flyway migrations directory was not found. Expected path: {migrationsPath}");
+        }
+
         var workingDir = Path.GetDirectoryName(configFile)
             ?? throw new InvalidOperationException("Config directory not found.");
-        var migrationsPath = Path.GetFullPath(
-            Path.Combine(_root, _options.MigrationsRelativePath));
 
         var args = new List<string>();
 
