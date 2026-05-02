@@ -30,6 +30,13 @@ public sealed class TemporaryDirectory : IDisposable, IAsyncDisposable
         return new TemporaryDirectory(path, keepOnDispose);
     }
 
+    public TemporaryDirectory CreateSubDir(string name)
+    {
+        var path = Path.Combine(DirectoryPath, name);
+        Directory.CreateDirectory(path);
+        return new TemporaryDirectory(path, _keepOnDispose);
+    }
+
     public void Dispose()
     {
         if (_keepOnDispose)

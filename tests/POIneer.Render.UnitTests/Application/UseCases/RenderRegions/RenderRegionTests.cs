@@ -3,6 +3,7 @@ using NSubstitute;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.UseCases;
 using POIneer.Render.Ports;
+using POIneer.Render.TestHelpers;
 using Xunit;
 
 namespace POIneer.Render.UnitTests.Application.UseCases.RenderRegions;
@@ -37,10 +38,11 @@ public sealed class RenderRegionTests
             PbfUrl: "http://example.com/berlin.osm.pbf",
             Poly: "dummy.poly"
         );
+        await using var tempDir = TestTemporaryDirectories.Create("throw-when-pbf-does-not-exist", true);
 
-        using var tmp = new TempDir();
-        var workDir = tmp.CreateSubDir("work"); // empty -> no pbf
-        var outDir = tmp.CreateSubDir("out");
+        tempDir.CreateSubDir("work"); // empty -> no pbf
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath; // empty -> no pbf
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
 
         // Act
         var ex = await Assert.ThrowsAsync<FileNotFoundException>(() =>
