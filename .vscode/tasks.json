@@ -2,21 +2,44 @@
   "version": "2.0.0",
   "tasks": [
     {
-      // label muss exakt dem preLaunchTask entsprechen
       "label": "build",
       "type": "process",
       "command": "dotnet",
       "args": [
         "build",
         "${workspaceFolder}/POIneerRender.sln",
-        // or:
-		    // "${workspaceFolder}/src/POIneer.Render/POIneer.Render.csproj",
-        "-c", "Debug",
+        "-c",
+        "Debug",
         "/property:GenerateFullPaths=true",
         "/consoleloggerparameters:NoSummary"
       ],
-      "group": { "kind": "build", "isDefault": true },
-      "problemMatcher": ["$msCompile"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$msCompile"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
+      "label": "build-release",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "${workspaceFolder}/POIneerRender.sln",
+        "-c",
+        "Release",
+        "/property:GenerateFullPaths=true",
+        "/consoleloggerparameters:NoSummary"
+      ],
+      "group": "build",
+      "problemMatcher": [
+        "$msCompile"
+      ],
       "options": {
         "cwd": "${workspaceFolder}"
       }

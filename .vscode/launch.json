@@ -10,7 +10,7 @@
       "preLaunchTask": "build", // ensure fresh build
       // Program points to the built DLL in Debug
       "program": "${workspaceFolder}/src/POIneer.Render/bin/Debug/net10.0/POIneer.Render.dll",
-      // Working directory = project root (so relative paths like config/… resolve there)
+      // Working directory = POIneer.Render project root (where appsettings and config are located)
       "cwd": "${workspaceFolder}/src/POIneer.Render",
       "args": [
         // You can optionally override config via command line:
@@ -33,8 +33,10 @@
       "name": "POIneer.Render • Production",
       "type": "coreclr",
       "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/src/POIneer.Render/bin/Debug/net10.0/POIneer.Render.dll",
+      "preLaunchTask": "build-release", // ensure fresh build
+      // Program points to the built DLL in Release
+      "program": "${workspaceFolder}/src/POIneer.Render/bin/Release/net10.0/POIneer.Render.dll",
+      // Working directory = POIneer.Render project root (where appsettings and config are located)
       "cwd": "${workspaceFolder}/src/POIneer.Render",
       "args": [
         // Prod usually uses appsettings.Production.json; only override if needed:
@@ -42,25 +44,6 @@
       ],
       "env": {
         "DOTNET_ENVIRONMENT": "Production"
-      },
-      "console": "integratedTerminal",
-      "stopAtEntry": false,
-      "justMyCode": true
-    },
-    // Default launch config for POIneer.Render in Development mode
-    {
-      "name": "POIneer.Render • Dev (Single Region: berlin)",
-      "type": "coreclr",
-      "request": "launch",
-      "preLaunchTask": "build",
-      "program": "${workspaceFolder}/src/POIneer.Render/bin/Debug/net10.0/POIneer.Render.dll",
-      "cwd": "${workspaceFolder}/src/POIneer.Render",
-      "args": [
-        // Override OnlyRegionId via command line binding:
-        "--Renderer:OnlyRegionId=berlin"
-      ],
-      "env": {
-        "DOTNET_ENVIRONMENT": "Development"
       },
       "console": "integratedTerminal",
       "stopAtEntry": false,

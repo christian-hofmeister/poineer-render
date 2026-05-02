@@ -1,8 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using POIneer.Render.Adapters.Input;
-using POIneer.Render.Application.UseCases;
 using POIneer.Render.Cli;
 using POIneer.Render.Ports;
 
@@ -44,10 +42,12 @@ public sealed class Runner
 
         _logger.LogInformation("POIneer.Render starting (env: {Env})", _hostEnvironment.EnvironmentName);
         _logger.LogInformation("Using content root: {ContentRoot}", contentRoot);
+        _logger.LogInformation("ContentRoot (raw): {ContentRoot}", _hostEnvironment.ContentRootPath);
         _logger.LogInformation("Regions file: {RegionsPath}", regionsPath);
         _logger.LogInformation("Work directory: {WorkDir}", workDir);
+        _logger.LogInformation("Work directory (raw): {WorkDir}", _rendererOptions.WorkDir);
         _logger.LogInformation("Output directory: {OutDir}", outDir);
-
+        _logger.LogInformation("Output directory (raw): {OutDir}", _rendererOptions.OutDir);
 
         _logger.LogInformation("Creating directories (if not exists)...");
         Directory.CreateDirectory(workDir);
@@ -66,13 +66,13 @@ public sealed class Runner
         {
             using (_logger.BeginScope("region:{RegionId}", r.Id))
             {
-                var pbfPath = Path.Combine(_rendererOptions.WorkDir, $"{r.Id}.osm.pbf");
+                var pbfPath = Path.Combine(workDir, $"{r.Id}.osm.pbf");
                 if (!File.Exists(pbfPath))
                 {
                     _logger.LogInformation("Downloading PBF for {Region} ... to {TargetPath}", r.Id, pbfPath);
                     await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
                 }
-                await _renderRegionUseCase.RunAsync(r, _rendererOptions.WorkDir, _rendererOptions.OutDir, ct);
+                await _renderRegionUseCase.RunAsync(r, workDir, outDir, ct);
             }
         }
         _logger.LogInformation("All regions processed.");
