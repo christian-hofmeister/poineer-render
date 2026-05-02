@@ -207,32 +207,5 @@ public sealed class RenderRegionTests
             //exporter.ExportAsync(pois, expectedOutPath, Arg.Any<CancellationToken>());
         });
     }
-
 }
 
-/// <summary>
-/// Tiny temp-dir helper for tests.
-/// If you already have POIneer.Render.TestHelpers.TempDir, just use that instead and delete this.
-/// </summary>
-internal sealed class TempDir : IDisposable
-{
-    public string PathValue { get; } = System.IO.Path.Combine(
-        System.IO.Path.GetTempPath(),
-        "POIneer.Render.Tests",
-        Guid.NewGuid().ToString("N"));
-
-    public TempDir() => Directory.CreateDirectory(PathValue);
-
-    public string CreateSubDir(string name)
-    {
-        var p = System.IO.Path.Combine(PathValue, name);
-        Directory.CreateDirectory(p);
-        return p;
-    }
-
-    public void Dispose()
-    {
-        try { Directory.Delete(PathValue, recursive: true); }
-        catch { /* ignore */ }
-    }
-}
