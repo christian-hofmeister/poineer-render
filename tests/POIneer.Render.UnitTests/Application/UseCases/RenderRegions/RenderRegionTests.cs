@@ -69,9 +69,9 @@ public sealed class RenderRegionTests
             Poly: "berlin.poly"
         );
 
-        using var tmp = new TempDir();
-        var workDir = tmp.CreateSubDir("work");
-        var outDir = tmp.CreateSubDir("out");
+        await using var tempDir = TestTemporaryDirectories.Create("calls-ports-with-expected-paths", true);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
 
         // create input pbf file
         var pbfPath = Path.Combine(workDir, $"{region.Id}.osm.pbf");
@@ -114,9 +114,9 @@ public sealed class RenderRegionTests
             Poly: "berlin.poly"
         );
 
-        using var tmp = new TempDir();
-        var workDir = tmp.CreateSubDir("work");
-        var outDir = tmp.CreateSubDir("out");
+        await using var tempDir = TestTemporaryDirectories.Create("forwards-cancellation-token", true);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
 
         var pbfPath = Path.Combine(workDir, $"{region.Id}.osm.pbf");
         File.WriteAllText(pbfPath, "dummy");
@@ -168,9 +168,9 @@ public sealed class RenderRegionTests
             PbfUrl: "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf",
             Poly: "berlin.poly");
 
-        using var tmp = new TempDir();
-        var workDir = tmp.CreateSubDir("work");
-        var outDir = tmp.CreateSubDir("out");
+        await using var tempDir = TestTemporaryDirectories.Create("calls-ports-with-expected-paths", true);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
 
         // Dummy input PBF (existence is what matters)
         var pbfPath = Path.Combine(workDir, $"{region.Id}.osm.pbf");
