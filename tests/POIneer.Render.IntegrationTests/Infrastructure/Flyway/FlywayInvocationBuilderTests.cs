@@ -11,25 +11,27 @@ public sealed class FlywayInvocationBuilderTests
     public void BuildForSqlite_BuildsInvocation()
     {
         // Arrange
-        var root = Path.GetTempPath();
+        var root = AppContext.BaseDirectory;
 
-        IHostEnvironment env = new FakeHostEnvironment
-        {
-            ContentRootPath = root,
-            EnvironmentName = "Test",
-            ApplicationName = "POIneer.Render.Tests"
-        };
-        //var executable = "flyway"; TODO - make this test work on CI by using the actual flyway executable path, or mock the file system to fake it
         var options = Options.Create(new FlywayOptions
         {
             Executable = "flyway",
-            ConfigFileRelativePath = "flyway.toml",
+            ConfigFileRelativePath = Path.Combine("test-flyway", "flyway.toml"),
+            MigrationsRelativePath = Path.Combine("test-flyway", "migrations"),
             Debug = true
         });
 
+        var configDir = Path.Combine(root, "test-flyway");
+        Directory.CreateDirectory(configDir);
+
+        var configFile = Path.Combine(configDir, "flyway.toml");
+        File.WriteAllText(configFile, "# test flyway config");
+
+        var migrationsDir = Path.Combine(configDir, "migrations");
+        Directory.CreateDirectory(migrationsDir);
 
 
-        var sut = new FlywayInvocationBuilder(options, env);
+        var sut = new FlywayInvocationBuilder(options);
 
         // Act
         var inv = sut.BuildForSqlite(Path.Combine(root, "out", "db.sqlite"));
@@ -41,7 +43,7 @@ public sealed class FlywayInvocationBuilderTests
         Assert.Contains("migrate", inv.Arguments);
 
         // configFiles contains absolute path
-        var expectedConfig = Path.GetFullPath(Path.Combine(root, "flyway.toml"));
+        var expectedConfig = Path.GetFullPath(Path.Combine(root, "test-flyway", "flyway.toml"));
         Assert.Contains($"-configFiles=\"{expectedConfig}\"", inv.Arguments);
 
         // working dir is config dir
@@ -58,26 +60,30 @@ public sealed class FlywayInvocationBuilderTests
     [Fact]
     public void BuildForSqlite_BuildsInvocation_FromOptionsAndContentRoot()
     {
-        var root = Path.GetTempPath();
+        var root = AppContext.BaseDirectory;
 
-        IHostEnvironment env = new FakeHostEnvironment
-        {
-            ContentRootPath = root,
-            EnvironmentName = "Test",
-            ApplicationName = "POIneer.Render.Tests"
-        };
+        var configDir = Path.Combine(root, "test-flyway");
+        Directory.CreateDirectory(configDir);
 
+        var configFile = Path.Combine(configDir, "flyway.toml");
+        File.WriteAllText(configFile, "# test flyway config");
 
-        var options = TestOptionsFactory.CreateOptions(debug: true);
+        var migrationsPath = Path.Combine(root, "test-migrations", "sql", "poi");
+        Directory.CreateDirectory(migrationsPath);
 
-        var sut = new FlywayInvocationBuilder(options, env);
+        var options = TestOptionsFactory.CreateOptions(
+            debug: true,
+            configFileRelativePath: Path.Combine("test-flyway", "flyway.toml"),
+            migrationsRelativePath: Path.Combine("test-migrations", "sql", "poi"));
+
+        var sut = new FlywayInvocationBuilder(options);
 
         var dbPath = Path.Combine(root, "out", "db.sqlite");
         var inv = sut.BuildForSqlite(dbPath);
 
         Assert.Equal("flyway", inv.Executable);
 
-        var expectedConfig = Path.GetFullPath(Path.Combine(root, "flyway.toml"));
+        var expectedConfig = Path.GetFullPath(Path.Combine(root, "test-flyway", "flyway.toml"));
         Assert.Equal(Path.GetDirectoryName(expectedConfig), inv.WorkingDirectory);
 
         Assert.Contains("-X", inv.Arguments);

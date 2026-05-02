@@ -13,6 +13,9 @@
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.7" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.7" />
     <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119" />
-    <!-- Falls nötig: CommandLineParser/ Spectre.Console.Cli, Npgsql etc. -->
+    <Content Include="..\..\migrations\**\*">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    <Link>migrations\%(RecursiveDir)%(Filename)%(Extension)</Link>
+  </Content>
   </ItemGroup>
 </Project>

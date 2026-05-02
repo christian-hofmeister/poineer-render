@@ -1,8 +1,8 @@
 // Jenkins Declarative Pipeline for POIneer.Render
-// - Builds & tests on 'develop'
-// - Placeholder "deploy" on 'release/*'
+// - Builds and tests on 'develop'
+// - Creates a published application archive
+// - Placeholder deploy stage for 'release/*'
 // - Avoids heavy rendering on Jenkins
-// - Uses repository script to ensure dotnet SDK if missing
 
 pipeline {
   agent any
@@ -16,20 +16,30 @@ pipeline {
   }
 
   environment {
-    // Speed up dotnet CLI
     DOTNET_CLI_TELEMETRY_OPTOUT = '1'
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
+    DOTNET_ENVIRONMENT = 'Production'
+
     NUGET_PACKAGES = "${WORKSPACE}/.nuget/packages"
-    // Desired SDK version for the project; adjust if you bump SDK
-    DOTNET_SDK_VERSION = '10.0.100'
-    // Project paths
-    RENDER_CSProj = 'src/POIneer.Render/POIneer.Render.csproj'
+
+    DOTNET_SDK_VERSION = '10.0.201'
+
+    RENDER_CSPROJ = 'src/POIneer.Render/POIneer.Render.csproj'
+    RENDER_PROJECT_DIR = 'src/POIneer.Render'
     PUBLISH_DIR = 'out/POIneer.Render'
-    COVERAGE_MIN = '25'   // später z. B. auf 40/50/60 anheben
+
+    COVERAGE_MIN = '25'
+  }
+
+  parameters {
+    booleanParam(
+      name: 'RUN_RENDER_CHECK',
+      defaultValue: false,
+      description: 'Run a quick sanity check on develop. This must not perform heavy rendering.'
+    )
   }
 
   stages {
-
     stage('Checkout') {
       steps {
         checkout scm
@@ -56,7 +66,7 @@ pipeline {
         sh '''
           set -eux
           mkdir -p "${NUGET_PACKAGES}"
-          dotnet restore "${RENDER_CSProj}" --nologo
+          dotnet restore "${RENDER_CSPROJ}" --nologo
         '''
       }
     }
@@ -65,57 +75,57 @@ pipeline {
       steps {
         sh '''
           set -eux
-          dotnet build "${RENDER_CSProj}" -c Release --no-restore --nologo
+          dotnet build "${RENDER_CSPROJ}" -c Release --no-restore --nologo
         '''
       }
     }
 
-    stage('Test with Coverage'){
+    stage('Test with Coverage') {
       steps {
-        sh '''
-          set -eux
+        withEnv(['DOTNET_ENVIRONMENT=CI']) {
+          sh '''
+            set -eux
 
-          echo "WORKSPACE=$WORKSPACE"
-          pwd
-          echo "find maxdepth 3 directories:"
-          find . -maxdepth 3 -type d | sort
-          echo "Checking for flyway and java (if your tests need them):"
-          which flyway || true
-          flyway -v || true
-          java -version || true
+            echo "WORKSPACE=$WORKSPACE"
+            pwd
 
-          # Tests ausführen
-          echo "Running tests with coverage collection..."
-          dotnet test POIneerRender.sln -c Release --nologo \
-            --results-directory TestResults \
-            --logger "junit;LogFilePath=TestResults/test-results.junit.xml" \
-            /p:CollectCoverage=true \
-            /p:CoverletOutputFormat=cobertura \
-            /p:CoverletOutput=TestResults/Coverage/coverage
+            echo "Directory overview:"
+            find . -maxdepth 3 -type d | sort
 
-          echo "[diag] Coverage files:"
-          find . -type f -name "coverage.cobertura.xml" -print
+            echo "Checking for flyway and java:"
+            which flyway || true
+            flyway -v || true
+            java -version || true
 
-          echo "[diag] JUnit files:"
-          find . -type f -name "test-results.junit.xml" -print
+            echo "Running tests with coverage collection..."
+            dotnet test POIneerRender.sln -c Release --nologo \
+              --results-directory TestResults \
+              --logger "junit;LogFilePath=TestResults/test-results.junit.xml" \
+              /p:CollectCoverage=true \
+              /p:CoverletOutputFormat=cobertura \
+              /p:CoverletOutput=TestResults/Coverage/coverage
 
-          echo "[diag] TRX files:"
-          find . -type f -name "*.trx" -print
-        '''
+            echo "[diag] Coverage files:"
+            find . -type f -name "coverage.cobertura.xml" -print
+
+            echo "[diag] JUnit files:"
+            find . -type f -name "test-results.junit.xml" -print
+
+            echo "[diag] TRX files:"
+            find . -type f -name "*.trx" -print
+          '''
+        }
       }
       post {
         always {
-          // ✅ JUnit korrekt einsammeln
           junit '**/TestResults/**/test-results.junit.xml'
 
-          // ✅ Cobertura Coverage publizieren
           recordCoverage(
             tools: [[parser: 'COBERTURA', pattern: '**/TestResults/**/coverage.cobertura.xml']],
             sourceCodeRetention: 'LAST_BUILD',
             failOnError: true
           )
 
-          // ✅ Manuelle Coverage-Schwelle
           script {
             def min = env.COVERAGE_MIN ? env.COVERAGE_MIN.toInteger() : 25
 
@@ -133,23 +143,25 @@ pipeline {
 
             if (pct.isInteger() && pct.toInteger() < min) {
               currentBuild.result = 'FAILURE'
-              echo "❌ Coverage below threshold."
+              echo "Coverage is below the configured threshold."
             } else {
-              echo "✅ Coverage threshold met."
+              echo "Coverage threshold met."
             }
           }
         }
       }
     }
 
-
     stage('Coverage Report (HTML)') {
-      when { expression { return fileExists('TestResults/Coverage/coverage.cobertura.xml') } }
+      when {
+        expression { return fileExists('TestResults/Coverage/coverage.cobertura.xml') }
+      }
       steps {
         sh '''
           set -eux
           dotnet tool update -g dotnet-reportgenerator-globaltool || dotnet tool install -g dotnet-reportgenerator-globaltool
           export PATH="$HOME/.dotnet/tools:$PATH"
+
           reportgenerator \
             -reports:**/TestResults/**/coverage.cobertura.xml \
             -targetdir:CoverageReport \
@@ -163,17 +175,18 @@ pipeline {
       }
     }
 
-    stage('Publish (App)') {
+    stage('Publish App') {
       steps {
         sh '''
           set -eux
           rm -rf "${PUBLISH_DIR}"
-          dotnet publish "${RENDER_CSProj}" -c Release -o "${PUBLISH_DIR}" --no-build --nologo
-          # BRANCH name safe machen (slashes -> underscores)
+
+          dotnet publish "${RENDER_CSPROJ}" -c Release -o "${PUBLISH_DIR}" --no-build --nologo
+
           SAFE_BRANCH="$(echo "$BRANCH_NAME" | tr '/ ' '__')"
           ARCHIVE="poineer-render_${SAFE_BRANCH}.tar.gz"
 
-          tar -C out/POIneer.Render -czf "$ARCHIVE" .
+          tar -C "${PUBLISH_DIR}" -czf "$ARCHIVE" .
           echo "Created archive: $ARCHIVE"
         '''
       }
@@ -184,10 +197,9 @@ pipeline {
       }
     }
 
-    stage('Deploy (placeholder)') {
+    stage('Deploy Placeholder') {
       when {
         expression {
-          // Run on branches like release/1.0.0, release/v0.3, etc.
           return env.BRANCH_NAME ==~ /release\/.+/
         }
       }
@@ -195,36 +207,38 @@ pipeline {
         sh '''
           set -eux
           echo "[deploy] Release branch detected: ${BRANCH_NAME}"
-          echo "[deploy] This is a placeholder. No heavy rendering and no live deploy performed on Jenkins."
-          echo "[deploy] Here you could: rsync the published app to your render server, trigger a job, etc."
-          # Example (commented):
+          echo "[deploy] This is a placeholder. No heavy rendering and no live deploy is performed on Jenkins."
+          echo "[deploy] Runtime must set DOTNET_ENVIRONMENT=Production."
+          echo "[deploy] Runtime should start from the published app directory or use a predictable working directory."
+          echo "[deploy] Later this could rsync the published app to the render server and restart a service."
+
+          # Example:
           # rsync -avz --delete "${PUBLISH_DIR}/" user@render-host:/opt/poineer/render/
           # ssh user@render-host 'sudo systemctl restart poineer-render.service'
         '''
       }
     }
 
-    stage('(Optional) Dry-Run Render Check') {
+    stage('Optional Dry-Run Render Check') {
       when {
         allOf {
           branch 'develop'
-          expression { return params?.RUN_RENDER_CHECK == true }
+          expression { return params.RUN_RENDER_CHECK == true }
         }
       }
       steps {
-        sh '''
-          set -eux
-          echo "[check] Running a short sanity-check invocation (no heavy work expected)."
-          # Example of a quick, no-op style run if your app supports it:
-          # dotnet "${PUBLISH_DIR}/POIneer.Render.dll" --help
-        '''
+        dir("${RENDER_PROJECT_DIR}") {
+          withEnv(['DOTNET_ENVIRONMENT=Development']) {
+            sh '''
+              set -eux
+              echo "[check] Running POIneer.Render dry-run check from project directory."
+              pwd
+              dotnet run -c Release --no-build -- --Renderer:DryRun=true
+            '''
+          }
+        }
       }
     }
-  }
-
-  parameters {
-    // If you ever want to trigger a lightweight health check manually on develop
-    booleanParam(name: 'RUN_RENDER_CHECK', defaultValue: false, description: 'Run a quick, no-op sanity check on develop (no heavy rendering).')
   }
 
   post {

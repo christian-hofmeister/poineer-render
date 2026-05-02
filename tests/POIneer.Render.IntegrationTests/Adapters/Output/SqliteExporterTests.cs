@@ -71,16 +71,8 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
             Debug = false
         });
 
-
-        IHostEnvironment env = new FakeHostEnvironment
-        {
-            ContentRootPath = root,
-            EnvironmentName = "Test",
-            ApplicationName = "POIneer.Render.IntegrationTests"
-        };
-
         var processRunner = new ProcessRunner();
-        var invocationBuilder = new FlywayInvocationBuilder(options, env);
+        var invocationBuilder = new FlywayInvocationBuilder(options);
         var logger = new LoggerFactory().CreateLogger<FlywaySqliteDatabaseInitializer>();
         var databaseInitializer = new FlywaySqliteDatabaseInitializer(
             processRunner,
@@ -154,6 +146,7 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
         }
     }
 
+    //TODO RepoRootLocator.Find() in main code and reuse here
     private static string FindRepositoryRoot()
     {
         var dir = new DirectoryInfo(Directory.GetCurrentDirectory());

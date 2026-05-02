@@ -493,6 +493,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.7, )",
+          "POIneer.Render": "[1.0.0, )",
           "xunit.abstractions": "[2.0.3, )"
         }
       }
