@@ -22,16 +22,7 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
     {
         var logger = new XunitLogger<FlywaySqliteDatabaseInitializer>(_output);
 
-        var tempDirOptions = Options.Create(new TempOptions
-        {
-            RootFolderName = "poineer-tests",
-            KeepOnDispose = true
-        });
-
-        ITemporaryDirectoryFactory tempDirectoryFactory =
-            new TemporaryDirectoryFactory(tempDirOptions);
-
-        await using var tempDir = tempDirectoryFactory.Create("flyway-sqlite-database-initializer-tests");
+        await using var tempDir = TestTemporaryDirectories.Create("init-async-creates-poi-table", false);
 
         string executable = "flyway";
         logger.LogInformation($"Starting FlywaySqliteDatabaseInitializerTests.InitializeAsync_creates_poi_table test. Executable: '{executable}'");
@@ -110,7 +101,7 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
     [Fact]
     public async Task InitializeAsync_AppliesPoiMigrations()
     {
-        await using var tempDir = TestTemporaryDirectories.Create("flyway-applies-migrations", true);
+        await using var tempDir = TestTemporaryDirectories.Create("flyway-applies-migrations", false);
 
         var dbPath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
 
