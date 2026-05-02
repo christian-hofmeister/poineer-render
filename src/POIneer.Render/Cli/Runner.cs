@@ -48,6 +48,13 @@ public sealed class Runner
         _logger.LogInformation("Work directory (raw): {WorkDir}", _rendererOptions.WorkDir);
         _logger.LogInformation("Output directory: {OutDir}", outDir);
         _logger.LogInformation("Output directory (raw): {OutDir}", _rendererOptions.OutDir);
+        _logger.LogInformation("Dry run: {DryRun}", _rendererOptions.DryRun);
+
+        if (_rendererOptions.DryRun)
+        {
+            _logger.LogInformation("Dry run enabled, exiting without doing anything.");
+            return 0;
+        }
 
         _logger.LogInformation("Creating directories (if not exists)...");
         Directory.CreateDirectory(workDir);

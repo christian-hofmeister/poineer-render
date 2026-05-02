@@ -10,4 +10,6 @@ public sealed class RendererOptions
 
     // If set, only this region will be rendered (e.g. for testing)
     public string? OnlyRegionId { get; init; }
+
+    public bool DryRun { get; init; }
 }
