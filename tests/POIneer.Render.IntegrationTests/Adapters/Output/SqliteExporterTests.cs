@@ -8,6 +8,7 @@ using POIneer.Render.Application.Contracts;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
 using POIneer.Render.Infrastructure.Process;
+using POIneer.Render.TestHelpers;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -20,16 +21,7 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
     [Fact]
     public async Task ExportAsync_inserts_rows_into_existing_poi_table()
     {
-        var options = Options.Create(new TempOptions
-        {
-            RootFolderName = "poineer-tests",
-            KeepOnDispose = true
-        });
-
-        ITemporaryDirectoryFactory tempDirectoryFactory =
-            new TemporaryDirectoryFactory(options);
-
-        await using var tempDir = tempDirectoryFactory.Create("sqlite-exporter-tests");
+        await using var tempDir = TestTemporaryDirectories.Create("insert-rows-into-existing-poi-table", false);
 
         var sqliteFilePath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
 

@@ -8,7 +8,7 @@ public static class TestTemporaryDirectories
 {
     public static TemporaryDirectory Create(
         string purpose,
-        bool keepOnDispose = true)
+        bool keepOnDispose = false)
     {
         var options = Options.Create(new TempOptions
         {

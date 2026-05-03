@@ -67,7 +67,7 @@ public sealed class TemporaryDirectory : IDisposable, IAsyncDisposable
                 Directory.Delete(dir, recursive: true);
                 return;
             }
-            catch
+            catch (Exception ex)
             {
 
                 // Retry after resetting file attributes.
