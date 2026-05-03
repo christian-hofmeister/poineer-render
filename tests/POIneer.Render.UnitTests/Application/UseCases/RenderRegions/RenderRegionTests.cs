@@ -10,15 +10,15 @@ namespace POIneer.Render.UnitTests.Application.UseCases.RenderRegions;
 
 public sealed class RenderRegionTests
 {
-    private readonly ILogger<POIneer.Render.Application.UseCases.RenderRegion> _logger =
-        Substitute.For<ILogger<POIneer.Render.Application.UseCases.RenderRegion>>();
+    private readonly ILogger<RenderRegion> _logger =
+        Substitute.For<ILogger<RenderRegion>>();
 
     private readonly IPolygonCutter _polygonCutter = Substitute.For<IPolygonCutter>();
     private readonly IOsmReader _osmReader = Substitute.For<IOsmReader>();
     private readonly ISqliteDatabaseInitializer _dbInit = Substitute.For<ISqliteDatabaseInitializer>();
     private readonly IExporter _exporter = Substitute.For<IExporter>();
 
-    private POIneer.Render.Application.UseCases.RenderRegion CreateSut()
+    private RenderRegion CreateSut()
         => new(
             _logger,
             _polygonCutter,
