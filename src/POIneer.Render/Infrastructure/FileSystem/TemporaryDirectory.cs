@@ -69,6 +69,7 @@ public sealed class TemporaryDirectory : IDisposable, IAsyncDisposable
             }
             catch
             {
+
                 // Retry after resetting file attributes.
             }
 
