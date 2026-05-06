@@ -1,44 +1,51 @@
-# POIneer.Render – Tests
+# POIneer.Render Tests
 
-Dieses Verzeichnis enthält alle automatisierten Tests für **POIneer.Render**.  
-Die Tests sind nach Typ getrennt, um klare Verantwortlichkeiten zu haben.
+This directory contains the automated test projects for **POIneer.Render**. Tests are separated by purpose so that responsibilities stay clear and CI can remain lightweight.
 
-## Struktur
+## Structure
 
 ```text
 tests/
- ├─ POIneer.Render.UnitTests/        # klassische Unit-Tests (kleine, schnelle Tests ohne externe Abhängigkeiten)
- ├─ POIneer.Render.IntegrationTests/ # Integrationstests (Datenbanken, Filesystem, externe Prozesse)
- ├─ POIneer.Render.ContractTests/    # Schnittstellen- und Vertrags-Tests (z. B. API-Schema, Migrationen, DB-Verträge)
- └─ POIneer.Render.TestHelpers/      # gemeinsame Hilfsklassen für Tests (TempDir, ListLogger, Fixtures, Mocks)
- ```
+├─ POIneer.Render.UnitTests/        # fast unit tests for isolated domain/application behavior
+├─ POIneer.Render.IntegrationTests/ # infrastructure tests for SQLite, Flyway, filesystem, and processes
+├─ POIneer.Render.ContractTests/    # contract and compatibility tests
+└─ POIneer.Render.TestHelpers/      # shared test utilities; not a test project itself
+```
 
-## Hinweise
+## Test Project Responsibilities
 
-- **UnitTests**  
-  Prüfen die Kernlogik isoliert. Schnell, deterministisch, laufen in CI/CD bei jedem Commit.
+- **Unit tests** validate isolated core logic. They should be fast, deterministic, and free of external process or machine-specific dependencies.
+- **Integration tests** validate infrastructure behavior such as SQLite persistence, Flyway invocation, filesystem handling, and process execution.
+- **Contract tests** protect stable contracts such as DTO shape, database behavior, or migration expectations when those contracts become externally relevant.
+- **Test helpers** provide shared utilities such as temporary directory helpers and loggers. They should not contain tests of their own and should be excluded from coverage expectations where appropriate.
 
-- **IntegrationTests**  
-  Validieren Zusammenspiel mit Infrastruktur (z. B. SQLite, Dateisystem). Können länger laufen, aber sind wichtig für die Release-Qualität.
+## Running Tests
 
-- **ContractTests**  
-  Stellen sicher, dass Verträge eingehalten werden (z. B. Datenbank-Schema, APIs). Dienen auch als „Safety Net“ bei Refactorings.
-
-- **TestHelpers**  
-  Enthält nur Hilfsklassen (z. B. `TempDir`, `ListLogger<T>`).  
-  - Keine eigenen Tests  
-  - Referenziert von allen Testprojekten  
-  - Wird in der Code-Coverage ausgeschlossen
-
-## Test-Ausführung
-
-Alle Tests laufen zusammen über die Solution:
+Run all tests through the solution:
 
 ```bash
 dotnet test POIneerRender.sln
+```
 
-In der CI/CD-Pipeline werden zusätzlich Coverage-Berichte erzeugt (Cobertura), die in Jenkins ausgewertet werden.
+Run a single test project when iterating locally:
 
-ℹ️ Tipp: Neue Tests bitte immer im passenden Projekt anlegen.
-Wenn ein Test nicht eindeutig zuordenbar ist, UnitTests bevorzugen.
+```bash
+dotnet test tests/POIneer.Render.UnitTests/POIneer.Render.UnitTests.csproj
+```
 
+Generate coverage through the repository helper:
+
+```bash
+./scripts/coverage.sh
+```
+
+## Guidelines for New Tests
+
+- Use xUnit and FluentAssertions.
+- Prefer descriptive test names.
+- Keep tests deterministic and isolated.
+- Use temporary directories instead of developer-machine paths.
+- Prefer `ITemporaryDirectoryFactory` when production behavior depends on temporary filesystem handling.
+- Use `NullLogger<T>.Instance` unless a test explicitly asserts log output.
+- Add path-sensitive Flyway/SQLite coverage when changing migration or path resolution behavior.
+- Put new tests in the narrowest matching project; if a test does not need infrastructure, prefer unit tests.

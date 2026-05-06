@@ -1,218 +1,303 @@
 # POIneer.Render
 
-**POIneer.Render** is the rendering component of the POIneer project.  
-It generates **regional, offline-ready SQLite databases** based on **OpenStreetMap data** and prepares them for consumption by the POIneer app.
+**POIneer.Render** is the rendering component of the POIneer project. It turns selected **OpenStreetMap (OSM) PBF extracts** into **regional, offline-ready SQLite databases** that can later be consumed by the POIneer app.
 
-The focus is on:
-
-- reproducible builds
-- clear responsibilities
-- automated tests and CI
-- learning and experimentation with the modern .NET ecosystem
+The current MVP keeps the scope deliberately small: render Berlin first, import relevant OSM node POIs, migrate the SQLite schema with Flyway, and produce a deterministic `.sqlite` artifact.
 
 ---
 
-## 🧠 Overview
+## Table of Contents
 
-POIneer consists of several clearly separated components:
-
-- OpenStreetMap (PBF)
-- POIneer.Render
-- region.sqlite (Flyway)
-- POIneer App (Android)
-
-**POIneer.Render** is neither a server nor an app.  
-It is a **deterministic renderer** that transforms raw OSM data into a usable SQLite database.
-
----
-
-## 🎯 Responsibility of POIneer.Render
-
-The renderer is responsible for:
-
-- 📥 Downloading and processing OSM PBF files
-- 🧱 Initializing a SQLite database
-- 🛠️ Schema creation and migrations via **Flyway**
-- 🗺️ Extracting and preparing POIs (Points of Interest)
-- 📦 Producing a final `.sqlite` file per region
-
-**Important:**  
-The renderer is **idempotent** — identical input produces identical output.
+- [Project Status](#project-status)
+- [What the Renderer Does](#what-the-renderer-does)
+- [Current MVP Scope](#current-mvp-scope)
+- [Architecture](#architecture)
+- [Repository Layout](#repository-layout)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Build, Test, and Coverage](#build-test-and-coverage)
+- [Database Migrations](#database-migrations)
+- [Development Notes](#development-notes)
+- [Related Documents](#related-documents)
 
 ---
 
-## 🚧 Current MVP Scope
+## Project Status
 
-The current MVP intentionally focuses on a small and deterministic scope:
+**Status:** actively under development.
 
-- Berlin as the initial render region
+Current focus:
+
+- stable Berlin render pipeline for the MVP
+- robust SQLite database initialization
+- deterministic local and CI-friendly behavior
+- simple deployment path for later VPS/Azure automation
+
+Planned after the MVP:
+
+- configurable multi-region rendering
+- richer POI category coverage
+- artifact delivery to downstream app builds
+- Jenkins-based server workflows
+
+---
+
+## What the Renderer Does
+
+POIneer.Render is not a server and not a mobile app. It is a command-line renderer that performs these steps:
+
+1. Reads configured render regions from JSON.
+2. Downloads the region's OSM PBF extract when it is not already available locally.
+3. Optionally cuts a polygon extract through infrastructure adapters.
+4. Initializes and migrates a SQLite output database with Flyway.
+5. Reads OSM node POIs and maps relevant tags into the domain model.
+6. Writes the final regional SQLite database to the configured output directory.
+
+The renderer is designed to be **idempotent**: identical inputs and configuration should produce identical outputs.
+
+---
+
+## Current MVP Scope
+
+Included in the MVP:
+
+- Berlin as the first hardcoded render region
 - OSM nodes only
 - amenity-focused POI extraction
 - SQLite output generation
-- reproducible offline builds
+- deterministic offline database artifacts
+- automated unit and integration tests
 
-Out of scope for the current MVP:
+Out of scope for the MVP:
 
-- ways and relations
-- full admin UI
+- OSM ways and relations
+- admin UI
 - mobile app implementation
-- Azure production deployment
+- production Azure deployment
 - complex multi-region orchestration
 
 ---
 
-## 🧩 Architecture & Concepts
+## Architecture
 
-The project deliberately follows clear architectural principles:
+The project follows a pragmatic Clean Architecture / Ports and Adapters style:
 
-- Ports & Adapters / Clean Architecture
-- Clear separation of:
-  - Domain
-  - Infrastructure
-  - IO (filesystem, processes, tools)
-- Core logic is testable without real OSM data
-- No hidden global state
+- **Domain** contains models and pure mapping logic.
+- **Application** contains use cases and contracts.
+- **Ports** define boundaries for input, output, rendering, and external tools.
+- **Adapters** implement OSM input, downloads, polygon cutting, and SQLite output.
+- **Infrastructure** contains filesystem, process execution, pathing, Flyway, and SQLite implementations.
+- **CLI** is the composition root and wires services through dependency injection.
 
-### Key Components
+Key principles:
 
-- `POIneer.Render`
-  - orchestrates the rendering process
-
-- `POIneer.Render.Infrastructure`
-  - filesystem access
-  - external tools (e.g. Flyway)
-
-- `POIneer.Render.TestHelpers`
-  - utilities for integration tests
+- domain and application logic stay independent from infrastructure details
+- external tools such as Flyway and process execution are behind abstractions where useful
+- filesystem-sensitive behavior is tested with isolated temporary directories
+- configuration is represented by strongly typed options
 
 ---
 
-## 🤖 AI / Agent Guidance
+## Repository Layout
 
-This repository contains an `AGENTS.md` file with repository-specific guidance for AI-assisted development tools such as Codex.
-
-Please review it before making larger architectural or workflow-related changes.
+```text
+.
+├─ src/POIneer.Render/                 # CLI, application, domain, ports, adapters, infrastructure
+│  ├─ Cli/                             # Program entry point, runner, region configuration
+│  ├─ Application/                     # Use cases and contracts
+│  ├─ Domain/                          # Domain models and tag mapping
+│  ├─ Ports/                           # Application boundaries
+│  ├─ Adapters/                        # OSM, download, polygon cutting, SQLite export adapters
+│  └─ Infrastructure/                  # Flyway, process, pathing, SQLite, temp filesystem code
+├─ tests/                              # Unit, integration, contract, and helper projects
+├─ migrations/                         # Flyway configuration and SQL migrations
+├─ scripts/                            # Linux/macOS and Windows helper scripts
+├─ docs/                               # Pull request templates and project documentation
+├─ Jenkinsfile                         # CI pipeline definition
+├─ global.json                         # Pinned .NET SDK version
+└─ POIneerRender.sln                   # Solution file
+```
 
 ---
 
-## 🛠️ Technical Prerequisites
+## Prerequisites
 
-### Local Development
+Required:
 
-#### Required SDK
+- .NET SDK `10.0.201` as pinned in `global.json`
+- Flyway CLI available on `PATH` or configured through `Flyway:Executable`
 
-- .NET SDK 10.0.201
+Useful for local rendering:
 
-#### Additional SDKs
+- network access to download Geofabrik PBF extracts
+- enough disk space for downloaded `.osm.pbf` files and generated SQLite databases
+- Linux/macOS shell scripts or PowerShell on Windows
 
-- .NET 9.x optional
-- .NET 8.x optional
-
-> The repository uses a `global.json` file to pin the expected .NET SDK version.
-
-#### Additional Tools
-
-- Flyway CLI
-  - used at runtime for database migrations
-
-#### Supported Platforms
+Supported development platforms:
 
 - Linux
 - macOS
 - Windows
 
-> CI currently runs on Linux.
+CI currently targets Linux.
 
 ---
 
-## 🔄 Build & Tests
+## Quick Start
 
-### Restore
+### 1. Restore dependencies
 
 ```bash
-dotnet restore
+dotnet restore POIneerRender.sln
 ```
 
-### Build
+### 2. Build
 
 ```bash
-dotnet build --configuration Release
+dotnet build POIneerRender.sln --configuration Release
 ```
 
-### Test & Coverage
+### 3. Run tests
 
 ```bash
-dotnet test \
-  /p:CollectCoverage=true \
-  /p:CoverletOutputFormat=cobertura
+dotnet test POIneerRender.sln --configuration Release
+```
+
+### 4. Prepare local tooling
+
+```bash
+./scripts/setup-dev.sh
+```
+
+The setup script delegates Flyway installation/setup to the scripts in `scripts/flyway/`.
+
+### 5. Run the renderer locally
+
+Linux/macOS:
+
+```bash
+./scripts/run-dev.sh
+```
+
+Windows PowerShell:
+
+```powershell
+./scripts/run-dev.ps1
+```
+
+Development mode reads `src/POIneer.Render/appsettings.Development.json`, renders only the `berlin` region, writes work files below `data/dev/renderer-work-dir`, and writes output artifacts below `data/dev/renderer-out-dir` relative to the application content root.
+
+---
+
+## Configuration
+
+Runtime configuration is loaded in this order:
+
+1. `appsettings.json`
+2. `appsettings.{Environment}.json`
+3. environment variables with the `POINEER_RENDER__` prefix
+4. command-line arguments
+
+Important renderer options:
+
+| Option | Purpose | Development default |
+| --- | --- | --- |
+| `Renderer:WorkDir` | Temporary and downloaded source data | `data/dev/renderer-work-dir` |
+| `Renderer:OutDir` | Final SQLite output files | `data/dev/renderer-out-dir` |
+| `Renderer:RegionsJson` | Region configuration file | `Cli/config/regions.local.json` |
+| `Renderer:OnlyRegionId` | Optional filter for one region | `berlin` |
+| `Renderer:DryRun` | Exit after configuration/logging without rendering | `false` |
+
+Important Flyway options:
+
+| Option | Purpose | Default |
+| --- | --- | --- |
+| `Flyway:Executable` | Flyway CLI command or path | `flyway` |
+| `Flyway:ConfigFileRelativePath` | Flyway TOML configuration path | `migrations/flyway-poi.toml` |
+| `Flyway:Debug` | Enable verbose Flyway invocation logging | `true` |
+
+Example environment override:
+
+```bash
+POINEER_RENDER__RENDERER__DRYRUN=true \
+POINEER_RENDER__RENDERER__ONLYREGIONID=berlin \
+dotnet run --project src/POIneer.Render/POIneer.Render.csproj
 ```
 
 ---
 
-## ✅ Code Quality & CI
+## Build, Test, and Coverage
 
-CI pipelines enforce:
+Common commands:
 
-- ✅ warning-free builds (`/warnaserror`)
-- ✅ consistent formatting (`dotnet format`)
-- ✅ successful tests
-- ✅ minimum test coverage
+```bash
+dotnet restore POIneerRender.sln
+```
 
-### Minimum Coverage
+```bash
+dotnet build POIneerRender.sln --configuration Release
+```
 
-- 60% line coverage (enforced by CI)
+```bash
+dotnet test POIneerRender.sln --configuration Release
+```
 
-### Branch Protection
+Coverage helper:
 
-The `develop` and `main` branches are protected — faulty code cannot be merged.
+```bash
+./scripts/coverage.sh
+```
 
----
+CI intent:
 
-## 🚧 Project Status
+- restore packages from lock files
+- build the solution
+- run automated tests
+- collect coverage
+- avoid expensive full OSM rendering in normal CI
 
-### 🟡 Actively Under Development
-
-### Current Focus
-
-- stable render pipeline MVP
-- clean database initialization
-- reproducible region builds (e.g. Berlin)
-
-### Planned
-
-- configurable regions
-- optional tile rendering
-- Jenkins-based server pipelines
-- delivery of build artifacts to the POIneer app
+The current minimum line coverage target is **60%**.
 
 ---
 
-## 📜 License
+## Database Migrations
 
-This project is intended as a learning and open-source project.
+SQLite schema changes are managed through Flyway.
 
-The final license will be defined at a later stage.
+Relevant files:
 
----
+- `migrations/flyway-poi.toml`
+- `migrations/sql/poi/V1__create_poi_table.sql`
 
-## 🤝 Contributing
+When changing migrations or Flyway path handling:
 
-Currently a solo project — however, pull requests, feedback, and ideas are welcome.
-
----
-
-## ✨ Motivation
-
-POIneer.Render was created out of the desire to:
-
-- provide offline-capable POI data in a controlled and privacy-friendly way
-- apply modern .NET architecture in practice
-- build a clean and reproducible rendering pipeline
+- keep paths robust across CLI, VS Code, Windows, Linux, and Jenkins
+- do not rely on the current working directory unless the code already establishes it explicitly
+- add or update integration tests for path-sensitive behavior
+- verify that migrations are discovered and executed, not only that the Flyway schema history table exists
 
 ---
 
-## 📚 Related Documents
+## Development Notes
+
+- Follow the repository-specific guidance in `AGENTS.md` before making larger changes.
+- Prefer small, focused changes.
+- Keep repository Markdown and code comments in English.
+- Do not commit secrets or production credentials.
+- Keep the MVP boundaries in mind: Berlin, nodes, SQLite, simple rendering pipeline.
+
+---
+
+## License
+
+This project is intended as a learning and open-source project. The final license will be defined later.
+
+---
+
+## Related Documents
 
 - [Git - Branch Flow Guide](README-GIT-FLOW.md)
 - [Git - Pull Requests Flow Guide](README-GIT-PR.md)
 - [Git - Handling Dependabot Branches](README-GIT-DEPENDABOT.md)
+- [Tests README](tests/README.md)
