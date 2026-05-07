@@ -33,14 +33,14 @@ public sealed class TemporaryDirectoryFactory : ITemporaryDirectoryFactory
     private string BuildPath(string? name)
     {
         var root = Path.Combine(
-            Path.GetTempPath(),
-            _options.RootFolderName);
+         Path.GetTempPath(),
+         _options.RootFolderName);
 
         Directory.CreateDirectory(root);
 
         var folder = string.IsNullOrWhiteSpace(name)
             ? Guid.NewGuid().ToString("N")
-            : $"{name}-{Guid.NewGuid():N}";
+            : $"{TemporaryDirectoryNameHelper.CreateSafeFolderName(name)}-{Guid.NewGuid():N}";
 
         return Path.Combine(root, folder);
     }

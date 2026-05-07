@@ -24,7 +24,7 @@ public sealed class TemporaryDirectory : IDisposable, IAsyncDisposable
         string? rootPath = null,
         bool keepOnDispose = false)
     {
-        prefix = CreateSafePrefix(prefix);
+        prefix = TemporaryDirectoryNameHelper.CreateSafeFolderName(prefix);
 
         rootPath ??= Path.GetTempPath();
         Directory.CreateDirectory(rootPath);
@@ -102,7 +102,7 @@ public sealed class TemporaryDirectory : IDisposable, IAsyncDisposable
                 catch (Exception ex)
                 {
                     // Log the failure but continue with best-effort cleanup.
-                    _logger.LogWarning(ex, "Failed to delete temporary directory '{Dir}' on first attempt.", dir);
+                    _logger.LogWarning(ex, "Failed to delete temporary directory '{Dir}' on {Attempt} attempt.", dir, attempt);
                 }
 
                 foreach (var file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
@@ -126,30 +126,5 @@ public sealed class TemporaryDirectory : IDisposable, IAsyncDisposable
                 _logger.LogWarning("Failed to delete temporary directory '{Dir}'.", dir);
             }
         }
-    }
-
-    private string CreateSafePrefix(string prefix)
-    {
-        if (string.IsNullOrWhiteSpace(prefix))
-        {
-            throw new ArgumentException("Prefix must not be empty.", nameof(prefix));
-        }
-
-        foreach (var c in Path.GetInvalidFileNameChars())
-        {
-            prefix = prefix.Replace(c, '_');
-        }
-
-        prefix = prefix
-            .Replace(Path.DirectorySeparatorChar, '_')
-            .Replace(Path.AltDirectorySeparatorChar, '_');
-
-        const int maxPrefixLength = 40;
-        if (prefix.Length > maxPrefixLength)
-        {
-            prefix = prefix[..maxPrefixLength];
-        }
-
-        return prefix;
     }
 }
