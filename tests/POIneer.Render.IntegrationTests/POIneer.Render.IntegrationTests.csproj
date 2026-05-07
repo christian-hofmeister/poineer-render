@@ -35,6 +35,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="..\..\migrations\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>migrations\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\POIneer.Render\POIneer.Render.csproj" />
     <ProjectReference Include="..\POIneer.Render.TestHelpers\POIneer.Render.TestHelpers.csproj" />
   </ItemGroup>
