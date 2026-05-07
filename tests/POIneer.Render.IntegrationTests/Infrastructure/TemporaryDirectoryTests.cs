@@ -1,5 +1,4 @@
 using Xunit;
-using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.TestHelpers;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure;

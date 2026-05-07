@@ -4,7 +4,6 @@ using POIneer.Render.Infrastructure.Sqlite;
 using POIneer.Render.TestHelpers;
 using POIneer.Render.TestHelpers.Sqlite;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure.Sqlite;
 
