@@ -1,7 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
 using POIneer.Render.Infrastructure.Pathing;
 using POIneer.Render.Infrastructure.Process;
@@ -9,7 +8,6 @@ using POIneer.Render.TestHelpers;
 using Xunit;
 using Xunit.Abstractions;
 using FluentAssertions;
-using Microsoft.Extensions.Hosting;
 using POIneer.Render.TestHelpers.Sqlite;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure.Flyway;

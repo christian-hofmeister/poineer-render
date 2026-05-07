@@ -1,7 +1,6 @@
 using Xunit;
 using POIneer.Render.Domain.Services;
 using POIneer.Render.Domain.Models;
-using System.Collections.Generic;
 
 namespace POIneer.Render.UnitTests.Tagging;
 

@@ -1,4 +1,3 @@
-using System.Net.Http;
 using POIneer.Render.Ports;
 
 namespace POIneer.Render.Adapters.Input;
