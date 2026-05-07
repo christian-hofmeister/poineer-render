@@ -13,6 +13,10 @@ public static class TemporaryDirectoryNameHelper
         {
             value = value.Replace(c, '_');
         }
+        // Replace common path separators just in case, even though they should be covered by GetInvalidFileNameChars. (win vs unix)
+        value = value
+           .Replace('/', '_')
+           .Replace('\\', '_');
 
         value = value
             .Replace(Path.DirectorySeparatorChar, '_')
