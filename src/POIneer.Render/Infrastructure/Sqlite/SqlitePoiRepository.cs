@@ -90,4 +90,20 @@ public sealed class SqlitePoiRepository : IPoiRepository
 
         return result;
     }
+
+    public Task<IReadOnlyList<Poi>> GetByAmenityAsync(string amenity, int limit = 100, CancellationToken ct = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<IReadOnlyList<Poi>> GetByLocationAsync(double latitude, double longitude, double radiusInMeters, int limit = 100, CancellationToken ct = default)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<IReadOnlyList<Poi>> GetByNameAsync(string name, int limit = 100, CancellationToken ct = default)
+    {
+        throw new NotImplementedException();
+    }
+
 }

@@ -9,6 +9,7 @@ public static class SqliteTestDatabase
         return new SqliteConnectionStringBuilder
         {
             DataSource = dbPath,
+            // Important for tests to ensure that each connection is independent and doesn't interfere with others
             Pooling = false
         }.ToString();
     }
