@@ -3,21 +3,22 @@ using NSubstitute;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.UseCases;
 using POIneer.Render.Ports;
+using POIneer.Render.TestHelpers;
 using Xunit;
 
 namespace POIneer.Render.UnitTests.Application.UseCases.RenderRegions;
 
 public sealed class RenderRegionTests
 {
-    private readonly ILogger<POIneer.Render.Application.UseCases.RenderRegion> _logger =
-        Substitute.For<ILogger<POIneer.Render.Application.UseCases.RenderRegion>>();
+    private readonly ILogger<RenderRegion> _logger =
+        Substitute.For<ILogger<RenderRegion>>();
 
     private readonly IPolygonCutter _polygonCutter = Substitute.For<IPolygonCutter>();
     private readonly IOsmReader _osmReader = Substitute.For<IOsmReader>();
     private readonly ISqliteDatabaseInitializer _dbInit = Substitute.For<ISqliteDatabaseInitializer>();
     private readonly IExporter _exporter = Substitute.For<IExporter>();
 
-    private POIneer.Render.Application.UseCases.RenderRegion CreateSut()
+    private RenderRegion CreateSut()
         => new(
             _logger,
             _polygonCutter,
@@ -37,10 +38,11 @@ public sealed class RenderRegionTests
             PbfUrl: "http://example.com/berlin.osm.pbf",
             Poly: "dummy.poly"
         );
+        await using var tempDir = TestTemporaryDirectories.Create("throw-when-pbf-does-not-exist", false);
 
-        using var tmp = new TempDir();
-        var workDir = tmp.CreateSubDir("work"); // empty -> no pbf
-        var outDir = tmp.CreateSubDir("out");
+        tempDir.CreateSubDir("work"); // empty -> no pbf
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath; // empty -> no pbf
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
 
         // Act
         var ex = await Assert.ThrowsAsync<FileNotFoundException>(() =>
@@ -67,9 +69,9 @@ public sealed class RenderRegionTests
             Poly: "berlin.poly"
         );
 
-        using var tmp = new TempDir();
-        var workDir = tmp.CreateSubDir("work");
-        var outDir = tmp.CreateSubDir("out");
+        await using var tempDir = TestTemporaryDirectories.Create("calls-ports-with-expected-paths", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
 
         // create input pbf file
         var pbfPath = Path.Combine(workDir, $"{region.Id}.osm.pbf");
@@ -112,9 +114,9 @@ public sealed class RenderRegionTests
             Poly: "berlin.poly"
         );
 
-        using var tmp = new TempDir();
-        var workDir = tmp.CreateSubDir("work");
-        var outDir = tmp.CreateSubDir("out");
+        await using var tempDir = TestTemporaryDirectories.Create("forwards-cancellation-token", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
 
         var pbfPath = Path.Combine(workDir, $"{region.Id}.osm.pbf");
         File.WriteAllText(pbfPath, "dummy");
@@ -166,9 +168,9 @@ public sealed class RenderRegionTests
             PbfUrl: "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf",
             Poly: "berlin.poly");
 
-        using var tmp = new TempDir();
-        var workDir = tmp.CreateSubDir("work");
-        var outDir = tmp.CreateSubDir("out");
+        await using var tempDir = TestTemporaryDirectories.Create("calls-ports-with-expected-paths", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
 
         // Dummy input PBF (existence is what matters)
         var pbfPath = Path.Combine(workDir, $"{region.Id}.osm.pbf");
@@ -205,32 +207,5 @@ public sealed class RenderRegionTests
             //exporter.ExportAsync(pois, expectedOutPath, Arg.Any<CancellationToken>());
         });
     }
-
 }
 
-/// <summary>
-/// Tiny temp-dir helper for tests.
-/// If you already have POIneer.Render.TestHelpers.TempDir, just use that instead and delete this.
-/// </summary>
-internal sealed class TempDir : IDisposable
-{
-    public string PathValue { get; } = System.IO.Path.Combine(
-        System.IO.Path.GetTempPath(),
-        "POIneer.Render.Tests",
-        Guid.NewGuid().ToString("N"));
-
-    public TempDir() => Directory.CreateDirectory(PathValue);
-
-    public string CreateSubDir(string name)
-    {
-        var p = System.IO.Path.Combine(PathValue, name);
-        Directory.CreateDirectory(p);
-        return p;
-    }
-
-    public void Dispose()
-    {
-        try { Directory.Delete(PathValue, recursive: true); }
-        catch { /* ignore */ }
-    }
-}

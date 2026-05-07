@@ -1,7 +1,6 @@
 using Xunit;
 using POIneer.Render.Infrastructure.Flyway;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Hosting;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure.Flyway;
 

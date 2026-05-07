@@ -1,43 +1,23 @@
 using Microsoft.Data.Sqlite;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using POIneer.Render.Domain.Models;
-using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Sqlite;
+using POIneer.Render.TestHelpers;
+using POIneer.Render.TestHelpers.Sqlite;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure.Sqlite;
 
-public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
+public sealed class SqlitePoiRepositoryTests()
 {
-    private readonly ITestOutputHelper _output = output;
-
     [Fact]
     public async Task AddAndList_ReturnsInsertedPoi()
     {
-        var logger = new XunitLogger<SqlitePoiRepositoryTests>(_output);
-        logger.LogInformation("Starting SqlitePoiRepositoryTests.AddAndList_ReturnsInsertedPoi test.");
-
         // Arrange
-        var tempDirOptions = Options.Create(new TempOptions
-        {
-            RootFolderName = "poineer-tests",
-            KeepOnDispose = false
-        });
-
-        ITemporaryDirectoryFactory tempDirectoryFactory =
-            new TemporaryDirectoryFactory(tempDirOptions);
-
-        await using var tempDir = tempDirectoryFactory.Create("sqlite-poi-repository-tests");
+        await using var tempDir = TestTemporaryDirectories.Create("AddAndList_ReturnsInsertedPoi", false);
 
         var root = tempDir.DirectoryPath;
         var dbPath = Path.Combine(root, $"{Guid.NewGuid():N}.sqlite");
-        var cs = new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath,
-            Pooling = false
-        }.ToString();
+        var cs = SqliteTestDatabase.CreateConnectionString(dbPath);
 
         await InitializeDatabaseAsync(cs);
         var sut = CreateSut(dbPath);
@@ -69,28 +49,12 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
     [Fact]
     public async Task AddAndList_ReturnsInsertedPoi_WithNullOptionalFields()
     {
-        var logger = new XunitLogger<SqlitePoiRepositoryTests>(_output);
-        logger.LogInformation("Starting SqlitePoiRepositoryTests.AddAndList_ReturnsInsertedPoi_WithNullOptionalFields test.");
-
         // Arrange
-        var tempDirOptions = Options.Create(new TempOptions
-        {
-            RootFolderName = "poineer-tests",
-            KeepOnDispose = false
-        });
-
-        ITemporaryDirectoryFactory tempDirectoryFactory =
-            new TemporaryDirectoryFactory(tempDirOptions);
-
-        await using var tempDir = tempDirectoryFactory.Create("sqlite-poi-repository-tests");
+        await using var tempDir = TestTemporaryDirectories.Create("AddAndList_ReturnsInsertedPoiWithNullOptionalFields", false);
 
         var root = tempDir.DirectoryPath;
         var dbPath = Path.Combine(root, $"{Guid.NewGuid():N}.sqlite");
-        var cs = new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath,
-            Pooling = false
-        }.ToString();
+        var cs = SqliteTestDatabase.CreateConnectionString(dbPath);
 
         await InitializeDatabaseAsync(cs);
 
@@ -142,11 +106,7 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
     }
     private static SqlitePoiRepository CreateSut(string dbPath) => new SqlitePoiRepository(() =>
     {
-        var cs = new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath,
-            Pooling = false
-        }.ToString();
+        var cs = SqliteTestDatabase.CreateConnectionString(dbPath);
 
         return new SqliteConnection(cs);
     });

@@ -13,7 +13,8 @@ public sealed class SqliteExporter : IExporter
     {
         var connectionString = new SqliteConnectionStringBuilder
         {
-            DataSource = outputSqlitePath
+            DataSource = outputSqlitePath,
+            Pooling = false
         }.ToString();
 
         await using var conn = new SqliteConnection(connectionString);

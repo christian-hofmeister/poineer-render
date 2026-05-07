@@ -1,4 +1,6 @@
 
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Infrastructure.FileSystem;
 
@@ -8,8 +10,16 @@ public static class TestTemporaryDirectories
 {
     public static TemporaryDirectory Create(
         string purpose,
-        bool keepOnDispose = true)
+        bool keepOnDispose = false,
+        ILogger<TemporaryDirectory>? logger = null)
     {
+        if (string.IsNullOrWhiteSpace(purpose))
+        {
+            throw new ArgumentException("Purpose must be a non-empty string.", nameof(purpose));
+        }
+
+        logger ??= NullLogger<TemporaryDirectory>.Instance;
+
         var options = Options.Create(new TempOptions
         {
             RootFolderName = "poineer-tests",
@@ -17,8 +27,11 @@ public static class TestTemporaryDirectories
         });
 
         ITemporaryDirectoryFactory factory =
-            new TemporaryDirectoryFactory(options);
+            new TemporaryDirectoryFactory(logger, options);
 
-        return factory.Create(purpose);
+        var tempDir = factory.Create(purpose);
+
+        return tempDir;
+
     }
 }

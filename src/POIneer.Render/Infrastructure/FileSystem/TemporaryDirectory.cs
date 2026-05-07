@@ -1,22 +1,29 @@
+using Microsoft.Extensions.Logging;
+
 namespace POIneer.Render.Infrastructure.FileSystem;
 
 public sealed class TemporaryDirectory : IDisposable, IAsyncDisposable
 {
     public string DirectoryPath { get; }
     private readonly bool _keepOnDispose;
+    private readonly ILogger<TemporaryDirectory> _logger;
 
-    private TemporaryDirectory(string path, bool keepOnDispose)
+    public TemporaryDirectory(
+        string path,
+        ILogger<TemporaryDirectory> logger,
+        bool keepOnDispose)
     {
         DirectoryPath = path;
+        _logger = logger;
         _keepOnDispose = keepOnDispose;
     }
 
-    public static TemporaryDirectory Create(
+    public TemporaryDirectory Create(
         string prefix,
         string? rootPath = null,
         bool keepOnDispose = false)
     {
-        prefix = CreateSafePrefix(prefix);
+        prefix = TemporaryDirectoryNameHelper.CreateSafeFolderName(prefix);
 
         rootPath ??= Path.GetTempPath();
         Directory.CreateDirectory(rootPath);
@@ -27,7 +34,14 @@ public sealed class TemporaryDirectory : IDisposable, IAsyncDisposable
 
         Directory.CreateDirectory(path);
 
-        return new TemporaryDirectory(path, keepOnDispose);
+        return new TemporaryDirectory(path, _logger, keepOnDispose);
+    }
+
+    public TemporaryDirectory CreateSubDir(string name)
+    {
+        var path = Path.Combine(DirectoryPath, name);
+        Directory.CreateDirectory(path);
+        return new TemporaryDirectory(path, _logger, _keepOnDispose);
     }
 
     public void Dispose()
@@ -46,67 +60,70 @@ public sealed class TemporaryDirectory : IDisposable, IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 
-    private static void TryDeleteDirectory(string dir)
+    private void TryDeleteDirectory(string dir)
     {
-        try
+        const int maxRetries = 3;
+
+        for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
-            if (!Directory.Exists(dir))
-            {
-                return;
-            }
+
 
             try
             {
-                Directory.Delete(dir, recursive: true);
-                return;
-            }
-            catch
-            {
-                // Retry after resetting file attributes.
-            }
+                if (!Directory.Exists(dir))
+                {
+                    return;
+                }
 
-            foreach (var file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
-            {
                 try
                 {
-                    File.SetAttributes(file, FileAttributes.Normal);
+                    Directory.Delete(dir, recursive: true);
+                    return;
                 }
-                catch
+                catch (IOException ex) when (attempt < maxRetries)
                 {
-                    // Ignore best-effort cleanup failures.
+                    _logger.LogDebug(
+                        ex,
+                        "Temporary directory '{Dir}' still in use. Retrying cleanup.",
+                        dir);
+
+                    Thread.Sleep(100);
                 }
+                catch (UnauthorizedAccessException ex) when (attempt < maxRetries)
+                {
+                    _logger.LogDebug(
+                        ex,
+                        "Temporary directory '{Dir}' still locked. Retrying cleanup.",
+                        dir);
+
+                    Thread.Sleep(100);
+                }
+                catch (Exception ex)
+                {
+                    // Log the failure but continue with best-effort cleanup.
+                    _logger.LogWarning(ex, "Failed to delete temporary directory '{Dir}' on {Attempt} attempt.", dir, attempt);
+                }
+
+                foreach (var file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+                {
+                    try
+                    {
+                        File.SetAttributes(file, FileAttributes.Normal);
+                    }
+                    catch
+                    {
+                        // Ignore best-effort cleanup failures.
+                    }
+                }
+
+                Directory.Delete(dir, recursive: true);
             }
 
-            Directory.Delete(dir, recursive: true);
+            catch
+            {
+                // Best effort cleanup: never throw from Dispose.
+                _logger.LogWarning("Failed to delete temporary directory '{Dir}'.", dir);
+            }
         }
-        catch
-        {
-            // Best effort cleanup: never throw from Dispose.
-        }
-    }
-
-    private static string CreateSafePrefix(string prefix)
-    {
-        if (string.IsNullOrWhiteSpace(prefix))
-        {
-            throw new ArgumentException("Prefix must not be empty.", nameof(prefix));
-        }
-
-        foreach (var c in Path.GetInvalidFileNameChars())
-        {
-            prefix = prefix.Replace(c, '_');
-        }
-
-        prefix = prefix
-            .Replace(Path.DirectorySeparatorChar, '_')
-            .Replace(Path.AltDirectorySeparatorChar, '_');
-
-        const int maxPrefixLength = 40;
-        if (prefix.Length > maxPrefixLength)
-        {
-            prefix = prefix[..maxPrefixLength];
-        }
-
-        return prefix;
     }
 }

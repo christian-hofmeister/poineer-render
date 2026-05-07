@@ -1,7 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
 using POIneer.Render.Infrastructure.Pathing;
 using POIneer.Render.Infrastructure.Process;
@@ -9,7 +8,7 @@ using POIneer.Render.TestHelpers;
 using Xunit;
 using Xunit.Abstractions;
 using FluentAssertions;
-using Microsoft.Extensions.Hosting;
+using POIneer.Render.TestHelpers.Sqlite;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure.Flyway;
 
@@ -22,16 +21,7 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
     {
         var logger = new XunitLogger<FlywaySqliteDatabaseInitializer>(_output);
 
-        var tempDirOptions = Options.Create(new TempOptions
-        {
-            RootFolderName = "poineer-tests",
-            KeepOnDispose = true
-        });
-
-        ITemporaryDirectoryFactory tempDirectoryFactory =
-            new TemporaryDirectoryFactory(tempDirOptions);
-
-        await using var tempDir = tempDirectoryFactory.Create("flyway-sqlite-database-initializer-tests");
+        await using var tempDir = TestTemporaryDirectories.Create("init-async-creates-poi-table", false);
 
         string executable = "flyway";
         logger.LogInformation($"Starting FlywaySqliteDatabaseInitializerTests.InitializeAsync_creates_poi_table test. Executable: '{executable}'");
@@ -110,7 +100,7 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
     [Fact]
     public async Task InitializeAsync_AppliesPoiMigrations()
     {
-        await using var tempDir = TestTemporaryDirectories.Create("flyway-applies-migrations", true);
+        await using var tempDir = TestTemporaryDirectories.Create("flyway-applies-migrations", false);
 
         var dbPath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
 
@@ -146,7 +136,7 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
 
     private static async Task<bool> TableExistsAsync(string sqlitePath, string tableName)
     {
-        var cs = new SqliteConnectionStringBuilder { DataSource = sqlitePath }.ToString();
+        var cs = SqliteTestDatabase.CreateConnectionString(sqlitePath);
         await using var con = new SqliteConnection(cs);
         await con.OpenAsync();
 
