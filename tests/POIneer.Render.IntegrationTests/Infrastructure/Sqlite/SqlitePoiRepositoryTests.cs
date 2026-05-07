@@ -8,7 +8,7 @@ using Xunit.Abstractions;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure.Sqlite;
 
-public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
+public sealed class SqlitePoiRepositoryTests()
 {
     [Fact]
     public async Task AddAndList_ReturnsInsertedPoi()
