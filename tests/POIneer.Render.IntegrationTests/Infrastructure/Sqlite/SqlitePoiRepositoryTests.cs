@@ -1,10 +1,8 @@
 using Microsoft.Data.Sqlite;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using POIneer.Render.Domain.Models;
-using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Sqlite;
 using POIneer.Render.TestHelpers;
+using POIneer.Render.TestHelpers.Sqlite;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -12,8 +10,6 @@ namespace POIneer.Render.IntegrationTests.Infrastructure.Sqlite;
 
 public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
 {
-    private readonly ITestOutputHelper _output = output;
-
     [Fact]
     public async Task AddAndList_ReturnsInsertedPoi()
     {
@@ -21,11 +17,7 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
 
         var root = tempDir.DirectoryPath;
         var dbPath = Path.Combine(root, $"{Guid.NewGuid():N}.sqlite");
-        var cs = new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath,
-            Pooling = false
-        }.ToString();
+        var cs = SqliteTestDatabase.CreateConnectionString(dbPath);
 
         await InitializeDatabaseAsync(cs);
         var sut = CreateSut(dbPath);
@@ -64,11 +56,7 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
 
         var root = tempDir.DirectoryPath;
         var dbPath = Path.Combine(root, $"{Guid.NewGuid():N}.sqlite");
-        var cs = new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath,
-            Pooling = false
-        }.ToString();
+        var cs = SqliteTestDatabase.CreateConnectionString(dbPath);
 
         await InitializeDatabaseAsync(cs);
 
@@ -120,11 +108,7 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
     }
     private static SqlitePoiRepository CreateSut(string dbPath) => new SqlitePoiRepository(() =>
     {
-        var cs = new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath,
-            Pooling = false
-        }.ToString();
+        var cs = SqliteTestDatabase.CreateConnectionString(dbPath);
 
         return new SqliteConnection(cs);
     });

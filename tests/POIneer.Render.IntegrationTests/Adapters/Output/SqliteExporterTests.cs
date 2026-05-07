@@ -5,10 +5,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Adapters.Output;
 using POIneer.Render.Application.Contracts;
-using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
-using POIneer.Render.Infrastructure.Process;
 using POIneer.Render.TestHelpers;
+using POIneer.Render.TestHelpers.Sqlite;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -77,10 +76,7 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
 
         await sut.ExportAsync(pois, dbPath, CancellationToken.None);
 
-        var connectionString = new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath
-        }.ToString();
+        var connectionString = SqliteTestDatabase.CreateConnectionString(dbPath);
 
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
@@ -162,9 +158,7 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
     {
         var result = new List<string>();
 
-        await using var connection = new SqliteConnection(
-            new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString());
-
+        await using var connection = new SqliteConnection(SqliteTestDatabase.CreateConnectionString(dbPath));
         await connection.OpenAsync();
 
         await using var command = connection.CreateCommand();
@@ -187,11 +181,7 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
 
     private static async Task CreatePoiSchemaAsync(string dbPath)
     {
-        var connectionString = new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath,
-            Pooling = false
-        }.ToString();
+        var connectionString = SqliteTestDatabase.CreateConnectionString(dbPath);
 
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();
@@ -213,10 +203,7 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
 
     private static async Task<long> GetPoiCountAsync(string dbPath)
     {
-        var connectionString = new SqliteConnectionStringBuilder
-        {
-            DataSource = dbPath
-        }.ToString();
+        var connectionString = SqliteTestDatabase.CreateConnectionString(dbPath);
 
         await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync();

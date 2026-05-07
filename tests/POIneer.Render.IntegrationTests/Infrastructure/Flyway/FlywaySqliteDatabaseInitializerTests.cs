@@ -10,6 +10,7 @@ using Xunit;
 using Xunit.Abstractions;
 using FluentAssertions;
 using Microsoft.Extensions.Hosting;
+using POIneer.Render.TestHelpers.Sqlite;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure.Flyway;
 
@@ -137,7 +138,7 @@ public sealed class FlywaySqliteDatabaseInitializerTests(ITestOutputHelper outpu
 
     private static async Task<bool> TableExistsAsync(string sqlitePath, string tableName)
     {
-        var cs = new SqliteConnectionStringBuilder { DataSource = sqlitePath }.ToString();
+        var cs = SqliteTestDatabase.CreateConnectionString(sqlitePath);
         await using var con = new SqliteConnection(cs);
         await con.OpenAsync();
 
