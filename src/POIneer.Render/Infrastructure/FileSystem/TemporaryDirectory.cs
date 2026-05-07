@@ -10,8 +10,7 @@ public sealed class TemporaryDirectory : IDisposable, IAsyncDisposable
 
     public TemporaryDirectory(
         string path,
-        ILogger<TemporaryDirectory>
-        logger,
+        ILogger<TemporaryDirectory> logger,
         bool keepOnDispose)
     {
         DirectoryPath = path;

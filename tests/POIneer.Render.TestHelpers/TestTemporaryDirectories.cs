@@ -1,5 +1,6 @@
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Infrastructure.FileSystem;
 
@@ -9,14 +10,15 @@ public static class TestTemporaryDirectories
 {
     public static TemporaryDirectory Create(
         string purpose,
-        bool keepOnDispose = false)
+        bool keepOnDispose = false,
+        ILogger<TemporaryDirectory>? logger = null)
     {
-        var loggerFactory = LoggerFactory.Create(builder =>
+        if (string.IsNullOrWhiteSpace(purpose))
         {
-            builder.AddConsole();
-        });
+            throw new ArgumentException("Purpose must be a non-empty string.", nameof(purpose));
+        }
 
-        var logger = loggerFactory.CreateLogger<TemporaryDirectory>();
+        logger ??= NullLogger<TemporaryDirectory>.Instance;
 
         var options = Options.Create(new TempOptions
         {
