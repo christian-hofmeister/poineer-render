@@ -13,6 +13,7 @@ public sealed class SqlitePoiRepositoryTests()
     [Fact]
     public async Task AddAndList_ReturnsInsertedPoi()
     {
+        // Arrange
         await using var tempDir = TestTemporaryDirectories.Create("AddAndList_ReturnsInsertedPoi", false);
 
         var root = tempDir.DirectoryPath;
@@ -49,8 +50,6 @@ public sealed class SqlitePoiRepositoryTests()
     [Fact]
     public async Task AddAndList_ReturnsInsertedPoi_WithNullOptionalFields()
     {
-
-
         // Arrange
         await using var tempDir = TestTemporaryDirectories.Create("AddAndList_ReturnsInsertedPoiWithNullOptionalFields", false);
 
