@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using POIneer.Render.Domain.Models;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Sqlite;
+using POIneer.Render.TestHelpers;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -16,20 +17,7 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
     [Fact]
     public async Task AddAndList_ReturnsInsertedPoi()
     {
-        var logger = new XunitLogger<SqlitePoiRepositoryTests>(_output);
-        logger.LogInformation("Starting SqlitePoiRepositoryTests.AddAndList_ReturnsInsertedPoi test.");
-
-        // Arrange
-        var tempDirOptions = Options.Create(new TempOptions
-        {
-            RootFolderName = "poineer-tests",
-            KeepOnDispose = false
-        });
-
-        ITemporaryDirectoryFactory tempDirectoryFactory =
-            new TemporaryDirectoryFactory(tempDirOptions);
-
-        await using var tempDir = tempDirectoryFactory.Create("sqlite-poi-repository-tests");
+        await using var tempDir = TestTemporaryDirectories.Create("AddAndList_ReturnsInsertedPoi", false);
 
         var root = tempDir.DirectoryPath;
         var dbPath = Path.Combine(root, $"{Guid.NewGuid():N}.sqlite");
@@ -69,20 +57,10 @@ public sealed class SqlitePoiRepositoryTests(ITestOutputHelper output)
     [Fact]
     public async Task AddAndList_ReturnsInsertedPoi_WithNullOptionalFields()
     {
-        var logger = new XunitLogger<SqlitePoiRepositoryTests>(_output);
-        logger.LogInformation("Starting SqlitePoiRepositoryTests.AddAndList_ReturnsInsertedPoi_WithNullOptionalFields test.");
+
 
         // Arrange
-        var tempDirOptions = Options.Create(new TempOptions
-        {
-            RootFolderName = "poineer-tests",
-            KeepOnDispose = false
-        });
-
-        ITemporaryDirectoryFactory tempDirectoryFactory =
-            new TemporaryDirectoryFactory(tempDirOptions);
-
-        await using var tempDir = tempDirectoryFactory.Create("sqlite-poi-repository-tests");
+        await using var tempDir = TestTemporaryDirectories.Create("AddAndList_ReturnsInsertedPoiWithNullOptionalFields", false);
 
         var root = tempDir.DirectoryPath;
         var dbPath = Path.Combine(root, $"{Guid.NewGuid():N}.sqlite");

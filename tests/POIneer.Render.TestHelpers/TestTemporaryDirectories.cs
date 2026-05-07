@@ -1,4 +1,5 @@
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Infrastructure.FileSystem;
 
@@ -10,6 +11,13 @@ public static class TestTemporaryDirectories
         string purpose,
         bool keepOnDispose = false)
     {
+        var loggerFactory = LoggerFactory.Create(builder =>
+        {
+            builder.AddConsole();
+        });
+
+        var logger = loggerFactory.CreateLogger<TemporaryDirectory>();
+
         var options = Options.Create(new TempOptions
         {
             RootFolderName = "poineer-tests",
@@ -17,8 +25,11 @@ public static class TestTemporaryDirectories
         });
 
         ITemporaryDirectoryFactory factory =
-            new TemporaryDirectoryFactory(options);
+            new TemporaryDirectoryFactory(logger, options);
 
-        return factory.Create(purpose);
+        var tempDir = factory.Create(purpose);
+
+        return tempDir;
+
     }
 }

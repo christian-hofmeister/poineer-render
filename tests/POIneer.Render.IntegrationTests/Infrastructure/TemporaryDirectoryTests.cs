@@ -1,5 +1,6 @@
 using Xunit;
 using POIneer.Render.Infrastructure.FileSystem;
+using POIneer.Render.TestHelpers;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure;
 
@@ -8,11 +9,16 @@ public sealed class TemporaryDirectoryTests
     [Fact]
     public async Task Create_CreatesDirectory()
     {
-        await using var dir = TemporaryDirectory.Create("poineer_test_");
-        var path = dir.DirectoryPath;
+        await using var tempDir = TestTemporaryDirectories.Create("CreateCreatesDirectory", false);
+        var path = tempDir.DirectoryPath;
 
         Assert.True(Directory.Exists(path));
-        Assert.Contains("poineer_test_", Path.GetFileName(path));
+
+        Assert.StartsWith(
+            Path.Combine(Path.GetTempPath(), "poineer-tests"),
+            path);
+
+        Assert.Contains("CreateCreatesDirectory", Path.GetFileName(path));
     }
 
 
@@ -21,9 +27,9 @@ public sealed class TemporaryDirectoryTests
     {
         string path;
 
-        await using (var dir = TemporaryDirectory.Create("poineer_test_"))
+        await using (var tempDir = TestTemporaryDirectories.Create("DisposeAsyncDeletesDirectoryByDefault"))
         {
-            path = dir.DirectoryPath;
+            path = tempDir.DirectoryPath;
 
             File.WriteAllText(Path.Combine(path, "x.txt"), "data");
             Assert.True(Directory.Exists(path));
@@ -37,9 +43,9 @@ public sealed class TemporaryDirectoryTests
     {
         string path;
 
-        await using (var dir = TemporaryDirectory.Create("poineer_test_", keepOnDispose: true))
+        await using var tempDir = TestTemporaryDirectories.Create("DisposeAsyncDoesNotDeleteDirectoryWhenKeepIsTrue", true);
         {
-            path = dir.DirectoryPath;
+            path = tempDir.DirectoryPath;
 
             File.WriteAllText(Path.Combine(path, "x.txt"), "data");
         }
@@ -53,13 +59,13 @@ public sealed class TemporaryDirectoryTests
     [Fact]
     public async Task DisposeAsync_CanBeCalledMultipleTimes()
     {
-        var dir = TemporaryDirectory.Create("poineer_test_");
-        var path = dir.DirectoryPath;
+        await using var tempDir = TestTemporaryDirectories.Create("DisposeAsyncCanBeCalledMultipleTimes", false);
+        var path = tempDir.DirectoryPath;
 
         File.WriteAllText(Path.Combine(path, "x.txt"), "data");
 
-        await dir.DisposeAsync();
-        await dir.DisposeAsync(); // should not throw
+        await tempDir.DisposeAsync();
+        await tempDir.DisposeAsync(); // should not throw
 
         Assert.False(Directory.Exists(path));
     }
@@ -67,8 +73,8 @@ public sealed class TemporaryDirectoryTests
     [Fact]
     public async Task DisposeAsync_DoesNotThrow_WhenDirectoryAlreadyMissing()
     {
-        var dir = TemporaryDirectory.Create("poineer_test_");
-        var path = dir.DirectoryPath;
+        await using var tempDir = TestTemporaryDirectories.Create("DisposeAsyncDoesNotThrowWhenDirectoryAlreadyMissing", false);
+        var path = tempDir.DirectoryPath;
 
         if (Directory.Exists(path))
         {
@@ -78,6 +84,6 @@ public sealed class TemporaryDirectoryTests
         Assert.False(Directory.Exists(path));
 
         // Should not throw even if directory is already gone
-        await dir.DisposeAsync();
+        await tempDir.DisposeAsync();
     }
 }

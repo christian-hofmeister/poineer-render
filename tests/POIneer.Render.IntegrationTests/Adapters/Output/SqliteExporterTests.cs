@@ -42,16 +42,7 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
     [Fact]
     public async Task ExportAsync_HappyPath_InsertsMultiplePois()
     {
-        var tempDirOptions = Options.Create(new TempOptions
-        {
-            RootFolderName = "poineer-tests",
-            KeepOnDispose = true
-        });
-
-        ITemporaryDirectoryFactory tempDirectoryFactory =
-            new TemporaryDirectoryFactory(tempDirOptions);
-
-        await using var tempDir = tempDirectoryFactory.Create("sqlite-exporter-tests");
+        await using var tempDir = TestTemporaryDirectories.Create("sqlite-insert-multiple-pois", false);
 
         var root = FindRepositoryRoot();
         var dbPath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
@@ -198,7 +189,8 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
     {
         var connectionString = new SqliteConnectionStringBuilder
         {
-            DataSource = dbPath
+            DataSource = dbPath,
+            Pooling = false
         }.ToString();
 
         await using var connection = new SqliteConnection(connectionString);
