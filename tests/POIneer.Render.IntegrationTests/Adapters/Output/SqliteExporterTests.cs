@@ -43,24 +43,7 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
     {
         await using var tempDir = TestTemporaryDirectories.Create("sqlite-insert-multiple-pois", false);
 
-        var dbPath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
-
-        var options = Options.Create(new FlywayOptions
-        {
-            Executable = "flyway",
-            ConfigFileRelativePath = "migrations/flyway-poi.toml",
-            Debug = false
-        });
-
-        var processRunner = new ProcessRunner();
-        var invocationBuilder = new FlywayInvocationBuilder(options);
-        var logger = new LoggerFactory().CreateLogger<FlywaySqliteDatabaseInitializer>();
-        var databaseInitializer = new FlywaySqliteDatabaseInitializer(
-            processRunner,
-            invocationBuilder,
-            logger);
-
-        await databaseInitializer.InitializeAsync(dbPath, CancellationToken.None);
+        var dbPath = await SqliteTestDatabase.CreateAsync(tempDir);
 
         Assert.True(File.Exists(dbPath));
         var tables = await GetTableNamesAsync(dbPath);
