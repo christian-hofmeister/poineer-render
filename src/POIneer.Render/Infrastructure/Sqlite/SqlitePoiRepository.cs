@@ -30,8 +30,13 @@ public sealed class SqlitePoiRepository : IPoiRepository
         await using var connection = _connectionFactory();
         await connection.OpenAsync(cancellationToken: ct);
 
-        const string sql = """
-            INSERT INTO poi (osm_id, name, amenity, latitude, longitude)
+        const string sql = $"""
+            INSERT INTO {PoiTable.Name} (
+                {PoiTable.OsmId}, 
+                {PoiTable.NameColumn}, 
+                {PoiTable.Amenity}, 
+                {PoiTable.Latitude}, 
+                {PoiTable.Longitude})
             VALUES (@osm_id, @name, @amenity, @latitude, @longitude);
             """;
 
@@ -60,10 +65,18 @@ public sealed class SqlitePoiRepository : IPoiRepository
         await using var connection = _connectionFactory();
         await connection.OpenAsync(cancellationToken: ct);
 
-        const string sql = """
-            SELECT id, osm_id, name, amenity, latitude, longitude
-            FROM poi
-            ORDER BY id
+        const string sql = $"""
+            SELECT 
+                {PoiTable.Id}, 
+                {PoiTable.OsmId}, 
+                {PoiTable.NameColumn}, 
+                {PoiTable.Amenity}, 
+                {PoiTable.Latitude}, 
+                {PoiTable.Longitude}
+            FROM 
+                {PoiTable.Name}
+            ORDER BY 
+                {PoiTable.Id}
             LIMIT @limit;
             """;
 
@@ -91,9 +104,62 @@ public sealed class SqlitePoiRepository : IPoiRepository
         return result;
     }
 
-    public Task<IReadOnlyList<Poi>> GetByAmenityAsync(string amenity, int limit = 100, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Poi>> GetByAmenityAsync(string amenity, int limit = 100, CancellationToken ct = default)
     {
-        throw new NotImplementedException();
+        if (string.IsNullOrWhiteSpace(amenity))
+        {
+            throw new ArgumentException("Amenity must be a non-empty string.", nameof(amenity));
+        }
+
+        if (limit <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be greater than zero.");
+        }
+        var result = new List<Poi>();
+
+        await using var connection = _connectionFactory();
+        await connection.OpenAsync(cancellationToken: ct);
+
+        var sql = $"""
+            SELECT 
+                {PoiTable.Id}, 
+                {PoiTable.OsmId}, 
+                {PoiTable.NameColumn}, 
+                {PoiTable.Amenity}, 
+                {PoiTable.Latitude}, 
+                {PoiTable.Longitude}
+            FROM 
+                {PoiTable.Name}
+            WHERE
+                {PoiTable.Amenity} = @amenity
+            ORDER BY 
+                {PoiTable.Id}
+            LIMIT @limit;
+            """;
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("@amenity", amenity);
+        command.Parameters.AddWithValue("@limit", limit);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken: ct);
+
+        while (await reader.ReadAsync(cancellationToken: ct))
+        {
+            var poi = new Poi(
+                Id: reader.GetInt64(IdOrdinal),
+                OsmId: reader.GetInt64(OsmIdOrdinal),
+                Name: reader.IsDBNull(NameOrdinal) ? null : reader.GetString(NameOrdinal),
+                Amenity: reader.IsDBNull(AmenityOrdinal) ? null : reader.GetString(AmenityOrdinal),
+                Location: new GeoPoint(
+                    Latitude: reader.GetDouble(LatitudeOrdinal),
+                    Longitude: reader.GetDouble(LongitudeOrdinal))
+            );
+
+            result.Add(poi);
+        }
+
+        return result;
     }
 
     public Task<IReadOnlyList<Poi>> GetByLocationAsync(double latitude, double longitude, double radiusInMeters, int limit = 100, CancellationToken ct = default)
