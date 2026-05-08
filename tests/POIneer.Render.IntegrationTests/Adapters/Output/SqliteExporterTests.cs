@@ -43,25 +43,7 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
     {
         await using var tempDir = TestTemporaryDirectories.Create("sqlite-insert-multiple-pois", false);
 
-        var root = FindRepositoryRoot();
-        var dbPath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
-
-        var options = Options.Create(new FlywayOptions
-        {
-            Executable = "flyway",
-            ConfigFileRelativePath = "migrations/flyway-poi.toml",
-            Debug = false
-        });
-
-        var processRunner = new ProcessRunner();
-        var invocationBuilder = new FlywayInvocationBuilder(options);
-        var logger = new LoggerFactory().CreateLogger<FlywaySqliteDatabaseInitializer>();
-        var databaseInitializer = new FlywaySqliteDatabaseInitializer(
-            processRunner,
-            invocationBuilder,
-            logger);
-
-        await databaseInitializer.InitializeAsync(dbPath, CancellationToken.None);
+        var dbPath = await SqliteTestDatabase.CreateAsync(tempDir);
 
         Assert.True(File.Exists(dbPath));
         var tables = await GetTableNamesAsync(dbPath);
@@ -123,27 +105,6 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
             yield return poi;
             await Task.Yield();
         }
-    }
-
-    //TODO RepoRootLocator.Find() in main code and reuse here
-    private static string FindRepositoryRoot()
-    {
-        var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
-
-        while (dir is not null)
-        {
-            var flywayConfigPath = Path.Combine(
-                dir.FullName,
-                "migrations",
-                "flyway-poi.toml");
-
-            if (File.Exists(flywayConfigPath))
-                return dir.FullName;
-
-            dir = dir.Parent;
-        }
-
-        throw new InvalidOperationException("Repository root could not be determined.");
     }
 
     private sealed class FakeHostEnvironment : IHostEnvironment

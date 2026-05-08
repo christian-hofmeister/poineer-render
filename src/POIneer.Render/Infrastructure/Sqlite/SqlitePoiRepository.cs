@@ -30,8 +30,13 @@ public sealed class SqlitePoiRepository : IPoiRepository
         await using var connection = _connectionFactory();
         await connection.OpenAsync(cancellationToken: ct);
 
-        const string sql = """
-            INSERT INTO poi (osm_id, name, amenity, latitude, longitude)
+        var sql = $"""
+            INSERT INTO {PoiTable.Name} (
+                {PoiTable.OsmId}, 
+                {PoiTable.NameColumn}, 
+                {PoiTable.Amenity}, 
+                {PoiTable.Latitude}, 
+                {PoiTable.Longitude})
             VALUES (@osm_id, @name, @amenity, @latitude, @longitude);
             """;
 
@@ -60,10 +65,18 @@ public sealed class SqlitePoiRepository : IPoiRepository
         await using var connection = _connectionFactory();
         await connection.OpenAsync(cancellationToken: ct);
 
-        const string sql = """
-            SELECT id, osm_id, name, amenity, latitude, longitude
-            FROM poi
-            ORDER BY id
+        var sql = $"""
+            SELECT 
+                {PoiTable.Id}, 
+                {PoiTable.OsmId}, 
+                {PoiTable.NameColumn}, 
+                {PoiTable.Amenity}, 
+                {PoiTable.Latitude}, 
+                {PoiTable.Longitude}
+            FROM 
+                {PoiTable.Name}
+            ORDER BY 
+                {PoiTable.Id}
             LIMIT @limit;
             """;
 
@@ -75,19 +88,185 @@ public sealed class SqlitePoiRepository : IPoiRepository
 
         while (await reader.ReadAsync(cancellationToken: ct))
         {
-            var poi = new Poi(
-                Id: reader.GetInt64(IdOrdinal),
-                OsmId: reader.GetInt64(OsmIdOrdinal),
-                Name: reader.IsDBNull(NameOrdinal) ? null : reader.GetString(NameOrdinal),
-                Amenity: reader.IsDBNull(AmenityOrdinal) ? null : reader.GetString(AmenityOrdinal),
-                Location: new GeoPoint(
-                    Latitude: reader.GetDouble(LatitudeOrdinal),
-                    Longitude: reader.GetDouble(LongitudeOrdinal))
-            );
-
+            var poi = MapPoi(reader);
             result.Add(poi);
         }
 
         return result;
+    }
+
+    public async Task<IReadOnlyList<Poi>> GetByAmenityAsync(string amenity, int limit = 100, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(amenity))
+        {
+            throw new ArgumentException("Amenity must be a non-empty string.", nameof(amenity));
+        }
+
+        if (limit <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be greater than zero.");
+        }
+        var result = new List<Poi>();
+
+        await using var connection = _connectionFactory();
+        await connection.OpenAsync(cancellationToken: ct);
+
+        var sql = $"""
+            SELECT 
+                {PoiTable.Id}, 
+                {PoiTable.OsmId}, 
+                {PoiTable.NameColumn}, 
+                {PoiTable.Amenity}, 
+                {PoiTable.Latitude}, 
+                {PoiTable.Longitude}
+            FROM 
+                {PoiTable.Name}
+            WHERE
+                {PoiTable.Amenity} = @amenity
+            ORDER BY 
+                {PoiTable.Id}
+            LIMIT @limit;
+            """;
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("@amenity", amenity);
+        command.Parameters.AddWithValue("@limit", limit);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken: ct);
+
+        while (await reader.ReadAsync(cancellationToken: ct))
+        {
+            var poi = MapPoi(reader);
+            result.Add(poi);
+        }
+
+        return result;
+    }
+
+    public async Task<IReadOnlyList<Poi>> GetByNameAsync(string name, int limit = 100, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException("Name must be a non-empty string.", nameof(name));
+        }
+
+        if (limit <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be greater than zero.");
+        }
+
+        var result = new List<Poi>();
+
+        await using var connection = _connectionFactory();
+        await connection.OpenAsync(cancellationToken: ct);
+
+        var sql = $"""
+            SELECT 
+                {PoiTable.Id}, 
+                {PoiTable.OsmId}, 
+                {PoiTable.NameColumn}, 
+                {PoiTable.Amenity}, 
+                {PoiTable.Latitude}, 
+                {PoiTable.Longitude}
+            FROM 
+                {PoiTable.Name}
+            WHERE
+                {PoiTable.NameColumn} = @name
+            ORDER BY 
+                {PoiTable.Id}
+            LIMIT @limit;
+            """;
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("@name", name);
+        command.Parameters.AddWithValue("@limit", limit);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken: ct);
+
+        while (await reader.ReadAsync(cancellationToken: ct))
+        {
+            var poi = MapPoi(reader);
+            result.Add(poi);
+        }
+        return result;
+    }
+
+    public async Task<IReadOnlyList<Poi>> GetByBoundingBoxAsync(
+        BoundingBox boundingBox,
+        int limit = 100,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(boundingBox);
+
+        if (limit <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be greater than zero.");
+        }
+
+        if (boundingBox.NorthWest.Latitude < boundingBox.SouthEast.Latitude)
+        {
+            throw new ArgumentException("NorthWest latitude must be greater than or equal to SouthEast latitude.");
+        }
+
+        if (boundingBox.NorthWest.Longitude > boundingBox.SouthEast.Longitude)
+        {
+            throw new ArgumentException("NorthWest longitude must be less than or equal to SouthEast longitude.");
+        }
+
+
+        var result = new List<Poi>();
+        await using var connection = _connectionFactory();
+        await connection.OpenAsync(cancellationToken: ct);
+        var sql = $"""
+            SELECT 
+                {PoiTable.Id}, 
+                {PoiTable.OsmId}, 
+                {PoiTable.NameColumn}, 
+                {PoiTable.Amenity}, 
+                {PoiTable.Latitude}, 
+                {PoiTable.Longitude}
+            FROM 
+                {PoiTable.Name}
+            WHERE
+                {PoiTable.Latitude} <= @northWestLat AND
+                {PoiTable.Latitude} >= @southEastLat AND
+                {PoiTable.Longitude} >= @northWestLon AND
+                {PoiTable.Longitude} <= @southEastLon
+            ORDER BY 
+                {PoiTable.Id}
+            LIMIT @limit;
+            """;
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("@northWestLat", boundingBox.NorthWest.Latitude);
+        command.Parameters.AddWithValue("@southEastLat", boundingBox.SouthEast.Latitude);
+        command.Parameters.AddWithValue("@northWestLon", boundingBox.NorthWest.Longitude);
+        command.Parameters.AddWithValue("@southEastLon", boundingBox.SouthEast.Longitude);
+        command.Parameters.AddWithValue("@limit", limit);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken: ct);
+
+        while (await reader.ReadAsync(cancellationToken: ct))
+        {
+            var poi = MapPoi(reader);
+            result.Add(poi);
+        }
+
+        return result;
+    }
+
+    private static Poi MapPoi(SqliteDataReader reader)
+    {
+        return new Poi(
+            Id: reader.GetInt64(IdOrdinal),
+            OsmId: reader.GetInt64(OsmIdOrdinal),
+            Name: reader.IsDBNull(NameOrdinal) ? null : reader.GetString(NameOrdinal),
+            Amenity: reader.IsDBNull(AmenityOrdinal) ? null : reader.GetString(AmenityOrdinal),
+            Location: new GeoPoint(
+                Latitude: reader.GetDouble(LatitudeOrdinal),
+                Longitude: reader.GetDouble(LongitudeOrdinal)));
     }
 }
