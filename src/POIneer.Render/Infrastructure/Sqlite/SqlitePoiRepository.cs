@@ -198,10 +198,7 @@ public sealed class SqlitePoiRepository : IPoiRepository
         int limit = 100,
         CancellationToken ct = default)
     {
-        if (boundingBox is null)
-        {
-            throw new ArgumentNullException(nameof(boundingBox));
-        }
+        ArgumentNullException.ThrowIfNull(boundingBox);
 
         if (limit <= 0)
         {
