@@ -97,6 +97,45 @@ public sealed class SqlitePoiRepositoryGetByAmenityTests
             await repository.GetByAmenityAsync("restaurant", limit, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task GetByAmenityQuery_UsesAmenityIndex()
+    {
+        await using var tempDir =
+            TestTemporaryDirectories.Create("GetByAmenityQuery_UsesAmenityIndex");
+
+        var dbPath = await SqliteTestDatabase.CreateAsync(tempDir);
+
+        await using var connection =
+            new SqliteConnection(SqliteTestDatabase.CreateConnectionString(dbPath));
+
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+        EXPLAIN QUERY PLAN
+        SELECT id, osm_id, name, amenity, latitude, longitude
+        FROM poi
+        WHERE amenity = @amenity
+        ORDER BY id
+        LIMIT @limit;
+        """;
+
+        command.Parameters.AddWithValue("@amenity", "restaurant");
+        command.Parameters.AddWithValue("@limit", 10);
+
+        var details = new List<string>();
+
+        await using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            details.Add(reader.GetString(3));
+        }
+
+        Assert.Contains(details, detail =>
+            detail.Contains("idx_poi_amenity", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static SqlitePoiRepository CreateSut(string dbPath) => new SqlitePoiRepository(() =>
     {
         var cs = SqliteTestDatabase.CreateConnectionString(dbPath);
