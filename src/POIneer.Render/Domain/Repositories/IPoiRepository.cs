@@ -16,10 +16,8 @@ public interface IPoiRepository
         int limit = 100,
         CancellationToken ct = default);
 
-    Task<IReadOnlyList<Poi>> GetByLocationAsync(
-        double latitude,
-        double longitude,
-        double radiusInMeters,
+    Task<IReadOnlyList<Poi>> GetByBoundingBoxAsync(
+        BoundingBox boundingBox,
         int limit = 100,
         CancellationToken ct = default);
 }

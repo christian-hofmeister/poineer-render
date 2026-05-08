@@ -144,11 +144,6 @@ public sealed class SqlitePoiRepository : IPoiRepository
         return result;
     }
 
-    public Task<IReadOnlyList<Poi>> GetByLocationAsync(double latitude, double longitude, double radiusInMeters, int limit = 100, CancellationToken ct = default)
-    {
-        throw new NotImplementedException();
-    }
-
     public async Task<IReadOnlyList<Poi>> GetByNameAsync(string name, int limit = 100, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -195,6 +190,58 @@ public sealed class SqlitePoiRepository : IPoiRepository
             var poi = MapPoi(reader);
             result.Add(poi);
         }
+        return result;
+    }
+
+    public async Task<IReadOnlyList<Poi>> GetByBoundingBoxAsync(
+        BoundingBox boundingBox,
+        int limit = 100,
+        CancellationToken ct = default)
+    {
+        if (limit <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be greater than zero.");
+        }
+
+        var result = new List<Poi>();
+        await using var connection = _connectionFactory();
+        await connection.OpenAsync(cancellationToken: ct);
+        var sql = $"""
+            SELECT 
+                {PoiTable.Id}, 
+                {PoiTable.OsmId}, 
+                {PoiTable.NameColumn}, 
+                {PoiTable.Amenity}, 
+                {PoiTable.Latitude}, 
+                {PoiTable.Longitude}
+            FROM 
+                {PoiTable.Name}
+            WHERE
+                {PoiTable.Latitude} <= @northWestLat AND
+                {PoiTable.Latitude} >= @southEastLat AND
+                {PoiTable.Longitude} >= @northWestLon AND
+                {PoiTable.Longitude} <= @southEastLon
+            ORDER BY 
+                {PoiTable.Id}
+            LIMIT @limit;
+            """;
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("@northWestLat", boundingBox.NorthWest.Latitude);
+        command.Parameters.AddWithValue("@southEastLat", boundingBox.SouthEast.Latitude);
+        command.Parameters.AddWithValue("@northWestLon", boundingBox.NorthWest.Longitude);
+        command.Parameters.AddWithValue("@southEastLon", boundingBox.SouthEast.Longitude);
+        command.Parameters.AddWithValue("@limit", limit);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken: ct);
+
+        while (await reader.ReadAsync(cancellationToken: ct))
+        {
+            var poi = MapPoi(reader);
+            result.Add(poi);
+        }
+
         return result;
     }
 
