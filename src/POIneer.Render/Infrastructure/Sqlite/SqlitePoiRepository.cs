@@ -30,7 +30,7 @@ public sealed class SqlitePoiRepository : IPoiRepository
         await using var connection = _connectionFactory();
         await connection.OpenAsync(cancellationToken: ct);
 
-        const string sql = $"""
+        var sql = $"""
             INSERT INTO {PoiTable.Name} (
                 {PoiTable.OsmId}, 
                 {PoiTable.NameColumn}, 
@@ -65,7 +65,7 @@ public sealed class SqlitePoiRepository : IPoiRepository
         await using var connection = _connectionFactory();
         await connection.OpenAsync(cancellationToken: ct);
 
-        const string sql = $"""
+        var sql = $"""
             SELECT 
                 {PoiTable.Id}, 
                 {PoiTable.OsmId}, 
@@ -198,10 +198,26 @@ public sealed class SqlitePoiRepository : IPoiRepository
         int limit = 100,
         CancellationToken ct = default)
     {
+        if (boundingBox is null)
+        {
+            throw new ArgumentNullException(nameof(boundingBox));
+        }
+
         if (limit <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be greater than zero.");
         }
+
+        if (boundingBox.NorthWest.Latitude < boundingBox.SouthEast.Latitude)
+        {
+            throw new ArgumentException("NorthWest latitude must be greater than or equal to SouthEast latitude.");
+        }
+
+        if (boundingBox.NorthWest.Longitude > boundingBox.SouthEast.Longitude)
+        {
+            throw new ArgumentException("NorthWest longitude must be less than or equal to SouthEast longitude.");
+        }
+
 
         var result = new List<Poi>();
         await using var connection = _connectionFactory();
