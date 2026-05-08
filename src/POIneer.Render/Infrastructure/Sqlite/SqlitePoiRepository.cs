@@ -88,16 +88,7 @@ public sealed class SqlitePoiRepository : IPoiRepository
 
         while (await reader.ReadAsync(cancellationToken: ct))
         {
-            var poi = new Poi(
-                Id: reader.GetInt64(IdOrdinal),
-                OsmId: reader.GetInt64(OsmIdOrdinal),
-                Name: reader.IsDBNull(NameOrdinal) ? null : reader.GetString(NameOrdinal),
-                Amenity: reader.IsDBNull(AmenityOrdinal) ? null : reader.GetString(AmenityOrdinal),
-                Location: new GeoPoint(
-                    Latitude: reader.GetDouble(LatitudeOrdinal),
-                    Longitude: reader.GetDouble(LongitudeOrdinal))
-            );
-
+            var poi = MapPoi(reader);
             result.Add(poi);
         }
 
@@ -146,16 +137,7 @@ public sealed class SqlitePoiRepository : IPoiRepository
 
         while (await reader.ReadAsync(cancellationToken: ct))
         {
-            var poi = new Poi(
-                Id: reader.GetInt64(IdOrdinal),
-                OsmId: reader.GetInt64(OsmIdOrdinal),
-                Name: reader.IsDBNull(NameOrdinal) ? null : reader.GetString(NameOrdinal),
-                Amenity: reader.IsDBNull(AmenityOrdinal) ? null : reader.GetString(AmenityOrdinal),
-                Location: new GeoPoint(
-                    Latitude: reader.GetDouble(LatitudeOrdinal),
-                    Longitude: reader.GetDouble(LongitudeOrdinal))
-            );
-
+            var poi = MapPoi(reader);
             result.Add(poi);
         }
 
@@ -167,9 +149,64 @@ public sealed class SqlitePoiRepository : IPoiRepository
         throw new NotImplementedException();
     }
 
-    public Task<IReadOnlyList<Poi>> GetByNameAsync(string name, int limit = 100, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Poi>> GetByNameAsync(string name, int limit = 100, CancellationToken ct = default)
     {
-        throw new NotImplementedException();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException("Name must be a non-empty string.", nameof(name));
+        }
+
+        if (limit <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be greater than zero.");
+        }
+
+        var result = new List<Poi>();
+
+        await using var connection = _connectionFactory();
+        await connection.OpenAsync(cancellationToken: ct);
+
+        var sql = $"""
+            SELECT 
+                {PoiTable.Id}, 
+                {PoiTable.OsmId}, 
+                {PoiTable.NameColumn}, 
+                {PoiTable.Amenity}, 
+                {PoiTable.Latitude}, 
+                {PoiTable.Longitude}
+            FROM 
+                {PoiTable.Name}
+            WHERE
+                {PoiTable.NameColumn} = @name
+            ORDER BY 
+                {PoiTable.Id}
+            LIMIT @limit;
+            """;
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("@name", name);
+        command.Parameters.AddWithValue("@limit", limit);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken: ct);
+
+        while (await reader.ReadAsync(cancellationToken: ct))
+        {
+            var poi = MapPoi(reader);
+            result.Add(poi);
+        }
+        return result;
     }
 
+    private static Poi MapPoi(SqliteDataReader reader)
+    {
+        return new Poi(
+            Id: reader.GetInt64(IdOrdinal),
+            OsmId: reader.GetInt64(OsmIdOrdinal),
+            Name: reader.IsDBNull(NameOrdinal) ? null : reader.GetString(NameOrdinal),
+            Amenity: reader.IsDBNull(AmenityOrdinal) ? null : reader.GetString(AmenityOrdinal),
+            Location: new GeoPoint(
+                Latitude: reader.GetDouble(LatitudeOrdinal),
+                Longitude: reader.GetDouble(LongitudeOrdinal)));
+    }
 }
