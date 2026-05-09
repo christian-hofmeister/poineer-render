@@ -37,7 +37,6 @@ public sealed class RenderRegion : IRenderRegion
         string outDir,
         CancellationToken ct = default)
     {
-        // 1) Download PBF (done outside, or inject a downloader port if you prefer)
         var pbfPath = Path.Combine(workDir, $"{regionDto.Id}.osm.pbf");
         if (!File.Exists(pbfPath))
             throw new FileNotFoundException($"PBF not found: {pbfPath}");
@@ -61,29 +60,16 @@ public sealed class RenderRegion : IRenderRegion
         Directory.CreateDirectory(regionOutDir);
 
         var outRegionPath = Path.Combine(regionOutDir, "poi.sqlite");
-
-        //var repoRoot = RepoRootLocator.Find();
         var outputSqlitePathFull = Path.GetFullPath(outRegionPath);
 
-        /*  var flywayOptions = new FlywayOptions(
-             Executable: "flyway",
-             ConfigFileRelativePath: "migrations/flyway-poi.toml",
-             Debug: true // oder aus config
-         ); */
-
-        _logger.LogInformation("({Id}) Initializing SQLite database: {Out}", regionDto.Id, outRegionPath);
-
-        /*         var flywayInvocation = FlywayInvocationBuilder.BuildSqliteMigrate(
-                    flywayOptions,
-                    repoRoot,
-                    outputSqlitePathFull); */
+        _logger.LogInformation("({Id}) Initializing SQLite database: {Out}", regionDto.Id, outputSqlitePathFull);
 
         await _dbInit.InitializeAsync(
             outputSqlitePathFull,
             ct);
 
-        _logger.LogInformation("({Id}) Exporting to SQLite: {Out}", regionDto.Id, outRegionPath);
-        await _exporter.ExportAsync(MapRawPoisAsync(), outRegionPath, ct);
+        _logger.LogInformation("({Id}) Exporting to SQLite: {Out}", regionDto.Id, outputSqlitePathFull);
+        await _exporter.ExportAsync(MapRawPoisAsync(), outputSqlitePathFull, ct);
 
         _logger.LogInformation("({Id}) Done.", regionDto.Id);
     }
