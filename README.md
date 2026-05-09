@@ -92,7 +92,7 @@ This validates that:
 - POIs are successfully streamed into SQLite
 - the rendering pipeline produces meaningful real-world data
 
-![Berlin SQLite Query](docs\assets\images\berlin-sqlite-query.png)
+![Berlin SQLite Query](docs/assets/images/berlin-sqlite-query.png)
 
 ---
 
