@@ -77,6 +77,23 @@ Out of scope for the MVP:
 - production Azure deployment
 - complex multi-region orchestration
 
+## 📊 First Rendered Berlin POIs
+
+The screenshot below shows the first successful query against the generated `berlin.sqlite` database.
+
+The renderer processed real OpenStreetMap PBF data for Berlin and exported over **115,000 POIs** into an offline-ready SQLite database.
+
+The query groups POIs by `amenity` and displays the most common categories found in the dataset.
+
+This validates that:
+
+- the OSM PBF reader works correctly
+- amenity filtering is functioning
+- POIs are successfully streamed into SQLite
+- the rendering pipeline produces meaningful real-world data
+
+![Berlin SQLite Query](docs/assets/images/berlin-sqlite-query.png)
+
 ---
 
 ## Architecture

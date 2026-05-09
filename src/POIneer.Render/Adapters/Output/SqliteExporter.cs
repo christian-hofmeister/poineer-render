@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using POIneer.Render.Application.Contracts;
+using POIneer.Render.Domain.Models;
 using POIneer.Render.Ports;
 
 namespace POIneer.Render.Adapters.Output;
@@ -7,7 +8,7 @@ namespace POIneer.Render.Adapters.Output;
 public sealed class SqliteExporter : IExporter
 {
     public async Task ExportAsync(
-        IAsyncEnumerable<PoiDto> pois,
+        IAsyncEnumerable<Poi> pois,
         string outputSqlitePath,
         CancellationToken ct = default)
     {
@@ -40,8 +41,8 @@ public sealed class SqliteExporter : IExporter
             cmd.Parameters["@osm_id"].Value = poi.OsmId;
             cmd.Parameters["@name"].Value = poi.Name ?? (object)DBNull.Value;
             cmd.Parameters["@amenity"].Value = poi.Amenity ?? (object)DBNull.Value;
-            cmd.Parameters["@latitude"].Value = poi.Latitude;
-            cmd.Parameters["@longitude"].Value = poi.Longitude;
+            cmd.Parameters["@latitude"].Value = poi.Location.Latitude;
+            cmd.Parameters["@longitude"].Value = poi.Location.Longitude;
 
             await cmd.ExecuteNonQueryAsync(ct);
         }

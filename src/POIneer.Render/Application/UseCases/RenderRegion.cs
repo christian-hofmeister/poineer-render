@@ -3,6 +3,8 @@ namespace POIneer.Render.Application.UseCases;
 using Microsoft.Extensions.Logging;
 using POIneer.Render.Ports;
 using POIneer.Render.Application.Contracts;
+using POIneer.Render.Application.Mapping;
+using POIneer.Render.Domain.Models;
 
 public sealed class RenderRegion : IRenderRegion
 {
@@ -11,19 +13,22 @@ public sealed class RenderRegion : IRenderRegion
     private readonly IOsmReader _osmReader;
     private readonly ISqliteDatabaseInitializer _dbInit;
     private readonly IExporter _exporter;
+    private readonly IRawPoiMapper _rawPoiMapper;
 
     public RenderRegion(
         ILogger<RenderRegion> log,
         IPolygonCutter polygonCutter,
         ISqliteDatabaseInitializer dbInit,
         IOsmReader osmReader,
-        IExporter exporter)
+        IExporter exporter,
+        IRawPoiMapper rawPoiMapper)
     {
         _logger = log;
         _polygonCutter = polygonCutter;
         _osmReader = osmReader;
         _dbInit = dbInit;
         _exporter = exporter;
+        _rawPoiMapper = rawPoiMapper;
     }
 
     public async Task RunAsync(
@@ -32,7 +37,6 @@ public sealed class RenderRegion : IRenderRegion
         string outDir,
         CancellationToken ct = default)
     {
-        // 1) Download PBF (done outside, or inject a downloader port if you prefer)
         var pbfPath = Path.Combine(workDir, $"{regionDto.Id}.osm.pbf");
         if (!File.Exists(pbfPath))
             throw new FileNotFoundException($"PBF not found: {pbfPath}");
@@ -41,36 +45,31 @@ public sealed class RenderRegion : IRenderRegion
         var cutPbf = await _polygonCutter.CutAsync(pbfPath, regionDto.Poly, ct);
 
         _logger.LogInformation("({Id}) Reading OSM → POIs...", regionDto.Id);
-        var pois = _osmReader.ReadAsync(cutPbf, ct);
 
+        var rawPois = _osmReader.ReadAmenityNodesAsync(cutPbf, ct);
+
+        async IAsyncEnumerable<Poi> MapRawPoisAsync()
+        {
+            await foreach (var rawPoi in rawPois.WithCancellation(ct))
+            {
+                yield return _rawPoiMapper.Map(rawPoi);
+            }
+        }
 
         var regionOutDir = Path.Combine(outDir, regionDto.Id);
         Directory.CreateDirectory(regionOutDir);
 
         var outRegionPath = Path.Combine(regionOutDir, "poi.sqlite");
-
-        //var repoRoot = RepoRootLocator.Find();
         var outputSqlitePathFull = Path.GetFullPath(outRegionPath);
 
-        /*  var flywayOptions = new FlywayOptions(
-             Executable: "flyway",
-             ConfigFileRelativePath: "migrations/flyway-poi.toml",
-             Debug: true // oder aus config
-         ); */
-
-        _logger.LogInformation("({Id}) Initializing SQLite database: {Out}", regionDto.Id, outRegionPath);
-
-        /*         var flywayInvocation = FlywayInvocationBuilder.BuildSqliteMigrate(
-                    flywayOptions,
-                    repoRoot,
-                    outputSqlitePathFull); */
+        _logger.LogInformation("({Id}) Initializing SQLite database: {Out}", regionDto.Id, outputSqlitePathFull);
 
         await _dbInit.InitializeAsync(
             outputSqlitePathFull,
             ct);
 
-        // _logger.LogInformation("({Id}) Exporting to SQLite: {Out}", regionDto.Id, outPath);
-        // await _exporter.ExportAsync(pois, outPath, ct);
+        _logger.LogInformation("({Id}) Exporting to SQLite: {Out}", regionDto.Id, outputSqlitePathFull);
+        await _exporter.ExportAsync(MapRawPoisAsync(), outputSqlitePathFull, ct);
 
         _logger.LogInformation("({Id}) Done.", regionDto.Id);
     }
