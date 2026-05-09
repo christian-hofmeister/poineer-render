@@ -1,5 +1,4 @@
-using POIneer.Render.Infrastructure.Osm.Models;
-using System.Runtime.CompilerServices;
+using POIneer.Render.Application.Ports.Model;
 
 namespace POIneer.Render.Ports;
 

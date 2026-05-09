@@ -1,6 +1,6 @@
 using FluentAssertions;
 using POIneer.Render.Infrastructure.Adapters.Osm;
-using POIneer.Render.Infrastructure.Osm.Models;
+using POIneer.Render.Application.Ports.Model;
 using Xunit;
 
 namespace POIneer.Render.IntegrationTests.Infrastructure.Osm;

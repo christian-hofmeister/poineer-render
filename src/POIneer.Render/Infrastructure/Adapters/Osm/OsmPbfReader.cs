@@ -1,5 +1,5 @@
 using POIneer.Render.Ports;
-using POIneer.Render.Infrastructure.Osm.Models;
+using POIneer.Render.Application.Ports.Model;
 using System.Runtime.CompilerServices;
 using OsmSharp.Streams;
 using OsmSharp;

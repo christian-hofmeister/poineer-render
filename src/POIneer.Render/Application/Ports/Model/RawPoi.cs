@@ -1,4 +1,4 @@
-namespace POIneer.Render.Infrastructure.Osm.Models;
+namespace POIneer.Render.Application.Ports.Model;
 
 public sealed record RawPoi(
     long OsmId,
