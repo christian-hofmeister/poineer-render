@@ -47,11 +47,14 @@ public sealed class RenderRegion : IRenderRegion
 
         _logger.LogInformation("({Id}) Reading OSM → POIs...", regionDto.Id);
 
-        var pois = new List<Poi>();
-        await foreach (var rawPoi in _osmReader.ReadAmenityNodesAsync(cutPbf, ct))
+        var rawPois = _osmReader.ReadAmenityNodesAsync(cutPbf, ct);
+
+        async IAsyncEnumerable<Poi> MapRawPoisAsync()
         {
-            var poi = _rawPoiMapper.Map(rawPoi);
-            pois.Add(poi);
+            await foreach (var rawPoi in rawPois.WithCancellation(ct))
+            {
+                yield return _rawPoiMapper.Map(rawPoi);
+            }
         }
 
         var regionOutDir = Path.Combine(outDir, regionDto.Id);
@@ -80,7 +83,7 @@ public sealed class RenderRegion : IRenderRegion
             ct);
 
         _logger.LogInformation("({Id}) Exporting to SQLite: {Out}", regionDto.Id, outRegionPath);
-        await _exporter.ExportAsync(pois.ToAsyncEnumerable(), outRegionPath, ct);
+        await _exporter.ExportAsync(MapRawPoisAsync(), outRegionPath, ct);
 
         _logger.LogInformation("({Id}) Done.", regionDto.Id);
     }
