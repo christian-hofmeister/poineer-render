@@ -319,6 +319,19 @@
         "resolved": "10.0.7",
         "contentHash": "D5M0Jr551iTgwkZMN9rm0pSkgNLj5quUWQUmQPMZh7k/bnvZTnXRGfE2KuvXf1EEjt/ofD9yw9IumpgdP9QCnw=="
       },
+      "OsmSharp": {
+        "type": "Transitive",
+        "resolved": "6.2.0",
+        "contentHash": "dJsrYCWSRKd13p5G9iuygM+W4a2SrErTS93kzdcb2sB/OrR4RHLeHokCbef8ZOGFZEqqsMVZ4CVQ+QRVwTHW8Q==",
+        "dependencies": {
+          "protobuf-net": "2.3.7"
+        }
+      },
+      "protobuf-net": {
+        "type": "Transitive",
+        "resolved": "2.3.7",
+        "contentHash": "JG5ZUd42w4osBaDrFpJoEOelyRsuxV+EzY4c8J5o/Qhm+lqhm2iYWUl/T3zf7vhONBD968K190d7co1I2lucOQ=="
+      },
       "SQLitePCLRaw.bundle_e_sqlite3": {
         "type": "Transitive",
         "resolved": "2.1.11",
@@ -372,6 +385,7 @@
           "Microsoft.Extensions.Hosting": "[10.0.7, )",
           "Microsoft.Extensions.Http": "[10.0.7, )",
           "Microsoft.Extensions.Options.ConfigurationExtensions": "[10.0.7, )",
+          "OsmSharp": "[6.2.0, )",
           "System.Data.SQLite.Core": "[1.0.119, )"
         }
       }

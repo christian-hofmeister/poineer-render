@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using NSubstitute;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.UseCases;
+using POIneer.Render.Infrastructure.Osm.Models;
 using POIneer.Render.Ports;
 using POIneer.Render.TestHelpers;
 using Xunit;
@@ -52,7 +53,7 @@ public sealed class RenderRegionTests
         Assert.Contains("PBF not found", ex.Message);
 
         await _polygonCutter.DidNotReceiveWithAnyArgs().CutAsync(default!, default!, default);
-        _osmReader.DidNotReceiveWithAnyArgs().ReadAsync(default!, default);
+        _osmReader.DidNotReceiveWithAnyArgs().ReadAmenityNodesAsync(default!, default);
         await _exporter.DidNotReceiveWithAnyArgs().ExportAsync(default!, default!, default);
     }
 
@@ -82,9 +83,9 @@ public sealed class RenderRegionTests
             .CutAsync(pbfPath, region.Poly, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(cutPbfPath));
 
-        var pois = AsyncEnumerable.Empty<PoiDto>();
+        var pois = AsyncEnumerable.Empty<RawPoi>();
         _osmReader
-            .ReadAsync(cutPbfPath, Arg.Any<CancellationToken>())
+            .ReadAmenityNodesAsync(cutPbfPath, Arg.Any<CancellationToken>())
             .Returns(pois);
 
         // Act
@@ -96,7 +97,7 @@ public sealed class RenderRegionTests
         Received.InOrder(() =>
         {
             _polygonCutter.CutAsync(pbfPath, region.Poly, Arg.Any<CancellationToken>());
-            _osmReader.ReadAsync(cutPbfPath, Arg.Any<CancellationToken>());
+            _osmReader.ReadAmenityNodesAsync(cutPbfPath, Arg.Any<CancellationToken>());
             //_exporter.ExportAsync(pois, expectedOutPath, Arg.Any<CancellationToken>());
         });
     }
@@ -129,15 +130,15 @@ public sealed class RenderRegionTests
         _polygonCutter.CutAsync(pbfPath, region.Poly, ct)
             .Returns(Task.FromResult(cutPbfPath));
 
-        var pois = AsyncEnumerable.Empty<PoiDto>();
-        _osmReader.ReadAsync(cutPbfPath, ct).Returns(pois);
+        var pois = AsyncEnumerable.Empty<RawPoi>();
+        _osmReader.ReadAmenityNodesAsync(cutPbfPath, ct).Returns(pois);
 
         // Act
         await sut.RunAsync(region, workDir, outDir, ct);
 
         // Assert
         await _polygonCutter.Received(1).CutAsync(pbfPath, region.Poly, ct);
-        _osmReader.Received(1).ReadAsync(cutPbfPath, ct);
+        _osmReader.Received(1).ReadAmenityNodesAsync(cutPbfPath, ct);
         //TODO: reenble when exporter is enabled
         /*         await _exporter.Received(1).ExportAsync(
                     pois,
@@ -185,12 +186,24 @@ public sealed class RenderRegionTests
         // Reader returns some POIs
         var pois = new[]
         {
-            new PoiDto("1", "Café A", "cafe", 13.404954, 52.520008),
-            new PoiDto("2", "Bäckerei B", "bakery", 13.401000, 52.519000)
+            new RawPoi(
+                OsmId: 1,
+                Latitude: 52.5,
+                Longitude: 13.4,
+                Amenity: "cafe",
+                Name: "Cafe A",
+                Tags: new Dictionary<string, string> { { "amenity", "cafe" }, { "name", "Cafe A" } }),
+            new RawPoi(
+                OsmId: 2,
+                Latitude: 52.6,
+                Longitude: 13.5,
+                Amenity: "restaurant",
+                Name: "Restaurant B",
+                Tags: new Dictionary<string, string> { { "amenity", "restaurant" }, { "name", "Restaurant B" } })
         }.ToAsyncEnumerable();
 
         osmReader
-            .ReadAsync(cutPbfPath, Arg.Any<CancellationToken>())
+            .ReadAmenityNodesAsync(cutPbfPath, Arg.Any<CancellationToken>())
             .Returns(pois);
 
         // Act
@@ -202,7 +215,7 @@ public sealed class RenderRegionTests
         Received.InOrder(() =>
         {
             polygonCutter.CutAsync(pbfPath, region.Poly, Arg.Any<CancellationToken>());
-            osmReader.ReadAsync(cutPbfPath, Arg.Any<CancellationToken>());
+            osmReader.ReadAmenityNodesAsync(cutPbfPath, Arg.Any<CancellationToken>());
             //TODO: reenble when exporter is enabled
             //exporter.ExportAsync(pois, expectedOutPath, Arg.Any<CancellationToken>());
         });

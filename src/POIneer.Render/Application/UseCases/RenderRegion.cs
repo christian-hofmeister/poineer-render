@@ -41,7 +41,7 @@ public sealed class RenderRegion : IRenderRegion
         var cutPbf = await _polygonCutter.CutAsync(pbfPath, regionDto.Poly, ct);
 
         _logger.LogInformation("({Id}) Reading OSM → POIs...", regionDto.Id);
-        var pois = _osmReader.ReadAsync(cutPbf, ct);
+        var pois = _osmReader.ReadAmenityNodesAsync(cutPbf, ct);
 
 
         var regionOutDir = Path.Combine(outDir, regionDto.Id);
