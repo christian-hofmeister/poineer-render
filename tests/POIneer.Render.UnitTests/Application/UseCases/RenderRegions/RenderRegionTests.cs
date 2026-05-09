@@ -3,6 +3,7 @@ using NSubstitute;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Mapping;
 using POIneer.Render.Application.UseCases;
+using POIneer.Render.Domain.Models;
 using POIneer.Render.Infrastructure.Osm.Models;
 using POIneer.Render.Ports;
 using POIneer.Render.TestHelpers;
@@ -85,23 +86,36 @@ public sealed class RenderRegionTests
             .CutAsync(pbfPath, region.Poly, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(cutPbfPath));
 
-        var pois = AsyncEnumerable.Empty<RawPoi>();
+        var pois = AsyncEnumerable.Empty<Poi>();
+        var rawPois = AsyncEnumerable.Empty<RawPoi>();
         _osmReader
             .ReadAmenityNodesAsync(cutPbfPath, Arg.Any<CancellationToken>())
-            .Returns(pois);
+            .Returns(rawPois);
+
+        _exporter
+            .ExportAsync(
+                Arg.Any<IAsyncEnumerable<Poi>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
 
         // Act
         await sut.RunAsync(region, workDir, outDir, CancellationToken.None);
 
         // Assert: correct out path
-        var expectedOutPath = Path.Combine(outDir, $"{region.Id}.sqlite");
+        var expectedOutPath = Path.Combine(outDir, region.Id, "poi.sqlite");
 
         Received.InOrder(() =>
         {
             _polygonCutter.CutAsync(pbfPath, region.Poly, Arg.Any<CancellationToken>());
             _osmReader.ReadAmenityNodesAsync(cutPbfPath, Arg.Any<CancellationToken>());
-            //_exporter.ExportAsync(pois, expectedOutPath, Arg.Any<CancellationToken>());
+            _dbInit.InitializeAsync(expectedOutPath, Arg.Any<CancellationToken>());
+            _exporter.ExportAsync(
+                Arg.Any<IAsyncEnumerable<Poi>>(),
+                expectedOutPath,
+                Arg.Any<CancellationToken>());
         });
+
     }
 
     [Fact]
