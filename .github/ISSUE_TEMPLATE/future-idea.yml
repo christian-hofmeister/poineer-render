@@ -1,42 +1,75 @@
-## Goal
+name: "🚧 Future Idea"
+description: "Track future ideas, research topics, and post-MVP concepts"
+title: "[Future]: "
+labels:
+  - future
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for ideas, architectural discussions, research topics,
+        or features intentionally planned for after the MVP.
 
-<!-- High-level idea -->
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What is the high-level goal?
+      placeholder: Describe the idea or future feature.
+    validations:
+      required: true
 
----
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why could this become useful or important?
+      placeholder: Explain the value or problem this could solve.
+    validations:
+      required: true
 
-## Motivation
+  - type: textarea
+    id: possible-approaches
+    attributes:
+      label: Possible Approaches
+      description: Optional implementation ideas or alternatives
+      placeholder: |
+        - Option A
+        - Option B
+        - Hybrid approach
+    validations:
+      required: false
 
-<!-- Why could this become useful? -->
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks / Unknowns
+      description: Open questions, technical risks, or uncertainties
+      placeholder: |
+        - Performance impact
+        - Licensing questions
+        - Storage requirements
+    validations:
+      required: false
 
----
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of Scope
+      description: Explicitly define what is NOT part of this idea right now
+      placeholder: |
+        - No implementation yet
+        - No production deployment
+        - No mobile integration
+    validations:
+      required: false
 
-## Possible Approaches
-
-<!-- Optional -->
-
-- Option A
-- Option B
-
----
-
-## Risks / Unknowns
-
-<!-- Open questions -->
-
--
-
----
-
-## Out of scope
-
-<!-- Explicitly not planned right now -->
-
--
-
----
-
-## Notes
-
-<!-- Research links, ideas, thoughts -->
-
--
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Additional thoughts, links, references, or research
+      placeholder: |
+        Links, references, architecture notes, etc.
+    validations:
+      required: false
