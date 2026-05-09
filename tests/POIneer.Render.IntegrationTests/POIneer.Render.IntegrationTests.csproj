@@ -42,6 +42,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="TestData\*.pbf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\POIneer.Render\POIneer.Render.csproj" />
     <ProjectReference Include="..\POIneer.Render.TestHelpers\POIneer.Render.TestHelpers.csproj" />
   </ItemGroup>
