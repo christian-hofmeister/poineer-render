@@ -86,7 +86,6 @@ public sealed class RenderRegionTests
             .CutAsync(pbfPath, region.Poly, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(cutPbfPath));
 
-        var pois = AsyncEnumerable.Empty<Poi>();
         var rawPois = AsyncEnumerable.Empty<RawPoi>();
         _osmReader
             .ReadAmenityNodesAsync(cutPbfPath, Arg.Any<CancellationToken>())
