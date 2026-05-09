@@ -3,6 +3,8 @@ namespace POIneer.Render.Application.UseCases;
 using Microsoft.Extensions.Logging;
 using POIneer.Render.Ports;
 using POIneer.Render.Application.Contracts;
+using POIneer.Render.Application.Mapping;
+using POIneer.Render.Domain.Models;
 
 public sealed class RenderRegion : IRenderRegion
 {
@@ -11,19 +13,22 @@ public sealed class RenderRegion : IRenderRegion
     private readonly IOsmReader _osmReader;
     private readonly ISqliteDatabaseInitializer _dbInit;
     private readonly IExporter _exporter;
+    private readonly IRawPoiMapper _rawPoiMapper;
 
     public RenderRegion(
         ILogger<RenderRegion> log,
         IPolygonCutter polygonCutter,
         ISqliteDatabaseInitializer dbInit,
         IOsmReader osmReader,
-        IExporter exporter)
+        IExporter exporter,
+        IRawPoiMapper rawPoiMapper)
     {
         _logger = log;
         _polygonCutter = polygonCutter;
         _osmReader = osmReader;
         _dbInit = dbInit;
         _exporter = exporter;
+        _rawPoiMapper = rawPoiMapper;
     }
 
     public async Task RunAsync(
@@ -41,8 +46,13 @@ public sealed class RenderRegion : IRenderRegion
         var cutPbf = await _polygonCutter.CutAsync(pbfPath, regionDto.Poly, ct);
 
         _logger.LogInformation("({Id}) Reading OSM → POIs...", regionDto.Id);
-        var pois = _osmReader.ReadAmenityNodesAsync(cutPbf, ct);
 
+        var pois = new List<Poi>();
+        await foreach (var rawPoi in _osmReader.ReadAmenityNodesAsync(cutPbf, ct))
+        {
+            var poi = _rawPoiMapper.Map(rawPoi);
+            pois.Add(poi);
+        }
 
         var regionOutDir = Path.Combine(outDir, regionDto.Id);
         Directory.CreateDirectory(regionOutDir);
@@ -69,8 +79,8 @@ public sealed class RenderRegion : IRenderRegion
             outputSqlitePathFull,
             ct);
 
-        // _logger.LogInformation("({Id}) Exporting to SQLite: {Out}", regionDto.Id, outPath);
-        // await _exporter.ExportAsync(pois, outPath, ct);
+        _logger.LogInformation("({Id}) Exporting to SQLite: {Out}", regionDto.Id, outRegionPath);
+        await _exporter.ExportAsync(pois.ToAsyncEnumerable(), outRegionPath, ct);
 
         _logger.LogInformation("({Id}) Done.", regionDto.Id);
     }

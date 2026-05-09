@@ -1,11 +1,9 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using POIneer.Render.Adapters.Output;
 using POIneer.Render.Application.Contracts;
-using POIneer.Render.Infrastructure.Flyway;
+using POIneer.Render.Domain.Models;
 using POIneer.Render.TestHelpers;
 using POIneer.Render.TestHelpers.Sqlite;
 using Xunit;
@@ -29,8 +27,8 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
         var sut = new SqliteExporter();
 
         var pois = ToAsyncEnumerable(
-            new PoiDto("node/1001", "Test Cafe", "cafe", 52.5200, 13.4050),
-            new PoiDto("node/1002", "Test Pharmacy", "pharmacy", 52.5205, 13.4055));
+            new Poi(1001, 1001, "Test Cafe", "cafe", new GeoPoint(52.5200, 13.4050)),
+            new Poi(1002, 1002, "Test Pharmacy", "pharmacy", new GeoPoint(52.5205, 13.4055)));
 
         await sut.ExportAsync(pois, sqliteFilePath, CancellationToken.None);
 
@@ -53,8 +51,8 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
         var sut = new SqliteExporter();
 
         var pois = ToAsyncEnumerable(
-            new PoiDto("node/1001", "Test Cafe", "cafe", 52.5200, 13.4050),
-            new PoiDto("node/1002", "Test Pharmacy", "pharmacy", 52.5205, 13.4055));
+            new Poi(1, 1001, "Test Cafe", "cafe", new GeoPoint(52.5200, 13.4050)),
+            new Poi(2, 1002, "Test Pharmacy", "pharmacy", new GeoPoint(52.5205, 13.4055)));
 
         await sut.ExportAsync(pois, dbPath, CancellationToken.None);
 
@@ -81,14 +79,14 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
             await using var reader = await selectCommand.ExecuteReaderAsync();
 
             Assert.True(await reader.ReadAsync());
-            Assert.Equal("node/1001", reader.GetString(0));
+            Assert.Equal(1001, reader.GetInt64(0));
             Assert.Equal("Test Cafe", reader.GetString(1));
             Assert.Equal("cafe", reader.GetString(2));
             Assert.Equal(52.5200, reader.GetDouble(3));
             Assert.Equal(13.4050, reader.GetDouble(4));
 
             Assert.True(await reader.ReadAsync());
-            Assert.Equal("node/1002", reader.GetString(0));
+            Assert.Equal(1002, reader.GetInt64(0));
             Assert.Equal("Test Pharmacy", reader.GetString(1));
             Assert.Equal("pharmacy", reader.GetString(2));
             Assert.Equal(52.5205, reader.GetDouble(3));
@@ -98,7 +96,7 @@ public sealed class SqliteExporterTests(ITestOutputHelper output)
         }
     }
 
-    private static async IAsyncEnumerable<PoiDto> ToAsyncEnumerable(params PoiDto[] pois)
+    private static async IAsyncEnumerable<Poi> ToAsyncEnumerable(params Poi[] pois)
     {
         foreach (var poi in pois)
         {

@@ -18,8 +18,8 @@ public class DtoSmokeTests
     [Fact]
     public void PoiDto_Roundtrip_Properties()
     {
-        var dto = new PoiDto("1", "Cafe", "amenity", 13.4, 52.5);
-        Assert.Equal("1", dto.OsmId);
+        var dto = new PoiDto(1, "Cafe", "amenity", 13.4, 52.5);
+        Assert.Equal(1, dto.OsmId);
         Assert.Equal("Cafe", dto.Name);
         Assert.Equal("amenity", dto.Amenity);
         Assert.Equal(13.4, dto.Latitude);

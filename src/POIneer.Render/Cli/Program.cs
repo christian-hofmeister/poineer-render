@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using POIneer.Render.Adapters.Input;
 using POIneer.Render.Adapters.Output;
+using POIneer.Render.Application.Mapping;
 using POIneer.Render.Application.UseCases;
 using POIneer.Render.Cli;
 using POIneer.Render.Infrastructure.Adapters.Osm;
@@ -75,6 +76,7 @@ internal class Program
         builder.Services.AddSingleton<IExporter, SqliteExporter>();
         builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
         builder.Services.AddSingleton<IRenderRegion, RenderRegion>();
+        builder.Services.AddSingleton<IRawPoiMapper, RawPoiMapper>();
 
         // CLI entry point
         builder.Services.AddSingleton<Runner>();

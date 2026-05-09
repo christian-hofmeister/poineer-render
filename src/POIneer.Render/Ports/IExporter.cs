@@ -1,12 +1,12 @@
 namespace POIneer.Render.Ports;
 
-using POIneer.Render.Application.Contracts;
+using POIneer.Render.Domain.Models;
 
 public interface IExporter
 {
     // Exports POIs to a SQLite database
     Task ExportAsync(
-        IAsyncEnumerable<PoiDto> pois,
+        IAsyncEnumerable<Poi> pois,
         string outputSqlitePath,
         CancellationToken ct = default);
 }

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using POIneer.Render.Application.Contracts;
+using POIneer.Render.Application.Mapping;
 using POIneer.Render.Application.UseCases;
 using POIneer.Render.Infrastructure.Osm.Models;
 using POIneer.Render.Ports;
@@ -25,7 +26,8 @@ public sealed class RenderRegionTests
             _polygonCutter,
             _dbInit,
             _osmReader,
-            _exporter);
+            _exporter,
+            Substitute.For<IRawPoiMapper>());
 
     [Fact]
     public async Task RunAsync_ThrowsFileNotFoundException_WhenPbfDoesNotExist()
@@ -161,7 +163,8 @@ public sealed class RenderRegionTests
             polygonCutter,
             initDb,
             osmReader,
-            exporter);
+            exporter,
+            Substitute.For<IRawPoiMapper>());
 
         var region = new RegionDto(
             Id: "berlin",
