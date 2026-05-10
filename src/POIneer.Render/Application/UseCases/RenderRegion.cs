@@ -37,7 +37,8 @@ public sealed class RenderRegion : IRenderRegion
         string outDir,
         CancellationToken ct = default)
     {
-        var pbfPath = Path.Combine(workDir, $"{regionDto.Id}.osm.pbf");
+        var pbfPath = Path.Combine(workDir, regionDto.Id, "osm.pbf");
+
         if (!File.Exists(pbfPath))
             throw new FileNotFoundException($"PBF not found: {pbfPath}");
 

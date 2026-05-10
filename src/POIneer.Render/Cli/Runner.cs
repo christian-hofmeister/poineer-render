@@ -60,7 +60,7 @@ public sealed class Runner
         Directory.CreateDirectory(workDir);
         Directory.CreateDirectory(outDir);
 
-        _logger.LogInformation("Directories created: {WorkDir}, {OutDir}", workDir, outDir);
+        _logger.LogInformation("Directories created (if not exists): {WorkDir}, {OutDir}", workDir, outDir);
 
         _logger.LogInformation("Using regions file: {RegionsPath}", regionsPath);
 
@@ -73,7 +73,10 @@ public sealed class Runner
         {
             using (_logger.BeginScope("region:{RegionId}", r.Id))
             {
-                var pbfPath = Path.Combine(workDir, $"{r.Id}.osm.pbf");
+                var regionWorkDir = Path.Combine(workDir, r.Id);
+                Directory.CreateDirectory(regionWorkDir);
+                var pbfPath = Path.Combine(regionWorkDir, "osm.pbf");
+
                 if (!File.Exists(pbfPath))
                 {
                     _logger.LogInformation("Downloading PBF for {Region} ... to {TargetPath}", r.Id, pbfPath);

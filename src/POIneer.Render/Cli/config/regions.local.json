@@ -5,5 +5,12 @@
     "Country": "Germany",
     "Category": "City",
     "PbfUrl": "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf"
+  },
+  {
+    "Id": "mittelfranken",
+    "Name": "Mittelfranken",
+    "Country": "Germany",
+    "Category": "District",
+    "PbfUrl": "https://download.geofabrik.de/europe/germany/bayern/mittelfranken-latest.osm.pbf"
   }
 ]

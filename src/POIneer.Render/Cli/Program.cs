@@ -2,6 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using POIneer.Render.Adapters.Input;
 using POIneer.Render.Adapters.Output;
 using POIneer.Render.Application.Mapping;
@@ -55,7 +56,12 @@ internal class Program
             builder.Configuration.GetSection(FlywayOptions.SectionName));
 
         // Wire ports/adapters + use cases
-        builder.Services.AddHttpClient(); // oder AddHttpClient<HttpFileDownloader>()
+        builder.Services.AddHttpClient<IFileDownloader, HttpFileDownloader>((sp, client) =>
+        {
+            var options = sp.GetRequiredService<IOptions<RendererOptions>>().Value;
+
+            client.Timeout = TimeSpan.FromSeconds(options.DownloadTimeoutSeconds);
+        });
         builder.Services.AddSingleton<IFileDownloader, HttpFileDownloader>();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(options =>

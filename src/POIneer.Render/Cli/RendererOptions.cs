@@ -12,4 +12,6 @@ public sealed class RendererOptions
     public string? OnlyRegionId { get; init; }
 
     public bool DryRun { get; init; }
+
+    public int DownloadTimeoutSeconds { get; init; } = 600;
 }
