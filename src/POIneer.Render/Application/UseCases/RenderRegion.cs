@@ -67,7 +67,7 @@ public sealed class RenderRegion : IRenderRegion
         Directory.CreateDirectory(regionOutDir);
 
         var outRegionPath = Path.Combine(regionOutDir, "poi.sqlite");
-        if (File.Exists(outRegionPath) && !_rendererOptions.OverwriteDatabase)
+        if (File.Exists(outRegionPath) && !recreateDatabase)
         {
             _logger.LogInformation("({Id}) Output SQLite already exists at {Out}, skipping rendering (overwrite disabled).", regionDto.Id, outRegionPath);
             return;

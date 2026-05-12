@@ -25,20 +25,22 @@ public sealed class RenderRegionTests
 
 
     private RenderRegion CreateSut(
-       ILogger<RenderRegion>? logger = null,
-       IPolygonCutter? polygonCutter = null,
-       ISqliteDatabaseInitializer? dbInit = null,
-       IOsmReader? osmReader = null,
-       IExporter? exporter = null,
-       IRawPoiMapper? mapper = null)
-       => new(
-           logger ?? _logger,
-           polygonCutter ?? _polygonCutter,
-           dbInit ?? _dbInit,
-           osmReader ?? _osmReader,
-           exporter ?? _exporter,
-           mapper ?? Substitute.For<IRawPoiMapper>(),
-           TestRendererOptions.Create());
+        ILogger<RenderRegion>? logger = null,
+        IPolygonCutter? polygonCutter = null,
+        ISqliteDatabaseInitializer? dbInit = null,
+        IOsmReader? osmReader = null,
+        IExporter? exporter = null,
+        IRawPoiMapper? mapper = null,
+        bool overwriteDatabase = false,
+        bool overwritePbf = false)
+        => new(
+            logger ?? _logger,
+            polygonCutter ?? _polygonCutter,
+            dbInit ?? _dbInit,
+            osmReader ?? _osmReader,
+            exporter ?? _exporter,
+            mapper ?? Substitute.For<IRawPoiMapper>(),
+            TestRendererOptions.Create(overwriteDatabase, overwritePbf));
 
     [Fact]
     public async Task RunAsync_ThrowsFileNotFoundException_WhenPbfDoesNotExist()
@@ -254,5 +256,47 @@ public sealed class RenderRegionTests
                 Arg.Any<CancellationToken>());
         });
     }
-}
 
+    [Fact]
+    public async Task RunAsync_RecreatesDatabase_WhenOutputExistsAndOverwritePbfIsEnabled()
+    {
+        // Arrange
+        var sut = CreateSut(overwritePbf: true);
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "http://example.com/berlin.osm.pbf",
+            Poly: "berlin.poly");
+
+        await using var tempDir = TestTemporaryDirectories.Create("recreate-db-when-overwrite-pbf-is-enabled", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
+
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        var existingOutputPath = Path.Combine(outDir, region.Id, "poi.sqlite");
+        TestFiles.WriteAllText(existingOutputPath, "existing");
+
+        var cutPbfPath = Path.Combine(workDir, region.Id, "cut.osm.pbf");
+        _polygonCutter
+            .CutAsync(pbfPath, region.Poly, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(cutPbfPath));
+
+        _osmReader
+            .ReadAmenityNodesAsync(cutPbfPath, Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<RawPoi>());
+
+        // Act
+        await sut.RunAsync(region, workDir, outDir, CancellationToken.None);
+
+        // Assert
+        await _dbInit.Received(1).InitializeAsync(existingOutputPath, Arg.Any<CancellationToken>());
+        await _exporter.Received(1).ExportAsync(
+            Arg.Any<IAsyncEnumerable<Poi>>(),
+            existingOutputPath,
+            Arg.Any<CancellationToken>());
+        Assert.False(File.Exists(existingOutputPath));
+    }
+}
