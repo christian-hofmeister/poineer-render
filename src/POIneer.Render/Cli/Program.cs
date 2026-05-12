@@ -2,11 +2,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using POIneer.Render.Adapters.Input;
 using POIneer.Render.Adapters.Output;
 using POIneer.Render.Application.Mapping;
+using POIneer.Render.Application.Options;
 using POIneer.Render.Application.UseCases;
-using POIneer.Render.Cli;
 using POIneer.Render.Infrastructure.Adapters.Osm;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
@@ -19,44 +20,37 @@ internal class Program
     private static async Task<int> Main(string[] args)
     {
         var builder = Host.CreateApplicationBuilder(args);
-        var sectionRenderer = builder.Configuration.GetSection("Renderer");
-        var bindSource = sectionRenderer.Exists() ? (IConfiguration)sectionRenderer : builder.Configuration;
 
-        // Load configuration with sane defaults and environment overlays
         builder.Configuration
             .SetBasePath(builder.Environment.ContentRootPath)
             .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
             .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
-            // Environment variables like: POINEER_RENDER__RENDERER__WORKDIR or POINEER_RENDER__WORKDIR (see binding below)
             .AddEnvironmentVariables(prefix: "POINEER_RENDER__")
             .AddCommandLine(args);
 
+        var rendererSection = builder.Configuration.GetSection("Renderer");
 
+        IConfiguration bindSource = rendererSection.Exists()
+            ? rendererSection
+            : builder.Configuration;
 
-        // Bind Options
-        // Prefer "Renderer" section; if not present, bind from root (fallback to keep compatibility)
         builder.Services
             .AddOptions<RendererOptions>()
             .Bind(bindSource)
-            .Validate(o =>
-                !string.IsNullOrWhiteSpace(o.WorkDir) &&
-                !string.IsNullOrWhiteSpace(o.OutDir) &&
-                !string.IsNullOrWhiteSpace(o.RegionsJson),
-                "WorkDir, OutDir, and RegionsJson must be set");
+            .Validate(RendererOptionsValidation.HasRequiredPaths, RendererOptionsValidation.RequiredPathsMessage)
+            .Validate(RendererOptionsValidation.HasValidDownloadTimeout, RendererOptionsValidation.DownloadTimeoutMessage)
+            .ValidateOnStart();
 
-        // Flyway options are bound in FlywayInvocationBuilder, 
-        // but we can also bind them here to have them available for other services if needed
         builder.Services
             .AddOptions<FlywayOptions>()
             .Bind(builder.Configuration.GetSection(FlywayOptions.SectionName));
 
-        // Flyway options
-        builder.Services.Configure<FlywayOptions>(
-            builder.Configuration.GetSection(FlywayOptions.SectionName));
+        builder.Services.AddHttpClient<IFileDownloader, HttpFileDownloader>((sp, client) =>
+        {
+            var options = sp.GetRequiredService<IOptions<RendererOptions>>().Value;
+            client.Timeout = TimeSpan.FromSeconds(options.DownloadTimeoutSeconds);
+        });
 
-        // Wire ports/adapters + use cases
-        builder.Services.AddHttpClient(); // oder AddHttpClient<HttpFileDownloader>()
-        builder.Services.AddSingleton<IFileDownloader, HttpFileDownloader>();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(options =>
         {

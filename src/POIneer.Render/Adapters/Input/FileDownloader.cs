@@ -9,13 +9,31 @@ public sealed class HttpFileDownloader : IFileDownloader
     public HttpFileDownloader(HttpClient httpClient)
         => _httpClient = httpClient;
 
-    public async Task<string> DownloadAsync(string url, string targetPath, CancellationToken ct = default)
+    public async Task<string> DownloadAsync(
+        string url,
+        string targetPath,
+        CancellationToken ct = default)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+        var targetDirectory = Path.GetDirectoryName(targetPath);
+        if (!string.IsNullOrEmpty(targetDirectory))
+        {
+            Directory.CreateDirectory(targetDirectory);
+        }
+
+        // Download with HttpClient and stream directly to file to avoid loading the entire file into memory
+        using var response = await _httpClient.GetAsync(
+            url,
+            HttpCompletionOption.ResponseHeadersRead,
+            ct);
+
+        response.EnsureSuccessStatusCode();
+
+        await using var httpStream =
+            await response.Content.ReadAsStreamAsync(ct);
 
         await using var fileStream = File.Create(targetPath);
-        await using var stream = await _httpClient.GetStreamAsync(url, ct);
-        await stream.CopyToAsync(fileStream, ct);
+
+        await httpStream.CopyToAsync(fileStream, ct);
 
         return targetPath;
     }

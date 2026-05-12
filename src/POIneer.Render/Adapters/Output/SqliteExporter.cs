@@ -1,5 +1,4 @@
 using Microsoft.Data.Sqlite;
-using POIneer.Render.Application.Contracts;
 using POIneer.Render.Domain.Models;
 using POIneer.Render.Ports;
 

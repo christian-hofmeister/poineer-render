@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using POIneer.Render.Cli;
+using POIneer.Render.Application.Options;
 using POIneer.Render.Ports;
 
 public sealed class Runner
@@ -33,6 +33,7 @@ public sealed class Runner
     public async Task<int> RunAsync(CancellationToken ct)
     {
         var contentRoot = _hostEnvironment.ContentRootPath;
+        var redownloadPbf = _rendererOptions.OverwritePbf;
 
         string Resolve(string p) => Path.IsPathRooted(p) ? p : Path.GetFullPath(Path.Combine(contentRoot, p));
 
@@ -60,7 +61,7 @@ public sealed class Runner
         Directory.CreateDirectory(workDir);
         Directory.CreateDirectory(outDir);
 
-        _logger.LogInformation("Directories created: {WorkDir}, {OutDir}", workDir, outDir);
+        _logger.LogInformation("Directories created (if not exists): {WorkDir}, {OutDir}", workDir, outDir);
 
         _logger.LogInformation("Using regions file: {RegionsPath}", regionsPath);
 
@@ -73,10 +74,22 @@ public sealed class Runner
         {
             using (_logger.BeginScope("region:{RegionId}", r.Id))
             {
-                var pbfPath = Path.Combine(workDir, $"{r.Id}.osm.pbf");
+                var regionWorkDir = Path.Combine(workDir, r.Id);
+                Directory.CreateDirectory(regionWorkDir);
+                var pbfPath = Path.Combine(regionWorkDir, "osm.pbf");
+
                 if (!File.Exists(pbfPath))
                 {
                     _logger.LogInformation("Downloading PBF for {Region} ... to {TargetPath}", r.Id, pbfPath);
+                    await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
+                }
+                else if (!redownloadPbf)
+                {
+                    _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, skipping download (overwrite disabled).", r.Id, pbfPath);
+                }
+                else
+                {
+                    _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, but overwrite is enabled, re-downloading.", r.Id, pbfPath);
                     await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
                 }
                 await _renderRegionUseCase.RunAsync(r, workDir, outDir, ct);
