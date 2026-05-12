@@ -20,20 +20,20 @@ internal class Program
     private static async Task<int> Main(string[] args)
     {
         var builder = Host.CreateApplicationBuilder(args);
-        var sectionRenderer = builder.Configuration.GetSection("Renderer");
-        var bindSource = sectionRenderer.Exists() ? (IConfiguration)sectionRenderer : builder.Configuration;
 
-        // Load configuration with sane defaults and environment overlays
         builder.Configuration
             .SetBasePath(builder.Environment.ContentRootPath)
             .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
             .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
-            // Environment variables like: POINEER_RENDER__RENDERER__WORKDIR or POINEER_RENDER__WORKDIR (see binding below)
             .AddEnvironmentVariables(prefix: "POINEER_RENDER__")
             .AddCommandLine(args);
 
-        // Bind Options
-        // Prefer "Renderer" section; if not present, bind from root (fallback to keep compatibility)
+        var rendererSection = builder.Configuration.GetSection("Renderer");
+
+        IConfiguration bindSource = rendererSection.Exists()
+            ? rendererSection
+            : builder.Configuration;
+
         builder.Services
             .AddOptions<RendererOptions>()
             .Bind(bindSource)
@@ -41,26 +41,19 @@ internal class Program
                 !string.IsNullOrWhiteSpace(o.WorkDir) &&
                 !string.IsNullOrWhiteSpace(o.OutDir) &&
                 !string.IsNullOrWhiteSpace(o.RegionsJson),
-                "WorkDir, OutDir, and RegionsJson must be set");
+                "WorkDir, OutDir, and RegionsJson must be set")
+            .ValidateOnStart();
 
-        // Flyway options are bound in FlywayInvocationBuilder, 
-        // but we can also bind them here to have them available for other services if needed
         builder.Services
             .AddOptions<FlywayOptions>()
             .Bind(builder.Configuration.GetSection(FlywayOptions.SectionName));
 
-        // Flyway options
-        builder.Services.Configure<FlywayOptions>(
-            builder.Configuration.GetSection(FlywayOptions.SectionName));
-
-        // Wire ports/adapters + use cases
         builder.Services.AddHttpClient<IFileDownloader, HttpFileDownloader>((sp, client) =>
         {
             var options = sp.GetRequiredService<IOptions<RendererOptions>>().Value;
-
             client.Timeout = TimeSpan.FromSeconds(options.DownloadTimeoutSeconds);
         });
-        builder.Services.AddSingleton<IFileDownloader, HttpFileDownloader>();
+
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(options =>
         {
