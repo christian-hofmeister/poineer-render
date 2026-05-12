@@ -1,6 +1,7 @@
 namespace POIneer.Render.Application.UseCases;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Mapping;
 using POIneer.Render.Application.Options;
@@ -24,7 +25,7 @@ public sealed class RenderRegion : IRenderRegion
         IOsmReader osmReader,
         IExporter exporter,
         IRawPoiMapper rawPoiMapper,
-        RendererOptions rendererOptions)
+        IOptions<RendererOptions> options)
     {
         _logger = log;
         _polygonCutter = polygonCutter;
@@ -32,7 +33,7 @@ public sealed class RenderRegion : IRenderRegion
         _dbInit = dbInit;
         _exporter = exporter;
         _rawPoiMapper = rawPoiMapper;
-        _rendererOptions = rendererOptions;
+        _rendererOptions = options.Value;
     }
 
     public async Task RunAsync(
@@ -73,6 +74,7 @@ public sealed class RenderRegion : IRenderRegion
         else if (File.Exists(outRegionPath) && _rendererOptions.OverwriteDatabase)
         {
             _logger.LogInformation("({Id}) Output SQLite already exists at {Out}, but overwrite is enabled, re-rendering.", regionDto.Id, outRegionPath);
+            File.Delete(outRegionPath);
         }
         var outputSqlitePathFull = Path.GetFullPath(outRegionPath);
 

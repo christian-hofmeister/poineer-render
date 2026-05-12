@@ -38,7 +38,7 @@ public sealed class RenderRegionTests
            osmReader ?? _osmReader,
            exporter ?? _exporter,
            mapper ?? Substitute.For<IRawPoiMapper>(),
-           TestRendererOptions.Create().Value);
+           TestRendererOptions.Create());
 
     [Fact]
     public async Task RunAsync_ThrowsFileNotFoundException_WhenPbfDoesNotExist()
