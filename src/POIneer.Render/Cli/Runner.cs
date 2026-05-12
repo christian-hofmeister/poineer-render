@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using POIneer.Render.Cli;
+using POIneer.Render.Application.Options;
 using POIneer.Render.Ports;
 
 public sealed class Runner
@@ -80,6 +80,15 @@ public sealed class Runner
                 if (!File.Exists(pbfPath))
                 {
                     _logger.LogInformation("Downloading PBF for {Region} ... to {TargetPath}", r.Id, pbfPath);
+                    await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
+                }
+                else if (!_rendererOptions.OverwritePbf)
+                {
+                    _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, skipping download (overwrite disabled).", r.Id, pbfPath);
+                }
+                else
+                {
+                    _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, but overwrite is enabled, re-downloading.", r.Id, pbfPath);
                     await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
                 }
                 await _renderRegionUseCase.RunAsync(r, workDir, outDir, ct);

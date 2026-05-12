@@ -6,8 +6,8 @@ using Microsoft.Extensions.Options;
 using POIneer.Render.Adapters.Input;
 using POIneer.Render.Adapters.Output;
 using POIneer.Render.Application.Mapping;
+using POIneer.Render.Application.Options;
 using POIneer.Render.Application.UseCases;
-using POIneer.Render.Cli;
 using POIneer.Render.Infrastructure.Adapters.Osm;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
@@ -31,8 +31,6 @@ internal class Program
             // Environment variables like: POINEER_RENDER__RENDERER__WORKDIR or POINEER_RENDER__WORKDIR (see binding below)
             .AddEnvironmentVariables(prefix: "POINEER_RENDER__")
             .AddCommandLine(args);
-
-
 
         // Bind Options
         // Prefer "Renderer" section; if not present, bind from root (fallback to keep compatibility)

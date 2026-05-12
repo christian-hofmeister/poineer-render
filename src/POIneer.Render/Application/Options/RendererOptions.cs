@@ -1,4 +1,4 @@
-namespace POIneer.Render.Cli;
+namespace POIneer.Render.Application.Options;
 
 // Strongly-typed configuration bound from appsettings/env/CLI
 public sealed class RendererOptions
@@ -8,10 +8,13 @@ public sealed class RendererOptions
     public required string OutDir { get; init; }
     public required string RegionsJson { get; init; }
 
+    public bool OverwriteDatabase { get; init; } = false;
+    public bool OverwritePbf { get; init; } = false;
+
     // If set, only this region will be rendered (e.g. for testing)
     public string? OnlyRegionId { get; init; }
 
-    public bool DryRun { get; init; }
+    public bool DryRun { get; init; } = false;
 
     public int DownloadTimeoutSeconds { get; init; } = 600;
 }

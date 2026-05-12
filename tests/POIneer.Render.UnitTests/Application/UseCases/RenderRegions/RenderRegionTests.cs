@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Mapping;
+using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports.Model;
 using POIneer.Render.Application.UseCases;
 using POIneer.Render.Domain.Models;
@@ -21,14 +23,22 @@ public sealed class RenderRegionTests
     private readonly ISqliteDatabaseInitializer _dbInit = Substitute.For<ISqliteDatabaseInitializer>();
     private readonly IExporter _exporter = Substitute.For<IExporter>();
 
-    private RenderRegion CreateSut()
-        => new(
-            _logger,
-            _polygonCutter,
-            _dbInit,
-            _osmReader,
-            _exporter,
-            Substitute.For<IRawPoiMapper>());
+
+    private RenderRegion CreateSut(
+       ILogger<RenderRegion>? logger = null,
+       IPolygonCutter? polygonCutter = null,
+       ISqliteDatabaseInitializer? dbInit = null,
+       IOsmReader? osmReader = null,
+       IExporter? exporter = null,
+       IRawPoiMapper? mapper = null)
+       => new(
+           logger ?? _logger,
+           polygonCutter ?? _polygonCutter,
+           dbInit ?? _dbInit,
+           osmReader ?? _osmReader,
+           exporter ?? _exporter,
+           mapper ?? Substitute.For<IRawPoiMapper>(),
+           TestRendererOptions.Create().Value);
 
     [Fact]
     public async Task RunAsync_ThrowsFileNotFoundException_WhenPbfDoesNotExist()
@@ -78,10 +88,11 @@ public sealed class RenderRegionTests
         var outDir = tempDir.CreateSubDir("out").DirectoryPath;
 
         // create input pbf file
-        var pbfPath = Path.Combine(workDir, $"{region.Id}.osm.pbf");
-        File.WriteAllText(pbfPath, "dummy");
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
 
-        var cutPbfPath = Path.Combine(workDir, $"{region.Id}.cut.osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        var cutPbfPath = Path.Combine(workDir, region.Id, $"cut.osm.pbf");
         _polygonCutter
             .CutAsync(pbfPath, region.Poly, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(cutPbfPath));
@@ -134,10 +145,11 @@ public sealed class RenderRegionTests
         var workDir = tempDir.CreateSubDir("work").DirectoryPath;
         var outDir = tempDir.CreateSubDir("out").DirectoryPath;
 
-        var pbfPath = Path.Combine(workDir, $"{region.Id}.osm.pbf");
-        File.WriteAllText(pbfPath, "dummy");
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
 
-        var cutPbfPath = Path.Combine(workDir, $"{region.Id}.cut.osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        var cutPbfPath = Path.Combine(workDir, region.Id, "cut.osm.pbf");
 
         using var cts = new CancellationTokenSource();
         var ct = cts.Token;
@@ -171,13 +183,12 @@ public sealed class RenderRegionTests
         var initDb = Substitute.For<ISqliteDatabaseInitializer>();
         var exporter = Substitute.For<IExporter>();
 
-        var sut = new RenderRegion(
-            logger,
-            polygonCutter,
-            initDb,
-            osmReader,
-            exporter,
-            Substitute.For<IRawPoiMapper>());
+        var sut = CreateSut(
+            logger: logger,
+            polygonCutter: polygonCutter,
+            dbInit: initDb,
+            osmReader: osmReader,
+            exporter: exporter);
 
         var region = new RegionDto(
             Id: "berlin",
@@ -190,11 +201,11 @@ public sealed class RenderRegionTests
         var outDir = tempDir.CreateSubDir("out").DirectoryPath;
 
         // Dummy input PBF (existence is what matters)
-        var pbfPath = Path.Combine(workDir, $"{region.Id}.osm.pbf");
-        File.WriteAllText(pbfPath, "dummy");
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
 
         // Cut result
-        var cutPbfPath = Path.Combine(workDir, $"{region.Id}.cut.osm.pbf");
+        var cutPbfPath = Path.Combine(workDir, region.Id, "cut.osm.pbf");
         polygonCutter
             .CutAsync(pbfPath, region.Poly, Arg.Any<CancellationToken>())
             .Returns(cutPbfPath);
@@ -226,14 +237,21 @@ public sealed class RenderRegionTests
         await sut.RunAsync(region, workDir, outDir, CancellationToken.None);
 
         // Assert
-        var expectedOutPath = Path.Combine(outDir, $"{region.Id}.sqlite");
+        var expectedOutPath = Path.Combine(outDir, region.Id, "poi.sqlite");
+
+        await exporter.Received(1).ExportAsync(
+            Arg.Any<IAsyncEnumerable<Poi>>(),
+            expectedOutPath,
+            Arg.Any<CancellationToken>());
 
         Received.InOrder(() =>
         {
             polygonCutter.CutAsync(pbfPath, region.Poly, Arg.Any<CancellationToken>());
             osmReader.ReadAmenityNodesAsync(cutPbfPath, Arg.Any<CancellationToken>());
-            //TODO: reenble when exporter is enabled
-            //exporter.ExportAsync(pois, expectedOutPath, Arg.Any<CancellationToken>());
+            exporter.ExportAsync(
+                Arg.Any<IAsyncEnumerable<Poi>>(),
+                expectedOutPath,
+                Arg.Any<CancellationToken>());
         });
     }
 }

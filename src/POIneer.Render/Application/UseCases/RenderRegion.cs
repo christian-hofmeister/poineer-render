@@ -1,10 +1,11 @@
 namespace POIneer.Render.Application.UseCases;
 
 using Microsoft.Extensions.Logging;
-using POIneer.Render.Ports;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Mapping;
+using POIneer.Render.Application.Options;
 using POIneer.Render.Domain.Models;
+using POIneer.Render.Ports;
 
 public sealed class RenderRegion : IRenderRegion
 {
@@ -14,6 +15,7 @@ public sealed class RenderRegion : IRenderRegion
     private readonly ISqliteDatabaseInitializer _dbInit;
     private readonly IExporter _exporter;
     private readonly IRawPoiMapper _rawPoiMapper;
+    private readonly RendererOptions _rendererOptions;
 
     public RenderRegion(
         ILogger<RenderRegion> log,
@@ -21,7 +23,8 @@ public sealed class RenderRegion : IRenderRegion
         ISqliteDatabaseInitializer dbInit,
         IOsmReader osmReader,
         IExporter exporter,
-        IRawPoiMapper rawPoiMapper)
+        IRawPoiMapper rawPoiMapper,
+        RendererOptions rendererOptions)
     {
         _logger = log;
         _polygonCutter = polygonCutter;
@@ -29,6 +32,7 @@ public sealed class RenderRegion : IRenderRegion
         _dbInit = dbInit;
         _exporter = exporter;
         _rawPoiMapper = rawPoiMapper;
+        _rendererOptions = rendererOptions;
     }
 
     public async Task RunAsync(
@@ -61,6 +65,15 @@ public sealed class RenderRegion : IRenderRegion
         Directory.CreateDirectory(regionOutDir);
 
         var outRegionPath = Path.Combine(regionOutDir, "poi.sqlite");
+        if (File.Exists(outRegionPath) && !_rendererOptions.OverwriteDatabase)
+        {
+            _logger.LogInformation("({Id}) Output SQLite already exists at {Out}, skipping rendering (overwrite disabled).", regionDto.Id, outRegionPath);
+            return;
+        }
+        else if (File.Exists(outRegionPath) && _rendererOptions.OverwriteDatabase)
+        {
+            _logger.LogInformation("({Id}) Output SQLite already exists at {Out}, but overwrite is enabled, re-rendering.", regionDto.Id, outRegionPath);
+        }
         var outputSqlitePathFull = Path.GetFullPath(outRegionPath);
 
         _logger.LogInformation("({Id}) Initializing SQLite database: {Out}", regionDto.Id, outputSqlitePathFull);

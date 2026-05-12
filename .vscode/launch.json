@@ -16,6 +16,8 @@
         // You can optionally override config via command line:
         // "--Renderer:RegionsJson=config/regions.local.json"
         // "--Renderer:OnlyRegionId=berlin"
+        "--Renderer:OverwriteDatabase=true",
+        "--Renderer:OverwritePbf=false"
       ],
       "env": {
         // Host environment used by appsettings.{Environment}.json
