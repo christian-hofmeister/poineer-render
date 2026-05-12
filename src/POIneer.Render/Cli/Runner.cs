@@ -33,6 +33,7 @@ public sealed class Runner
     public async Task<int> RunAsync(CancellationToken ct)
     {
         var contentRoot = _hostEnvironment.ContentRootPath;
+        var redownloadPbf = _rendererOptions.OverwritePbf;
 
         string Resolve(string p) => Path.IsPathRooted(p) ? p : Path.GetFullPath(Path.Combine(contentRoot, p));
 
@@ -82,7 +83,7 @@ public sealed class Runner
                     _logger.LogInformation("Downloading PBF for {Region} ... to {TargetPath}", r.Id, pbfPath);
                     await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
                 }
-                else if (!_rendererOptions.OverwritePbf)
+                else if (!redownloadPbf)
                 {
                     _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, skipping download (overwrite disabled).", r.Id, pbfPath);
                 }

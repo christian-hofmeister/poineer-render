@@ -43,6 +43,8 @@ public sealed class RenderRegion : IRenderRegion
         CancellationToken ct = default)
     {
         var pbfPath = Path.Combine(workDir, regionDto.Id, "osm.pbf");
+        //TODO: consider moving pbf downloading to a separate use case, to keep this one focused on the rendering logic
+        var recreateDatabase = _rendererOptions.OverwriteDatabase || _rendererOptions.OverwritePbf;
 
         if (!File.Exists(pbfPath))
             throw new FileNotFoundException($"PBF not found: {pbfPath}");
@@ -71,7 +73,7 @@ public sealed class RenderRegion : IRenderRegion
             _logger.LogInformation("({Id}) Output SQLite already exists at {Out}, skipping rendering (overwrite disabled).", regionDto.Id, outRegionPath);
             return;
         }
-        else if (File.Exists(outRegionPath) && _rendererOptions.OverwriteDatabase)
+        else if (File.Exists(outRegionPath) && recreateDatabase)
         {
             _logger.LogInformation("({Id}) Output SQLite already exists at {Out}, but overwrite is enabled, re-rendering.", regionDto.Id, outRegionPath);
             File.Delete(outRegionPath);
