@@ -43,7 +43,6 @@ public sealed class RenderRegion : IRenderRegion
         CancellationToken ct = default)
     {
         var pbfPath = Path.Combine(workDir, regionDto.Id, "osm.pbf");
-        //TODO: consider moving pbf downloading to a separate use case, to keep this one focused on the rendering logic
         var recreateDatabase = _rendererOptions.OverwriteDatabase || _rendererOptions.OverwritePbf;
 
         if (!File.Exists(pbfPath))
