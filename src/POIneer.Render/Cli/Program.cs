@@ -37,11 +37,8 @@ internal class Program
         builder.Services
             .AddOptions<RendererOptions>()
             .Bind(bindSource)
-            .Validate(o =>
-                !string.IsNullOrWhiteSpace(o.WorkDir) &&
-                !string.IsNullOrWhiteSpace(o.OutDir) &&
-                !string.IsNullOrWhiteSpace(o.RegionsJson),
-                "WorkDir, OutDir, and RegionsJson must be set")
+            .Validate(RendererOptionsValidation.HasRequiredPaths, RendererOptionsValidation.RequiredPathsMessage)
+            .Validate(RendererOptionsValidation.HasValidDownloadTimeout, RendererOptionsValidation.DownloadTimeoutMessage)
             .ValidateOnStart();
 
         builder.Services
