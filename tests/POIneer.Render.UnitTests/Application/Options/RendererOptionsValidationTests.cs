@@ -1,3 +1,4 @@
+using FluentAssertions;
 using POIneer.Render.Application.Options;
 using Xunit;
 
@@ -23,7 +24,7 @@ public sealed class RendererOptionsValidationTests
         var result = RendererOptionsValidation.HasValidDownloadTimeout(options);
 
         // Assert
-        Assert.False(result);
+        result.Should().BeFalse();
     }
 
     [Fact]
@@ -42,6 +43,6 @@ public sealed class RendererOptionsValidationTests
         var result = RendererOptionsValidation.HasValidDownloadTimeout(options);
 
         // Assert
-        Assert.True(result);
+        result.Should().BeTrue();
     }
 }
