@@ -4,8 +4,11 @@ public static class TestFiles
         string path,
         string content)
     {
-        Directory.CreateDirectory(
-            Path.GetDirectoryName(path)!);
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
 
         File.WriteAllText(path, content);
     }
