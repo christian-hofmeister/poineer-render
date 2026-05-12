@@ -14,7 +14,11 @@ public sealed class HttpFileDownloader : IFileDownloader
         string targetPath,
         CancellationToken ct = default)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+        var targetDirectory = Path.GetDirectoryName(targetPath);
+        if (!string.IsNullOrEmpty(targetDirectory))
+        {
+            Directory.CreateDirectory(targetDirectory);
+        }
 
         // Download with HttpClient and stream directly to file to avoid loading the entire file into memory
         using var response = await _httpClient.GetAsync(
