@@ -17,6 +17,8 @@ using POIneer.Render.Ports;
 
 internal class Program
 {
+    private static readonly string ProjectDirectoryRelativeToBuildOutput = Path.Combine("..", "..", "..");
+
     private static async Task<int> Main(string[] args)
     {
         var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
@@ -97,7 +99,7 @@ internal class Program
         if (File.Exists(Path.Combine(baseDirectory, "appsettings.json")))
             return baseDirectory;
 
-        var projectDirectory = Path.GetFullPath(Path.Combine(baseDirectory, "..", "..", ".."));
+        var projectDirectory = Path.GetFullPath(Path.Combine(baseDirectory, ProjectDirectoryRelativeToBuildOutput));
         if (File.Exists(Path.Combine(projectDirectory, "appsettings.json")))
             return projectDirectory;
 
