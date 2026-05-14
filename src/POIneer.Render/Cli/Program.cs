@@ -19,7 +19,11 @@ internal class Program
 {
     private static async Task<int> Main(string[] args)
     {
-        var builder = Host.CreateApplicationBuilder(args);
+        var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+        {
+            Args = args,
+            ContentRootPath = ResolveContentRoot()
+        });
 
         builder.Configuration
             .SetBasePath(builder.Environment.ContentRootPath)
@@ -81,5 +85,22 @@ internal class Program
         return await runner.RunAsync(
             app.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping
         );
+    }
+
+    private static string ResolveContentRoot()
+    {
+        var currentDirectory = Directory.GetCurrentDirectory();
+        if (File.Exists(Path.Combine(currentDirectory, "appsettings.json")))
+            return currentDirectory;
+
+        var baseDirectory = Path.GetDirectoryName(typeof(Program).Assembly.Location)!;
+        if (File.Exists(Path.Combine(baseDirectory, "appsettings.json")))
+            return baseDirectory;
+
+        var projectDirectory = Path.GetFullPath(Path.Combine(baseDirectory, "..", "..", ".."));
+        if (File.Exists(Path.Combine(projectDirectory, "appsettings.json")))
+            return projectDirectory;
+
+        return currentDirectory;
     }
 }
