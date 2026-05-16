@@ -296,6 +296,102 @@ When changing migrations or Flyway path handling:
 
 ---
 
+## ▶️ Run the Renderer
+
+Run the renderer locally:
+
+```bash
+dotnet run --project src/POIneer.Render
+```
+
+The renderer will:
+
+1. resolve configured regions
+2. download and process OSM data
+3. apply Flyway migrations
+4. extract POIs
+5. generate offline-ready SQLite databases
+
+Current MVP production configuration renders:
+
+- Berlin
+
+---
+
+## ⚙️ Configuration
+
+Configuration is loaded from:
+
+- `appsettings.json`
+- `appsettings.{Environment}.json`
+- environment variables
+- command line arguments
+
+Example:
+
+```json
+{
+  "Renderer": {
+    "OnlyRegionId": "berlin"
+  }
+}
+```
+
+Environment variables can override configuration values:
+
+```bash
+POINEER_RENDER__RENDERER__ONLYREGIONID=berlin
+```
+
+---
+
+## 📂 Output Structure
+
+Generated files are stored inside the configured data directories.
+
+Example structure:
+
+```text
+data/
+├─ dev/
+│  ├─ work/
+│  └─ out/
+└─ prod/
+   ├─ work/
+   └─ out/
+```
+
+Example generated database:
+
+```text
+data/prod/out/berlin/poi.sqlite
+```
+
+Temporary and intermediate files are written to the corresponding `work` directory.
+
+---
+
+## 🚧 MVP Status
+
+Current MVP capabilities:
+
+- regional OSM rendering
+- SQLite export
+- Flyway migrations
+- automated tests
+- Jenkins CI
+- configurable regions
+- offline-ready POI database generation
+
+Planned future features:
+
+- scheduled region updates
+- admin UI
+- API layer
+- mobile app integration
+- multi-region rendering
+- tile generation
+
 ## Development Notes
 
 - Follow the repository-specific guidance in `AGENTS.md` before making larger changes.
