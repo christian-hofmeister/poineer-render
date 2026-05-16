@@ -76,12 +76,20 @@ public sealed class RunnerTests
         var workDir = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.WorkDir));
         var outDir = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.OutDir));
         var expectedPbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        _fileDownloader
+            .DownloadAsync(region.PbfUrl, expectedPbfPath, Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText(expectedPbfPath, "downloaded pbf");
+                return Task.FromResult(expectedPbfPath);
+            });
 
         // Act
         var result = await sut.RunAsync(CancellationToken.None);
 
         // Assert
         result.Should().Be(0);
+        File.Exists(expectedPbfPath).Should().BeTrue();
         await _fileDownloader.Received(1).DownloadAsync(region.PbfUrl, expectedPbfPath, Arg.Any<CancellationToken>());
         await _renderRegion.Received(1).RunAsync(region, workDir, outDir, Arg.Any<CancellationToken>());
     }
