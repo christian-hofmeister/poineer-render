@@ -19,4 +19,17 @@
     <Link>migrations\%(RecursiveDir)%(Filename)%(Extension)</Link>
   </Content>
   </ItemGroup>
+
+  <ItemGroup>
+  <Content Include="appsettings*.json">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+  </Content>
+
+  <Content Include="Cli/config/*.json">
+    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+  </Content>
+</ItemGroup>
+
 </Project>
