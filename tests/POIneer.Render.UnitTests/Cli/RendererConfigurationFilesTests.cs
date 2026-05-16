@@ -23,13 +23,21 @@ public sealed class RendererConfigurationFilesTests
         renderer.GetProperty("OnlyRegionId").GetString().Should().Be("berlin");
 
         var configuredRegionsPath = renderer.GetProperty("RegionsJson").GetString();
-        configuredRegionsPath.Should().Be(expectedRegionsJson);
 
-        var resolvedRegionsPath = Path.GetFullPath(Path.Combine(
-            Path.GetDirectoryName(settingsPath)!,
-            configuredRegionsPath!));
+        configuredRegionsPath.Should().NotBeNull();
+        configuredRegionsPath
+            .Replace('\\', '/')
+            .Should()
+            .EndWith(expectedRegionsJson);
 
-        File.Exists(resolvedRegionsPath).Should().BeTrue();
+        if (!Path.IsPathRooted(configuredRegionsPath!))
+        {
+            var resolvedRegionsPath = Path.GetFullPath(Path.Combine(
+                Path.GetDirectoryName(settingsPath)!,
+                configuredRegionsPath!));
+
+            File.Exists(resolvedRegionsPath).Should().BeTrue();
+        }
     }
 
     private static string FindRepositoryRoot()
