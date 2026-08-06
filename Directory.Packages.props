@@ -34,6 +34,6 @@
 
   <ItemGroup Label="Code Coverage">
     <PackageVersion Include="coverlet.collector" Version="10.0.0" />
-    <PackageVersion Include="coverlet.msbuild" Version="10.0.0" />
+    <PackageVersion Include="coverlet.msbuild" Version="10.0.1" />
   </ItemGroup>
 </Project>
