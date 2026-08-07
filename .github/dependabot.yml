@@ -1,7 +1,48 @@
 version: 2
+
 updates:
   - package-ecosystem: "nuget"
     directory: "/"
+    target-branch: "develop"
+
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+
+    open-pull-requests-limit: 10
+
+    groups:
+      microsoft-dotnet:
+        patterns:
+          - "Microsoft.AspNetCore.*"
+          - "Microsoft.Extensions.*"
+        update-types:
+          - "minor"
+          - "patch"
+
+      data-storage:
+        patterns:
+          - "Microsoft.Data.Sqlite"
+          - "SQLitePCLRaw.*"
+          - "OsmSharp"
+        update-types:
+          - "minor"
+          - "patch"
+
+      testing:
+        patterns:
+          - "Microsoft.NET.Test.Sdk"
+          - "xunit*"
+          - "FluentAssertions"
+          - "NSubstitute"
+          - "JunitXml.TestLogger"
+        update-types:
+          - "minor"
+          - "patch"
+
+      code-coverage:
+        patterns:
+          - "coverlet.*"
+          - "dotnet-reportgenerator-globaltool"
+        update-types:
+          - "minor"
+          - "patch"
