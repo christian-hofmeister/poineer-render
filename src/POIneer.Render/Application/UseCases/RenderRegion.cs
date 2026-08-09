@@ -1,4 +1,3 @@
-
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Application.Contracts;
@@ -64,7 +63,6 @@ public sealed class RenderRegion : IRenderRegion
         var cutPbf = await _polygonCutter.CutAsync(pbfPath, regionDto.Poly, ct);
 
         _logger.LogInformation("({Id}) Reading OSM → POIs...", regionDto.Id);
-
         var rawPois = _osmReader.ReadAmenityNodesAsync(cutPbf, ct);
 
         _logger.LogInformation("({Id}) Initializing SQLite database: {Out}", regionDto.Id, outputSqlitePathFull);
@@ -73,7 +71,10 @@ public sealed class RenderRegion : IRenderRegion
             ct);
 
         _logger.LogInformation("({Id}) Exporting to SQLite: {Out}", regionDto.Id, outputSqlitePathFull);
-        await _exporter.ExportAsync(MapRawPoisAsync(rawPois, ct), outputSqlitePathFull, ct);
+        await _exporter.ExportAsync(
+            MapRawPoisAsync(rawPois, ct),
+            outputSqlitePathFull,
+            ct);
 
         _logger.LogInformation("({Id}) Validating generated dataset: {Out}", regionDto.Id, outputSqlitePathFull);
         var result = await _datasetValidator.ValidateAsync(
@@ -85,7 +86,6 @@ public sealed class RenderRegion : IRenderRegion
             throw new InvalidOperationException(
                 $"Generated dataset is invalid: {string.Join(", ", result.Errors)}");
         }
-
         _logger.LogInformation("({Id}) Done.", regionDto.Id);
     }
 
