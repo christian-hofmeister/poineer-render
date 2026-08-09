@@ -4,6 +4,7 @@ using NSubstitute;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Mapping;
 using POIneer.Render.Application.Options;
+using POIneer.Render.Application.Ports;
 using POIneer.Render.Application.Ports.Model;
 using POIneer.Render.Application.UseCases;
 using POIneer.Render.Domain.Models;
@@ -22,6 +23,7 @@ public sealed class RenderRegionTests
     private readonly IOsmReader _osmReader = Substitute.For<IOsmReader>();
     private readonly ISqliteDatabaseInitializer _dbInit = Substitute.For<ISqliteDatabaseInitializer>();
     private readonly IExporter _exporter = Substitute.For<IExporter>();
+    private readonly IDatasetValidator _datasetValidator = Substitute.For<IDatasetValidator>();
 
 
     private RenderRegion CreateSut(
@@ -31,6 +33,7 @@ public sealed class RenderRegionTests
         IOsmReader? osmReader = null,
         IExporter? exporter = null,
         IRawPoiMapper? mapper = null,
+        IDatasetValidator? datasetValidator = null,
         bool overwriteDatabase = false,
         bool overwritePbf = false)
         => new(
@@ -40,7 +43,8 @@ public sealed class RenderRegionTests
             osmReader ?? _osmReader,
             exporter ?? _exporter,
             mapper ?? Substitute.For<IRawPoiMapper>(),
-            TestRendererOptions.Create(overwriteDatabase, overwritePbf));
+            TestRendererOptions.Create(overwriteDatabase, overwritePbf),
+            datasetValidator ?? _datasetValidator);
 
     [Fact]
     public async Task RunAsync_ThrowsFileNotFoundException_WhenPbfDoesNotExist()
