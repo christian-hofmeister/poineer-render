@@ -1,4 +1,3 @@
-namespace POIneer.Render.Application.UseCases;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -6,8 +5,11 @@ using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Mapping;
 using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
+using POIneer.Render.Application.Ports.Model;
 using POIneer.Render.Domain.Models;
 using POIneer.Render.Ports;
+
+namespace POIneer.Render.Application.UseCases;
 
 public sealed class RenderRegion : IRenderRegion
 {
@@ -46,11 +48,17 @@ public sealed class RenderRegion : IRenderRegion
         string outDir,
         CancellationToken ct = default)
     {
-        var pbfPath = Path.Combine(workDir, regionDto.Id, "osm.pbf");
+        var pbfPath = GetPbfPath(workDir, regionDto.Id);
         var recreateDatabase = _rendererOptions.OverwriteDatabase || _rendererOptions.OverwritePbf;
 
         if (!File.Exists(pbfPath))
             throw new FileNotFoundException($"PBF not found: {pbfPath}");
+
+        var outputSqlitePathFull = GetOutputSqlitePath(outDir, regionDto.Id, recreateDatabase, regionDto.Id);
+        if (outputSqlitePathFull is null)
+        {
+            return;
+        }
 
         _logger.LogInformation("({Id}) Cutting polygon...", regionDto.Id);
         var cutPbf = await _polygonCutter.CutAsync(pbfPath, regionDto.Poly, ct);
@@ -59,38 +67,13 @@ public sealed class RenderRegion : IRenderRegion
 
         var rawPois = _osmReader.ReadAmenityNodesAsync(cutPbf, ct);
 
-        async IAsyncEnumerable<Poi> MapRawPoisAsync()
-        {
-            await foreach (var rawPoi in rawPois.WithCancellation(ct))
-            {
-                yield return _rawPoiMapper.Map(rawPoi);
-            }
-        }
-
-        var regionOutDir = Path.Combine(outDir, regionDto.Id);
-        Directory.CreateDirectory(regionOutDir);
-
-        var outRegionPath = Path.Combine(regionOutDir, "poi.sqlite");
-        if (File.Exists(outRegionPath) && !recreateDatabase)
-        {
-            _logger.LogInformation("({Id}) Output SQLite already exists at {Out}, skipping rendering (overwrite disabled).", regionDto.Id, outRegionPath);
-            return;
-        }
-        else if (File.Exists(outRegionPath) && recreateDatabase)
-        {
-            _logger.LogInformation("({Id}) Output SQLite already exists at {Out}, but overwrite is enabled, re-rendering.", regionDto.Id, outRegionPath);
-            File.Delete(outRegionPath);
-        }
-        var outputSqlitePathFull = Path.GetFullPath(outRegionPath);
-
         _logger.LogInformation("({Id}) Initializing SQLite database: {Out}", regionDto.Id, outputSqlitePathFull);
-
         await _dbInit.InitializeAsync(
             outputSqlitePathFull,
             ct);
 
         _logger.LogInformation("({Id}) Exporting to SQLite: {Out}", regionDto.Id, outputSqlitePathFull);
-        await _exporter.ExportAsync(MapRawPoisAsync(), outputSqlitePathFull, ct);
+        await _exporter.ExportAsync(MapRawPoisAsync(rawPois, ct), outputSqlitePathFull, ct);
 
         _logger.LogInformation("({Id}) Validating generated dataset: {Out}", regionDto.Id, outputSqlitePathFull);
         var result = await _datasetValidator.ValidateAsync(
@@ -104,5 +87,37 @@ public sealed class RenderRegion : IRenderRegion
         }
 
         _logger.LogInformation("({Id}) Done.", regionDto.Id);
+    }
+
+    private static string GetPbfPath(string workDir, string regionId) =>
+        Path.Combine(workDir, regionId, "osm.pbf");
+
+    private string? GetOutputSqlitePath(string outDir, string regionId, bool recreateDatabase, string logId)
+    {
+        var regionOutDir = Path.Combine(outDir, regionId);
+        Directory.CreateDirectory(regionOutDir);
+
+        var outRegionPath = Path.Combine(regionOutDir, "poi.sqlite");
+        if (File.Exists(outRegionPath) && !recreateDatabase)
+        {
+            _logger.LogInformation("({Id}) Output SQLite already exists at {Out}, skipping rendering (overwrite disabled).", logId, outRegionPath);
+            return null;
+        }
+
+        if (File.Exists(outRegionPath) && recreateDatabase)
+        {
+            _logger.LogInformation("({Id}) Output SQLite already exists at {Out}, but overwrite is enabled, re-rendering.", logId, outRegionPath);
+            File.Delete(outRegionPath);
+        }
+
+        return Path.GetFullPath(outRegionPath);
+    }
+
+    private async IAsyncEnumerable<Poi> MapRawPoisAsync(IAsyncEnumerable<RawPoi> rawPois, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        await foreach (var rawPoi in rawPois.WithCancellation(ct))
+        {
+            yield return _rawPoiMapper.Map(rawPoi);
+        }
     }
 }

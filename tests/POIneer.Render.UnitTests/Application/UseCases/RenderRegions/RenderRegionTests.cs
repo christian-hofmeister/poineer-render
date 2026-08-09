@@ -87,6 +87,64 @@ public sealed class RenderRegionTests
     }
 
     [Fact]
+    public async Task RunAsync_SkipsRendering_WhenOutputDatabaseAlreadyExists_AndOverwriteDisabled()
+    {
+        // Arrange
+        var sut = CreateSut();
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "http://example.com/berlin.osm.pbf",
+            Poly: "berlin.poly"
+        );
+
+        await using var tempDir =
+            TestTemporaryDirectories.Create(
+                "skips-rendering-when-output-exists",
+                false);
+
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
+
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        var existingOutputPath =
+            Path.Combine(outDir, region.Id, "poi.sqlite");
+
+        TestFiles.WriteAllText(existingOutputPath, "existing");
+
+        // Act
+        await sut.RunAsync(
+            region,
+            workDir,
+            outDir,
+            CancellationToken.None);
+
+        // Assert
+        await _polygonCutter
+            .DidNotReceiveWithAnyArgs()
+            .CutAsync(default!, default!, default);
+
+        _osmReader
+            .DidNotReceiveWithAnyArgs()
+            .ReadAmenityNodesAsync(default!, default);
+
+        await _dbInit
+            .DidNotReceiveWithAnyArgs()
+            .InitializeAsync(default!, default);
+
+        await _exporter
+            .DidNotReceiveWithAnyArgs()
+            .ExportAsync(default!, default!, default);
+
+        await _datasetValidator
+            .DidNotReceiveWithAnyArgs()
+            .ValidateAsync(default!, default);
+    }
+
+    [Fact]
     public async Task RunAsync_CallsPorts_WithExpectedPaths_AndInOrder()
     {
         // Arrange
