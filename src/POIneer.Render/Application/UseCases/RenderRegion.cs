@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Mapping;
 using POIneer.Render.Application.Options;
+using POIneer.Render.Application.Ports;
 using POIneer.Render.Domain.Models;
 using POIneer.Render.Ports;
 
@@ -17,6 +18,7 @@ public sealed class RenderRegion : IRenderRegion
     private readonly IExporter _exporter;
     private readonly IRawPoiMapper _rawPoiMapper;
     private readonly RendererOptions _rendererOptions;
+    private readonly IDatasetValidator _datasetValidator;
 
     public RenderRegion(
         ILogger<RenderRegion> log,
@@ -25,7 +27,8 @@ public sealed class RenderRegion : IRenderRegion
         IOsmReader osmReader,
         IExporter exporter,
         IRawPoiMapper rawPoiMapper,
-        IOptions<RendererOptions> options)
+        IOptions<RendererOptions> options,
+        IDatasetValidator datasetValidator)
     {
         _logger = log;
         _polygonCutter = polygonCutter;
@@ -34,6 +37,7 @@ public sealed class RenderRegion : IRenderRegion
         _exporter = exporter;
         _rawPoiMapper = rawPoiMapper;
         _rendererOptions = options.Value;
+        _datasetValidator = datasetValidator;
     }
 
     public async Task RunAsync(
@@ -87,6 +91,17 @@ public sealed class RenderRegion : IRenderRegion
 
         _logger.LogInformation("({Id}) Exporting to SQLite: {Out}", regionDto.Id, outputSqlitePathFull);
         await _exporter.ExportAsync(MapRawPoisAsync(), outputSqlitePathFull, ct);
+
+        _logger.LogInformation("({Id}) Validating generated dataset: {Out}", regionDto.Id, outputSqlitePathFull);
+        var result = await _datasetValidator.ValidateAsync(
+            outputSqlitePathFull,
+            ct);
+
+        if (!result.IsValid)
+        {
+            throw new InvalidOperationException(
+                $"Generated dataset is invalid: {string.Join(", ", result.Errors)}");
+        }
 
         _logger.LogInformation("({Id}) Done.", regionDto.Id);
     }
