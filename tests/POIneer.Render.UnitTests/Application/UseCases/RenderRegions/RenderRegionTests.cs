@@ -1,9 +1,7 @@
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Mapping;
-using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
 using POIneer.Render.Application.Ports.Model;
 using POIneer.Render.Application.UseCases;
@@ -36,7 +34,18 @@ public sealed class RenderRegionTests
         IDatasetValidator? datasetValidator = null,
         bool overwriteDatabase = false,
         bool overwritePbf = false)
-        => new(
+    {
+        var validator = datasetValidator ?? _datasetValidator;
+
+        validator
+            .ValidateAsync(
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new DatasetValidationResult(
+                IsValid: true,
+                Errors: []));
+
+        return new RenderRegion(
             logger ?? _logger,
             polygonCutter ?? _polygonCutter,
             dbInit ?? _dbInit,
@@ -44,7 +53,8 @@ public sealed class RenderRegionTests
             exporter ?? _exporter,
             mapper ?? Substitute.For<IRawPoiMapper>(),
             TestRendererOptions.Create(overwriteDatabase, overwritePbf),
-            datasetValidator ?? _datasetValidator);
+            validator);
+    }
 
     [Fact]
     public async Task RunAsync_ThrowsFileNotFoundException_WhenPbfDoesNotExist()
