@@ -69,32 +69,51 @@ public sealed class Runner
             throw new FileNotFoundException($"Regions file not found: {regionsPath}");
 
         var regions = await _regionSource.GetRegionsAsync(regionsPath, ct);
+        var failedRegionIds = new List<string>();
 
         foreach (var r in regions.Where(r => string.IsNullOrEmpty(_rendererOptions.OnlyRegionId) || r.Id == _rendererOptions.OnlyRegionId))
         {
             using (_logger.BeginScope("region:{RegionId}", r.Id))
             {
-                var regionWorkDir = Path.Combine(workDir, r.Id);
-                Directory.CreateDirectory(regionWorkDir);
-                var pbfPath = Path.Combine(regionWorkDir, "osm.pbf");
+                try
+                {
+                    var regionWorkDir = Path.Combine(workDir, r.Id);
+                    Directory.CreateDirectory(regionWorkDir);
+                    var pbfPath = Path.Combine(regionWorkDir, "osm.pbf");
 
-                if (!File.Exists(pbfPath))
-                {
-                    _logger.LogInformation("Downloading PBF for {Region} ... to {TargetPath}", r.Id, pbfPath);
-                    await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
+                    if (!File.Exists(pbfPath))
+                    {
+                        _logger.LogInformation("Downloading PBF for {Region} ... to {TargetPath}", r.Id, pbfPath);
+                        await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
+                    }
+                    else if (!redownloadPbf)
+                    {
+                        _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, skipping download (overwrite disabled).", r.Id, pbfPath);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, but overwrite is enabled, re-downloading.", r.Id, pbfPath);
+                        await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
+                    }
+                    await _renderRegionUseCase.RunAsync(r, workDir, outDir, ct);
                 }
-                else if (!redownloadPbf)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, skipping download (overwrite disabled).", r.Id, pbfPath);
+                    _logger.LogError(ex, "({Region}) Region processing failed: {Message}", r.Id, ex.Message);
+                    failedRegionIds.Add(r.Id);
                 }
-                else
-                {
-                    _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, but overwrite is enabled, re-downloading.", r.Id, pbfPath);
-                    await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
-                }
-                await _renderRegionUseCase.RunAsync(r, workDir, outDir, ct);
             }
         }
+
+        if (failedRegionIds.Count > 0)
+        {
+            _logger.LogError(
+                "Completed with {FailedCount} failed region(s): {FailedRegions}",
+                failedRegionIds.Count,
+                string.Join(", ", failedRegionIds));
+            return 1;
+        }
+
         _logger.LogInformation("All regions processed.");
         return 0;
     }

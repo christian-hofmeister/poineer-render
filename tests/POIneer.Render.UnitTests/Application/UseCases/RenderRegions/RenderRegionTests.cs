@@ -330,6 +330,67 @@ public sealed class RenderRegionTests
     }
 
     [Fact]
+    public async Task RunAsync_QuarantinesInvalidDataset_AndThrows_WhenValidationFails()
+    {
+        // Arrange
+        var validator = Substitute.For<IDatasetValidator>();
+        var validationErrors = new[] { "Required table 'poi' is missing." };
+
+        var sut = CreateSut(datasetValidator: validator);
+
+        // CreateSut wires the validator to report a valid dataset by default; override
+        // that here to exercise the failure path.
+        validator
+            .ValidateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DatasetValidationResult(IsValid: false, Errors: validationErrors));
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "http://example.com/berlin.osm.pbf",
+            Poly: "berlin.poly");
+
+        await using var tempDir = TestTemporaryDirectories.Create("quarantines-invalid-dataset", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
+
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        _osmReader
+            .ReadAmenityNodesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<RawPoi>());
+
+        // The real exporter would create the output file; simulate that so quarantine
+        // has an actual file to move.
+        _exporter
+            .ExportAsync(
+                Arg.Any<IAsyncEnumerable<Poi>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText((string)callInfo[1], "dummy sqlite bytes");
+                return Task.CompletedTask;
+            });
+
+        // Act
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sut.RunAsync(region, workDir, outDir, CancellationToken.None));
+
+        // Assert
+        Assert.Contains("invalid", ex.Message);
+        Assert.Contains("quarantined", ex.Message);
+
+        var canonicalOutputPath = Path.Combine(outDir, region.Id, "poi.sqlite");
+        Assert.False(File.Exists(canonicalOutputPath));
+
+        var quarantineDir = Path.Combine(outDir, region.Id, "_failed");
+        Assert.True(Directory.Exists(quarantineDir));
+        Assert.Single(Directory.GetFiles(quarantineDir, "poi.*.sqlite"));
+    }
+
+    [Fact]
     public async Task RunAsync_RecreatesDatabase_WhenOutputExistsAndOverwritePbfIsEnabled()
     {
         // Arrange

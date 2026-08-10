@@ -12,6 +12,8 @@ namespace POIneer.Render.Application.UseCases;
 
 public sealed class RenderRegion : IRenderRegion
 {
+    private static readonly string[] SqliteSidecarSuffixes = ["-wal", "-shm", "-journal"];
+
     private readonly ILogger<RenderRegion> _logger;
     private readonly IPolygonCutter _polygonCutter;
     private readonly IOsmReader _osmReader;
@@ -83,10 +85,45 @@ public sealed class RenderRegion : IRenderRegion
 
         if (!result.IsValid)
         {
+            var quarantinePath = QuarantineInvalidDataset(outDir, regionDto.Id, outputSqlitePathFull);
+
+            _logger.LogError(
+                "({Id}) Generated dataset failed validation and was moved to quarantine: {QuarantinePath}. Errors: {Errors}",
+                regionDto.Id,
+                quarantinePath,
+                string.Join("; ", result.Errors));
+
             throw new InvalidOperationException(
-                $"Generated dataset is invalid: {string.Join(", ", result.Errors)}");
+                $"Generated dataset for region '{regionDto.Id}' is invalid and was quarantined at {quarantinePath}: {string.Join(", ", result.Errors)}");
         }
         _logger.LogInformation("({Id}) Done.", regionDto.Id);
+    }
+
+    /// <summary>
+    /// Moves an invalid dataset out of the canonical output location into a per-region
+    /// quarantine folder so it doesn't get mistaken for a successfully rendered dataset
+    /// on a subsequent run, while still being preserved for post-mortem inspection.
+    /// </summary>
+    private static string QuarantineInvalidDataset(string outDir, string regionId, string invalidDatasetPath)
+    {
+        var quarantineDir = Path.Combine(outDir, regionId, "_failed");
+        Directory.CreateDirectory(quarantineDir);
+
+        var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
+        var quarantinePath = Path.Combine(quarantineDir, $"poi.{timestamp}.sqlite");
+
+        File.Move(invalidDatasetPath, quarantinePath, overwrite: true);
+
+        foreach (var suffix in SqliteSidecarSuffixes)
+        {
+            var sidecarPath = invalidDatasetPath + suffix;
+            if (File.Exists(sidecarPath))
+            {
+                File.Move(sidecarPath, quarantinePath + suffix, overwrite: true);
+            }
+        }
+
+        return quarantinePath;
     }
 
     private static string GetPbfPath(string workDir, string regionId) =>
