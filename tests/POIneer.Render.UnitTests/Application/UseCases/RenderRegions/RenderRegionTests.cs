@@ -370,7 +370,7 @@ public sealed class RenderRegionTests
                 Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
-                TestFiles.WriteAllText((string)callInfo[1], "dummy sqlite bytes");
+                TestFiles.WriteAllText(callInfo.ArgAt<string>(1), "dummy sqlite bytes");
                 return Task.CompletedTask;
             });
 
@@ -431,5 +431,49 @@ public sealed class RenderRegionTests
             existingOutputPath,
             Arg.Any<CancellationToken>());
         Assert.False(File.Exists(existingOutputPath));
+    }
+
+    [Theory]
+    [InlineData("-wal")]
+    [InlineData("-shm")]
+    [InlineData("-journal")]
+    public async Task RunAsync_DeletesSqliteSidecarFiles_WhenRecreatingDatabase(string sidecarSuffix)
+    {
+        // Arrange
+        var sut = CreateSut(overwritePbf: true);
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "http://example.com/berlin.osm.pbf",
+            Poly: "berlin.poly");
+
+        await using var tempDir = TestTemporaryDirectories.Create("recreate-db-deletes-sidecars", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
+
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        var existingOutputPath = Path.Combine(outDir, region.Id, "poi.sqlite");
+        TestFiles.WriteAllText(existingOutputPath, "existing");
+
+        var sidecarPath = existingOutputPath + sidecarSuffix;
+        TestFiles.WriteAllText(sidecarPath, "stale sidecar");
+
+        var cutPbfPath = Path.Combine(workDir, region.Id, "cut.osm.pbf");
+        _polygonCutter
+            .CutAsync(pbfPath, region.Poly, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(cutPbfPath));
+
+        _osmReader
+            .ReadAmenityNodesAsync(cutPbfPath, Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<RawPoi>());
+
+        // Act
+        await sut.RunAsync(region, workDir, outDir, CancellationToken.None);
+
+        // Assert
+        Assert.False(File.Exists(sidecarPath));
     }
 }
