@@ -126,6 +126,25 @@ public sealed class RenderRegion : IRenderRegion
         return quarantinePath;
     }
 
+    /// <summary>
+    /// Deletes a SQLite database file together with any leftover -wal/-shm/-journal
+    /// sidecar files, so a stale sidecar can't cause recovery/lock confusion the next
+    /// time this path is opened.
+    /// </summary>
+    private static void DeleteSqliteDatabaseWithSidecars(string sqliteFilePath)
+    {
+        File.Delete(sqliteFilePath);
+
+        foreach (var suffix in SqliteSidecarSuffixes)
+        {
+            var sidecarPath = sqliteFilePath + suffix;
+            if (File.Exists(sidecarPath))
+            {
+                File.Delete(sidecarPath);
+            }
+        }
+    }
+
     private static string GetPbfPath(string workDir, string regionId) =>
         Path.Combine(workDir, regionId, "osm.pbf");
 
@@ -144,7 +163,7 @@ public sealed class RenderRegion : IRenderRegion
         if (File.Exists(outRegionPath) && recreateDatabase)
         {
             _logger.LogInformation("({Id}) Output SQLite already exists at {Out}, but overwrite is enabled, re-rendering.", logId, outRegionPath);
-            File.Delete(outRegionPath);
+            DeleteSqliteDatabaseWithSidecars(outRegionPath);
         }
 
         return Path.GetFullPath(outRegionPath);
