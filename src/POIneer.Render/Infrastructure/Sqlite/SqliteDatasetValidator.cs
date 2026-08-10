@@ -36,7 +36,13 @@ public sealed class SqliteDatasetValidator : IDatasetValidator
             var connectionString = new SqliteConnectionStringBuilder
             {
                 DataSource = path,
-                Mode = SqliteOpenMode.ReadOnly
+                Mode = SqliteOpenMode.ReadOnly,
+                // Pooling keeps the native sqlite3 handle open in the background even
+                // after the SqliteConnection is disposed, which on Windows blocks a
+                // subsequent File.Move/Delete of this path (e.g. promoting a validated
+                // staging file to its canonical location). Disable it so the file handle
+                // is actually released when validation is done.
+                Pooling = false
             }.ToString();
 
             await using var connection = new SqliteConnection(connectionString);
