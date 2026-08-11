@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Options;
 using POIneer.Render.Ports;
@@ -191,6 +192,43 @@ public sealed class RunnerTests
 
         await _renderRegion.Received(1).RunAsync(berlin, workDir, outDir, Arg.Any<CancellationToken>());
         await _renderRegion.DidNotReceive().RunAsync(hamburg, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_ContinuesWithRemainingRegions_AndReturnsNonZero_WhenARegionFails()
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("runner-continues-after-region-failure", false);
+        var options = CreateOptions();
+        var sut = CreateSut(tempDir.DirectoryPath, options);
+
+        var regionsPath = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.RegionsJson));
+        TestFiles.WriteAllText(regionsPath, "[]");
+
+        var berlin = BerlinRegion();
+        var hamburg = new RegionDto(
+            Id: "hamburg",
+            Name: "Hamburg",
+            PbfUrl: "https://example.com/hamburg.osm.pbf",
+            Poly: "hamburg.poly");
+
+        _regionSource.GetRegionsAsync(regionsPath, Arg.Any<CancellationToken>())
+            .Returns(new[] { berlin, hamburg });
+
+        var workDir = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.WorkDir));
+        var outDir = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.OutDir));
+
+        _renderRegion
+            .RunAsync(berlin, workDir, outDir, Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("Generated dataset is invalid"));
+
+        // Act
+        var result = await sut.RunAsync(CancellationToken.None);
+
+        // Assert
+        result.Should().Be(1);
+        await _renderRegion.Received(1).RunAsync(berlin, workDir, outDir, Arg.Any<CancellationToken>());
+        await _renderRegion.Received(1).RunAsync(hamburg, workDir, outDir, Arg.Any<CancellationToken>());
     }
 
     [Fact]

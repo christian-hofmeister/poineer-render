@@ -7,11 +7,13 @@ using POIneer.Render.Adapters.Input;
 using POIneer.Render.Adapters.Output;
 using POIneer.Render.Application.Mapping;
 using POIneer.Render.Application.Options;
+using POIneer.Render.Application.Ports;
 using POIneer.Render.Application.UseCases;
 using POIneer.Render.Infrastructure.Adapters.Osm;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
 using POIneer.Render.Infrastructure.Process;
+using POIneer.Render.Infrastructure.Sqlite;
 using POIneer.Render.Ports;
 
 
@@ -77,6 +79,7 @@ internal class Program
         builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
         builder.Services.AddSingleton<IRenderRegion, RenderRegion>();
         builder.Services.AddSingleton<IRawPoiMapper, RawPoiMapper>();
+        builder.Services.AddSingleton<IDatasetValidator, SqliteDatasetValidator>();
 
         // CLI entry point
         builder.Services.AddSingleton<Runner>();
