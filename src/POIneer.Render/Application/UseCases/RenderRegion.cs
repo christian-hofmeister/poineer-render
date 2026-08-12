@@ -13,6 +13,7 @@ namespace POIneer.Render.Application.UseCases;
 public sealed class RenderRegion : IRenderRegion
 {
     private const string StagingFileSuffix = ".tmp";
+    private const string PublishVersionFormat = "yyyyMMddHHmmssfff";
 
     private static readonly string[] SqliteSidecarSuffixes = ["-wal", "-shm", "-journal"];
 
@@ -24,6 +25,7 @@ public sealed class RenderRegion : IRenderRegion
     private readonly IRawPoiMapper _rawPoiMapper;
     private readonly RendererOptions _rendererOptions;
     private readonly IDatasetValidator _datasetValidator;
+    private readonly IDatasetPublisher _datasetPublisher;
 
     public RenderRegion(
         ILogger<RenderRegion> log,
@@ -33,7 +35,8 @@ public sealed class RenderRegion : IRenderRegion
         IExporter exporter,
         IRawPoiMapper rawPoiMapper,
         IOptions<RendererOptions> options,
-        IDatasetValidator datasetValidator)
+        IDatasetValidator datasetValidator,
+        IDatasetPublisher datasetPublisher)
     {
         _logger = log;
         _polygonCutter = polygonCutter;
@@ -43,6 +46,7 @@ public sealed class RenderRegion : IRenderRegion
         _rawPoiMapper = rawPoiMapper;
         _rendererOptions = options.Value;
         _datasetValidator = datasetValidator;
+        _datasetPublisher = datasetPublisher;
     }
 
     public async Task RunAsync(
@@ -123,18 +127,32 @@ public sealed class RenderRegion : IRenderRegion
                 $"Generated dataset for region '{regionDto.Id}' is invalid and was quarantined at {quarantinePath}: {string.Join(", ", result.Errors)}");
         }
 
-        _logger.LogInformation("({Id}) Publishing validated dataset to {Out}", regionDto.Id, canonicalPath);
+        _logger.LogInformation("({Id}) Promoting validated dataset to canonical location: {Out}", regionDto.Id, canonicalPath);
         PromoteStagingToCanonical(stagingPath, canonicalPath);
+
+        var version = DateTime.UtcNow.ToString(PublishVersionFormat);
+        var publishResult = await _datasetPublisher.PublishAsync(
+            new DatasetPublishRequest(regionDto.Id, version, canonicalPath),
+            ct);
+
+        _logger.LogInformation(
+            "({Id}) Published dataset version {Version} to {DestinationPath} (skipped: {WasSkipped}).",
+            regionDto.Id,
+            version,
+            publishResult.DestinationPath,
+            publishResult.WasSkipped);
 
         _logger.LogInformation("({Id}) Done.", regionDto.Id);
     }
 
     /// <summary>
-    /// Atomically publishes a validated staging database as the canonical output. The
-    /// canonical path is only ever touched here, after validation has already passed, so
-    /// a crash or an invalid render can never leave a partial or unvalidated file behind
-    /// at the canonical location - a previously published dataset stays in place until a
-    /// new one is confirmed valid.
+    /// Atomically promotes a validated staging database to become the canonical output at
+    /// <paramref name="canonicalPath"/>. This is a purely local, in-place move within
+    /// outDir - distinct from IDatasetPublisher, which afterwards copies that already-
+    /// canonical file out to a separately configured publish destination (see
+    /// PublisherOptions). A crash or an invalid render can never leave a partial or
+    /// unvalidated file behind at the canonical location - a previously promoted dataset
+    /// stays in place until a new one is confirmed valid.
     /// </summary>
     private static void PromoteStagingToCanonical(string stagingPath, string canonicalPath)
     {

@@ -22,6 +22,7 @@ public sealed class RenderRegionTests
     private readonly ISqliteDatabaseInitializer _dbInit = Substitute.For<ISqliteDatabaseInitializer>();
     private readonly IExporter _exporter = Substitute.For<IExporter>();
     private readonly IDatasetValidator _datasetValidator = Substitute.For<IDatasetValidator>();
+    private readonly IDatasetPublisher _datasetPublisher = Substitute.For<IDatasetPublisher>();
 
 
     private RenderRegion CreateSut(
@@ -32,6 +33,7 @@ public sealed class RenderRegionTests
         IExporter? exporter = null,
         IRawPoiMapper? mapper = null,
         IDatasetValidator? datasetValidator = null,
+        IDatasetPublisher? datasetPublisher = null,
         bool overwriteDatabase = false,
         bool overwritePbf = false)
     {
@@ -45,6 +47,16 @@ public sealed class RenderRegionTests
                 IsValid: true,
                 Errors: []));
 
+        var publisher = datasetPublisher ?? _datasetPublisher;
+
+        publisher
+            .PublishAsync(
+                Arg.Any<DatasetPublishRequest>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new DatasetPublishResult(
+                DestinationPath: "test-publish-destination-path",
+                WasSkipped: false));
+
         return new RenderRegion(
             logger ?? _logger,
             polygonCutter ?? _polygonCutter,
@@ -53,7 +65,8 @@ public sealed class RenderRegionTests
             exporter ?? _exporter,
             mapper ?? Substitute.For<IRawPoiMapper>(),
             TestRendererOptions.Create(overwriteDatabase, overwritePbf),
-            validator);
+            validator,
+            publisher);
     }
 
     [Fact]
@@ -142,6 +155,10 @@ public sealed class RenderRegionTests
         await _datasetValidator
             .DidNotReceiveWithAnyArgs()
             .ValidateAsync(default!, default);
+
+        await _datasetPublisher
+            .DidNotReceiveWithAnyArgs()
+            .PublishAsync(default!, default);
     }
 
     [Fact]
@@ -205,6 +222,7 @@ public sealed class RenderRegionTests
                 Arg.Any<IAsyncEnumerable<Poi>>(),
                 expectedStagingPath,
                 Arg.Any<CancellationToken>());
+            _datasetPublisher.PublishAsync(Arg.Any<DatasetPublishRequest>(), Arg.Any<CancellationToken>());
         });
 
         // Once validation passes, the staging file is promoted to the canonical path.
@@ -267,6 +285,8 @@ public sealed class RenderRegionTests
             Arg.Any<IAsyncEnumerable<Poi>>(),
             expectedStagingPath,
             ct);
+
+        await _datasetPublisher.Received(1).PublishAsync(Arg.Any<DatasetPublishRequest>(), ct);
     }
 
     [Fact]
@@ -364,6 +384,158 @@ public sealed class RenderRegionTests
 
         Assert.True(File.Exists(expectedCanonicalPath));
         Assert.False(File.Exists(expectedStagingPath));
+    }
+
+    [Fact]
+    public async Task RunAsync_PublishesTheCanonicalDataset_AfterSuccessfulRender()
+    {
+        // Arrange
+        var sut = CreateSut();
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "http://example.com/berlin.osm.pbf",
+            Poly: "berlin.poly");
+
+        await using var tempDir = TestTemporaryDirectories.Create("publishes-canonical-dataset", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
+
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        _osmReader
+            .ReadAmenityNodesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<RawPoi>());
+
+        _exporter
+            .ExportAsync(
+                Arg.Any<IAsyncEnumerable<Poi>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText(callInfo.ArgAt<string>(1), "dummy sqlite bytes");
+                return Task.CompletedTask;
+            });
+
+        // Act
+        await sut.RunAsync(region, workDir, outDir, CancellationToken.None);
+
+        // Assert
+        var expectedCanonicalPath = Path.Combine(outDir, region.Id, "poi.sqlite");
+
+        await _datasetPublisher
+            .Received(1)
+            .PublishAsync(
+                Arg.Is<DatasetPublishRequest>(r =>
+                    r.RegionId == region.Id
+                    && r.SourcePath == expectedCanonicalPath
+                    && !string.IsNullOrWhiteSpace(r.Version)),
+                Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_DoesNotPublish_WhenValidationFails()
+    {
+        // Arrange
+        var validator = Substitute.For<IDatasetValidator>();
+
+        var sut = CreateSut(datasetValidator: validator);
+
+        validator
+            .ValidateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DatasetValidationResult(
+                IsValid: false,
+                Errors: ["Required table 'poi' is missing."]));
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "http://example.com/berlin.osm.pbf",
+            Poly: "berlin.poly");
+
+        await using var tempDir = TestTemporaryDirectories.Create("does-not-publish-when-validation-fails", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
+
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        _osmReader
+            .ReadAmenityNodesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<RawPoi>());
+
+        _exporter
+            .ExportAsync(
+                Arg.Any<IAsyncEnumerable<Poi>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText(callInfo.ArgAt<string>(1), "dummy sqlite bytes");
+                return Task.CompletedTask;
+            });
+
+        // Act
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sut.RunAsync(region, workDir, outDir, CancellationToken.None));
+
+        // Assert
+        await _datasetPublisher
+            .DidNotReceiveWithAnyArgs()
+            .PublishAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task RunAsync_PropagatesException_WhenPublishFails()
+    {
+        // Arrange: the render itself succeeds and the dataset is promoted to canonical -
+        // only the external publish step fails.
+        var publisher = Substitute.For<IDatasetPublisher>();
+        var sut = CreateSut(datasetPublisher: publisher);
+
+        publisher
+            .PublishAsync(Arg.Any<DatasetPublishRequest>(), Arg.Any<CancellationToken>())
+            .Returns(_ => throw new IOException("Destination filesystem is unavailable."));
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "http://example.com/berlin.osm.pbf",
+            Poly: "berlin.poly");
+
+        await using var tempDir = TestTemporaryDirectories.Create("propagates-exception-when-publish-fails", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
+
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        _osmReader
+            .ReadAmenityNodesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<RawPoi>());
+
+        _exporter
+            .ExportAsync(
+                Arg.Any<IAsyncEnumerable<Poi>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText(callInfo.ArgAt<string>(1), "dummy sqlite bytes");
+                return Task.CompletedTask;
+            });
+
+        // Act
+        await Assert.ThrowsAsync<IOException>(() =>
+            sut.RunAsync(region, workDir, outDir, CancellationToken.None));
+
+        // Assert: rendering already succeeded and promoted the dataset before publishing
+        // failed, so the canonical file is still in place - only publishing itself failed.
+        var expectedCanonicalPath = Path.Combine(outDir, region.Id, "poi.sqlite");
+        Assert.True(File.Exists(expectedCanonicalPath));
     }
 
     [Fact]

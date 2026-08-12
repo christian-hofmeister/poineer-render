@@ -227,6 +227,13 @@ Important renderer options:
 | `Renderer:DryRun` | Exit after configuration/logging without rendering | `false` |
 | `Renderer:LockFilePath` | Lock file preventing overlapping runs (e.g. concurrent cron executions) | `<WorkDir>/poineer-render.lock` (auto) |
 
+Important publisher options:
+
+| Option | Purpose | Development default |
+| --- | --- | --- |
+| `Publisher:DestinationDir` | Directory validated datasets are published to (local filesystem; also used for the VPS deployment) | `data/dev/renderer-publish-dir` |
+| `Publisher:OverwritePolicy` | What happens when a file for the same region/version already exists at the destination (`Skip`, `Overwrite`, `Fail`) | `Skip` |
+
 Important Flyway options:
 
 | Option | Purpose | Default |
@@ -416,3 +423,4 @@ This project is intended as a learning and open-source project. The final licens
 - [Git - Handling Dependabot Branches](README-GIT-DEPENDABOT.md)
 - [Tests README](tests/README.md)
 - [ADR 0001: Prevent Overlapping Scheduled Renders](docs/decisions/0001-prevent-overlapping-scheduled-renders.md)
+- [ADR 0002: Local Dataset Publisher](docs/decisions/0002-local-dataset-publisher.md)

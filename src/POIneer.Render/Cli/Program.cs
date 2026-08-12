@@ -50,6 +50,12 @@ internal class Program
             .ValidateOnStart();
 
         builder.Services
+            .AddOptions<PublisherOptions>()
+            .Bind(builder.Configuration.GetSection("Publisher"))
+            .Validate(PublisherOptionsValidation.HasRequiredDestinationDir, PublisherOptionsValidation.RequiredDestinationDirMessage)
+            .ValidateOnStart();
+
+        builder.Services
             .AddOptions<FlywayOptions>()
             .Bind(builder.Configuration.GetSection(FlywayOptions.SectionName));
 
@@ -80,6 +86,7 @@ internal class Program
         builder.Services.AddSingleton<IRenderRegion, RenderRegion>();
         builder.Services.AddSingleton<IRawPoiMapper, RawPoiMapper>();
         builder.Services.AddSingleton<IDatasetValidator, SqliteDatasetValidator>();
+        builder.Services.AddSingleton<IDatasetPublisher, LocalDatasetPublisher>();
         builder.Services.AddSingleton<ISingleInstanceLockFactory, FileSingleInstanceLockFactory>();
 
         // CLI entry point
