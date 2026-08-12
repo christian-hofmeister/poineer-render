@@ -229,4 +229,64 @@ public sealed class LocalDatasetPublisherTests
         File.Exists(expectedDestinationPath + ".tmp").Should().BeFalse();
         File.Exists(expectedDestinationPath).Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData("..")]
+    [InlineData(".")]
+    [InlineData("../escape")]
+    [InlineData("berlin/../../etc")]
+    [InlineData("berlin/sub")]
+    [InlineData("berlin\\sub")]
+    [InlineData("berlin:sub")]
+    [InlineData("berlin sub")]
+    public async Task PublishAsync_ThrowsArgumentException_WhenRegionIdIsNotASafePathSegment(string regionId)
+    {
+        // Arrange: RegionId is interpolated directly into the destination directory name
+        // and filename - it must never be able to escape DestinationDir or produce an
+        // invalid filename, regardless of how it was ultimately produced.
+        await using var tempDir = TestTemporaryDirectories.Create("publish-rejects-unsafe-region-id", false);
+        var sourcePath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
+        TestFiles.WriteAllText(sourcePath, "dataset bytes");
+
+        var destinationDir = Path.Combine(tempDir.DirectoryPath, "publish");
+        var sut = new LocalDatasetPublisher(Logger, TestOptionsFactory.CreatePublisherOptions(destinationDir));
+
+        var request = new DatasetPublishRequest(regionId, "20260101000000000", sourcePath);
+
+        // Act
+        var act = () => sut.PublishAsync(request, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<ArgumentException>();
+        Directory.Exists(destinationDir).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("..")]
+    [InlineData(".")]
+    [InlineData("../escape")]
+    [InlineData("1/../../etc")]
+    [InlineData("1/2")]
+    [InlineData("1\\2")]
+    [InlineData("1:2")]
+    [InlineData("1 2")]
+    public async Task PublishAsync_ThrowsArgumentException_WhenVersionIsNotASafePathSegment(string version)
+    {
+        // Arrange: Version is interpolated directly into the published filename - same
+        // safety requirement as RegionId above.
+        await using var tempDir = TestTemporaryDirectories.Create("publish-rejects-unsafe-version", false);
+        var sourcePath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
+        TestFiles.WriteAllText(sourcePath, "dataset bytes");
+
+        var destinationDir = Path.Combine(tempDir.DirectoryPath, "publish");
+        var sut = new LocalDatasetPublisher(Logger, TestOptionsFactory.CreatePublisherOptions(destinationDir));
+
+        var request = new DatasetPublishRequest("berlin", version, sourcePath);
+
+        // Act
+        var act = () => sut.PublishAsync(request, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
 }
