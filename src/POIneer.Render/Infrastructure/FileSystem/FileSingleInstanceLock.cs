@@ -47,6 +47,16 @@ public sealed class FileSingleInstanceLock : ISingleInstanceLock
         if (_lockStream is not null)
             return true; // already acquired by this instance
 
+        if (OperatingSystem.IsMacOS())
+        {
+            // FileStream.Lock/Unlock are not supported on macOS. Production only ever runs
+            // on the Linux VPS via cron (see the ADR), so treat this purely as a local
+            // development limitation: proceed without exclusivity rather than crash local
+            // runs with a PlatformNotSupportedException. _lockStream stays null, so Dispose()
+            // correctly stays a no-op too.
+            return true;
+        }
+
         var directory = Path.GetDirectoryName(_lockFilePath);
         if (!string.IsNullOrEmpty(directory))
             Directory.CreateDirectory(directory);
@@ -96,13 +106,16 @@ public sealed class FileSingleInstanceLock : ISingleInstanceLock
         if (_lockStream is null)
             return;
 
-        try
+        if (!OperatingSystem.IsMacOS())
         {
-            _lockStream.Unlock(0, LockRegionLength);
-        }
-        catch (IOException)
-        {
-            // Best effort; disposing the stream below releases the OS-level lock regardless.
+            try
+            {
+                _lockStream.Unlock(0, LockRegionLength);
+            }
+            catch (IOException)
+            {
+                // Best effort; disposing the stream below releases the OS-level lock regardless.
+            }
         }
 
         _lockStream.Dispose();
