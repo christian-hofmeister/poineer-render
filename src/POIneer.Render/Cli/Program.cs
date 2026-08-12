@@ -80,6 +80,7 @@ internal class Program
         builder.Services.AddSingleton<IRenderRegion, RenderRegion>();
         builder.Services.AddSingleton<IRawPoiMapper, RawPoiMapper>();
         builder.Services.AddSingleton<IDatasetValidator, SqliteDatasetValidator>();
+        builder.Services.AddSingleton<ISingleInstanceLockFactory, FileSingleInstanceLockFactory>();
 
         // CLI entry point
         builder.Services.AddSingleton<Runner>();

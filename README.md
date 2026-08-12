@@ -225,6 +225,7 @@ Important renderer options:
 | `Renderer:RegionsJson` | Region configuration file | `Cli/config/regions.local.json` |
 | `Renderer:OnlyRegionId` | Optional filter for one region | `berlin` |
 | `Renderer:DryRun` | Exit after configuration/logging without rendering | `false` |
+| `Renderer:LockFilePath` | Lock file preventing overlapping runs (e.g. concurrent cron executions) | `<WorkDir>/poineer-render.lock` (auto) |
 
 Important Flyway options:
 
@@ -414,3 +415,4 @@ This project is intended as a learning and open-source project. The final licens
 - [Git - Pull Requests Flow Guide](README-GIT-PR.md)
 - [Git - Handling Dependabot Branches](README-GIT-DEPENDABOT.md)
 - [Tests README](tests/README.md)
+- [ADR 0001: Prevent Overlapping Scheduled Renders](docs/decisions/0001-prevent-overlapping-scheduled-renders.md)
