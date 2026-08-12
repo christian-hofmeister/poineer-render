@@ -498,7 +498,7 @@ public sealed class RenderRegionTests
 
         publisher
             .PublishAsync(Arg.Any<DatasetPublishRequest>(), Arg.Any<CancellationToken>())
-            .Returns(_ => throw new IOException("Destination filesystem is unavailable."));
+            .Returns<DatasetPublishResult>(_ => throw new IOException("Destination filesystem is unavailable."));
 
         var region = new RegionDto(
             Id: "berlin",
