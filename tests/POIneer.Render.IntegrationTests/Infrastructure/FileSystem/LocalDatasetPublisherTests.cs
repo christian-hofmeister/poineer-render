@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.TestHelpers;
@@ -12,8 +13,9 @@ namespace POIneer.Render.IntegrationTests.Infrastructure.FileSystem;
 // conventions established by FileSingleInstanceLockTests.
 public sealed class LocalDatasetPublisherTests
 {
-    private static readonly ILogger<LocalDatasetPublisher> Logger =
-        new LoggerFactory().CreateLogger<LocalDatasetPublisher>();
+    // NullLogger, not a real LoggerFactory: none of these tests assert log output, and a
+    // LoggerFactory instance would never be disposed here (see tests/README.md).
+    private static readonly ILogger<LocalDatasetPublisher> Logger = NullLogger<LocalDatasetPublisher>.Instance;
 
     [Fact]
     public async Task PublishAsync_CopiesArtifact_ToDestination_WithRegionAndVersionInFilename()
