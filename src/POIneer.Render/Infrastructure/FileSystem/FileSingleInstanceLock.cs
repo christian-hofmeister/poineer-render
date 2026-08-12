@@ -15,6 +15,22 @@ public sealed class FileSingleInstanceLock : ISingleInstanceLock
 {
     private const long LockRegionLength = 1;
 
+    // FileStream.Lock does not expose a dedicated exception type for "already locked", so
+    // TryAcquire() has to recognize the failure by HResult. These are the signatures for a
+    // genuine lock conflict - Windows' ERROR_SHARING_VIOLATION/ERROR_LOCK_VIOLATION (mapped
+    // to HRESULT), and the raw Unix errno values fcntl(F_SETLK) is allowed to return for a
+    // held lock (EAGAIN, empirically confirmed against .NET on Linux; EACCES per POSIX).
+    // Anything else is treated as a real, unexpected failure and rethrown, rather than being
+    // swallowed as "another instance is running" - that would make Runner log a misleading
+    // skip message and mask a genuine operational problem.
+    private static readonly HashSet<int> LockConflictHResults =
+    [
+        unchecked((int)0x80070020), // Windows ERROR_SHARING_VIOLATION
+        unchecked((int)0x80070021), // Windows ERROR_LOCK_VIOLATION
+        11,                          // Unix EAGAIN/EWOULDBLOCK
+        13,                          // Unix EACCES
+    ];
+
     private readonly string _lockFilePath;
     private FileStream? _lockStream;
 
@@ -47,13 +63,29 @@ public sealed class FileSingleInstanceLock : ISingleInstanceLock
             // another process already holds the lock.
             stream.Lock(0, LockRegionLength);
         }
-        catch (IOException)
+        catch (IOException ex) when (LockConflictHResults.Contains(ex.HResult))
         {
             stream.Dispose();
             return false;
         }
+        catch
+        {
+            // Not a recognized lock-conflict signature - an unexpected I/O failure
+            // (unsupported filesystem semantics, disk error, etc.). Release what we opened
+            // and let it propagate instead of masking it as "another instance is running".
+            stream.Dispose();
+            throw;
+        }
 
-        WriteOwnerInfo(stream);
+        try
+        {
+            WriteOwnerInfo(stream);
+        }
+        catch (IOException)
+        {
+            // Purely informational (see WriteOwnerInfo). The lock itself is already held,
+            // so a failed cosmetic write must not fail acquisition.
+        }
 
         _lockStream = stream;
         return true;
