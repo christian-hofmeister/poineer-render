@@ -198,4 +198,35 @@ public sealed class LocalDatasetPublisherTests
         // Assert
         File.Exists(result.DestinationPath + ".tmp").Should().BeFalse();
     }
+
+    [Fact]
+    public async Task PublishAsync_CleansUpTheStagingFile_WhenTheCopyIsCancelled()
+    {
+        // Arrange: FileMode.Create on the staging FileStream creates/truncates the ".tmp"
+        // file immediately, before any bytes are copied - so a cancellation during
+        // CopyToAsync still leaves a (partial) staging file on disk unless PublishAsync
+        // cleans it up. Regression test for the Copilot review finding that a cancelled or
+        // failed copy/move could leave ".tmp" files cluttering the publish directory.
+        await using var tempDir = TestTemporaryDirectories.Create("publish-cleans-up-staging-file-on-cancel", false);
+        var sourcePath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
+        TestFiles.WriteAllText(sourcePath, "dataset bytes");
+
+        var destinationDir = Path.Combine(tempDir.DirectoryPath, "publish");
+        var sut = new LocalDatasetPublisher(Logger, TestOptionsFactory.CreatePublisherOptions(destinationDir));
+
+        var request = new DatasetPublishRequest("berlin", "20260101000000000", sourcePath);
+        var expectedDestinationPath = Path.GetFullPath(
+            Path.Combine(destinationDir, "berlin", "berlin.20260101000000000.sqlite"));
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Act
+        var act = () => sut.PublishAsync(request, cts.Token);
+
+        // Assert
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        File.Exists(expectedDestinationPath + ".tmp").Should().BeFalse();
+        File.Exists(expectedDestinationPath).Should().BeFalse();
+    }
 }

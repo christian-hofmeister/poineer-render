@@ -80,15 +80,29 @@ public sealed class LocalDatasetPublisher : IDatasetPublisher
         // policy above never mistakes a partial file for a real, previously published one.
         var stagingDestinationPath = destinationPath + StagingFileSuffix;
 
-        await using (var source = new FileStream(
-            request.SourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, CopyBufferSize, useAsync: true))
-        await using (var destination = new FileStream(
-            stagingDestinationPath, FileMode.Create, FileAccess.Write, FileShare.None, CopyBufferSize, useAsync: true))
+        try
         {
-            await source.CopyToAsync(destination, cancellationToken);
-        }
+            await using (var source = new FileStream(
+                request.SourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, CopyBufferSize, useAsync: true))
+            await using (var destination = new FileStream(
+                stagingDestinationPath, FileMode.Create, FileAccess.Write, FileShare.None, CopyBufferSize, useAsync: true))
+            {
+                await source.CopyToAsync(destination, cancellationToken);
+            }
 
-        File.Move(stagingDestinationPath, destinationPath, overwrite: true);
+            File.Move(stagingDestinationPath, destinationPath, overwrite: true);
+        }
+        catch
+        {
+            // Best effort: if the copy was cancelled/failed or the move itself failed, do
+            // not leave the half-written (or fully-written-but-unmoved) ".tmp" file sitting
+            // in the destination directory - nothing else ever revisits it, so it would
+            // otherwise accumulate indefinitely and confuse an operator inspecting the
+            // publish destination. The original exception always wins over a cleanup
+            // failure, so this never masks the real error.
+            TryDeleteStagingFile(stagingDestinationPath);
+            throw;
+        }
 
         _logger.LogInformation(
             "Published dataset for region {RegionId} (version {Version}) to {DestinationPath}.",
@@ -97,5 +111,26 @@ public sealed class LocalDatasetPublisher : IDatasetPublisher
             destinationPath);
 
         return new DatasetPublishResult(destinationPath, WasSkipped: false);
+    }
+
+    private void TryDeleteStagingFile(string stagingDestinationPath)
+    {
+        try
+        {
+            if (File.Exists(stagingDestinationPath))
+            {
+                File.Delete(stagingDestinationPath);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best effort only - see the catch block above that calls this. Failing to
+            // delete a leftover staging file is unfortunate but must never surface as the
+            // error the caller sees instead of the real failure that triggered cleanup.
+            _logger.LogWarning(
+                ex,
+                "Failed to clean up leftover staging file {StagingPath} after a failed publish attempt.",
+                stagingDestinationPath);
+        }
     }
 }
