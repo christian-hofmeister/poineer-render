@@ -13,7 +13,6 @@ namespace POIneer.Render.Application.UseCases;
 public sealed class RenderRegion : IRenderRegion
 {
     private const string StagingFileSuffix = ".tmp";
-    private const string PublishVersionFormat = "yyyyMMddHHmmssfff";
 
     private static readonly string[] SqliteSidecarSuffixes = ["-wal", "-shm", "-journal"];
 
@@ -26,6 +25,7 @@ public sealed class RenderRegion : IRenderRegion
     private readonly RendererOptions _rendererOptions;
     private readonly IDatasetValidator _datasetValidator;
     private readonly IDatasetPublisher _datasetPublisher;
+    private readonly IDatasetVersionCalculator _datasetVersionCalculator;
 
     public RenderRegion(
         ILogger<RenderRegion> log,
@@ -36,7 +36,8 @@ public sealed class RenderRegion : IRenderRegion
         IRawPoiMapper rawPoiMapper,
         IOptions<RendererOptions> options,
         IDatasetValidator datasetValidator,
-        IDatasetPublisher datasetPublisher)
+        IDatasetPublisher datasetPublisher,
+        IDatasetVersionCalculator datasetVersionCalculator)
     {
         _logger = log;
         _polygonCutter = polygonCutter;
@@ -47,6 +48,7 @@ public sealed class RenderRegion : IRenderRegion
         _rendererOptions = options.Value;
         _datasetValidator = datasetValidator;
         _datasetPublisher = datasetPublisher;
+        _datasetVersionCalculator = datasetVersionCalculator;
     }
 
     public async Task RunAsync(
@@ -130,7 +132,13 @@ public sealed class RenderRegion : IRenderRegion
         _logger.LogInformation("({Id}) Promoting validated dataset to canonical location: {Out}", regionDto.Id, canonicalPath);
         PromoteStagingToCanonical(stagingPath, canonicalPath);
 
-        var version = DateTime.UtcNow.ToString(PublishVersionFormat);
+        // Hash-based, not wall-clock: a forced re-render of byte-identical PBF input (same
+        // SchemaVersion too) computes the same version and therefore the same destination
+        // filename, so IDatasetPublisher's default Skip overwrite policy makes republishing
+        // unchanged data a no-op instead of accumulating a new file on every run. Hashing
+        // cutPbf (not the original pbfPath) so a poly-file change is also picked up, since
+        // it can change what actually gets rendered even when the raw PBF download did not.
+        var version = await _datasetVersionCalculator.CalculateAsync(cutPbf, ct);
         var publishResult = await _datasetPublisher.PublishAsync(
             new DatasetPublishRequest(regionDto.Id, version, canonicalPath),
             ct);

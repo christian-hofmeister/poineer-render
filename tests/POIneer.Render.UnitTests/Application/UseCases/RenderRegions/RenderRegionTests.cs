@@ -23,6 +23,7 @@ public sealed class RenderRegionTests
     private readonly IExporter _exporter = Substitute.For<IExporter>();
     private readonly IDatasetValidator _datasetValidator = Substitute.For<IDatasetValidator>();
     private readonly IDatasetPublisher _datasetPublisher = Substitute.For<IDatasetPublisher>();
+    private readonly IDatasetVersionCalculator _datasetVersionCalculator = Substitute.For<IDatasetVersionCalculator>();
 
 
     private RenderRegion CreateSut(
@@ -34,6 +35,7 @@ public sealed class RenderRegionTests
         IRawPoiMapper? mapper = null,
         IDatasetValidator? datasetValidator = null,
         IDatasetPublisher? datasetPublisher = null,
+        IDatasetVersionCalculator? datasetVersionCalculator = null,
         bool overwriteDatabase = false,
         bool overwritePbf = false)
     {
@@ -57,6 +59,14 @@ public sealed class RenderRegionTests
                 DestinationPath: "test-publish-destination-path",
                 WasSkipped: false));
 
+        var versionCalculator = datasetVersionCalculator ?? _datasetVersionCalculator;
+
+        versionCalculator
+            .CalculateAsync(
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns("test-version");
+
         return new RenderRegion(
             logger ?? _logger,
             polygonCutter ?? _polygonCutter,
@@ -66,7 +76,8 @@ public sealed class RenderRegionTests
             mapper ?? Substitute.For<IRawPoiMapper>(),
             TestRendererOptions.Create(overwriteDatabase, overwritePbf),
             validator,
-            publisher);
+            publisher,
+            versionCalculator);
     }
 
     [Fact]
@@ -159,6 +170,10 @@ public sealed class RenderRegionTests
         await _datasetPublisher
             .DidNotReceiveWithAnyArgs()
             .PublishAsync(default!, default);
+
+        await _datasetVersionCalculator
+            .DidNotReceiveWithAnyArgs()
+            .CalculateAsync(default!, default);
     }
 
     [Fact]
@@ -222,6 +237,7 @@ public sealed class RenderRegionTests
                 Arg.Any<IAsyncEnumerable<Poi>>(),
                 expectedStagingPath,
                 Arg.Any<CancellationToken>());
+            _datasetVersionCalculator.CalculateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
             _datasetPublisher.PublishAsync(Arg.Any<DatasetPublishRequest>(), Arg.Any<CancellationToken>());
         });
 
@@ -287,6 +303,7 @@ public sealed class RenderRegionTests
             ct);
 
         await _datasetPublisher.Received(1).PublishAsync(Arg.Any<DatasetPublishRequest>(), ct);
+        await _datasetVersionCalculator.Received(1).CalculateAsync(Arg.Any<string>(), ct);
     }
 
     [Fact]
@@ -437,6 +454,66 @@ public sealed class RenderRegionTests
     }
 
     [Fact]
+    public async Task RunAsync_CalculatesVersion_FromTheCutPbf_AndUsesItForPublishing()
+    {
+        // Arrange: the version calculator is meant to hash the actual data that was
+        // rendered (the cut PBF), not the raw download - a poly-file change can alter what
+        // gets rendered even when the raw PBF download did not change.
+        var polygonCutter = Substitute.For<IPolygonCutter>();
+        var versionCalculator = Substitute.For<IDatasetVersionCalculator>();
+        var sut = CreateSut(polygonCutter: polygonCutter, datasetVersionCalculator: versionCalculator);
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "http://example.com/berlin.osm.pbf",
+            Poly: "berlin.poly");
+
+        await using var tempDir = TestTemporaryDirectories.Create("calculates-version-from-cut-pbf", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
+
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        var cutPbfPath = Path.Combine(workDir, region.Id, "cut.osm.pbf");
+        polygonCutter
+            .CutAsync(pbfPath, region.Poly, Arg.Any<CancellationToken>())
+            .Returns(cutPbfPath);
+
+        versionCalculator
+            .CalculateAsync(cutPbfPath, Arg.Any<CancellationToken>())
+            .Returns("1-abc123");
+
+        _osmReader
+            .ReadAmenityNodesAsync(cutPbfPath, Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<RawPoi>());
+
+        _exporter
+            .ExportAsync(
+                Arg.Any<IAsyncEnumerable<Poi>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText(callInfo.ArgAt<string>(1), "dummy sqlite bytes");
+                return Task.CompletedTask;
+            });
+
+        // Act
+        await sut.RunAsync(region, workDir, outDir, CancellationToken.None);
+
+        // Assert
+        await versionCalculator.Received(1).CalculateAsync(cutPbfPath, Arg.Any<CancellationToken>());
+
+        await _datasetPublisher
+            .Received(1)
+            .PublishAsync(
+                Arg.Is<DatasetPublishRequest>(r => r.Version == "1-abc123"),
+                Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task RunAsync_DoesNotPublish_WhenValidationFails()
     {
         // Arrange
@@ -486,6 +563,10 @@ public sealed class RenderRegionTests
         await _datasetPublisher
             .DidNotReceiveWithAnyArgs()
             .PublishAsync(default!, default);
+
+        await _datasetVersionCalculator
+            .DidNotReceiveWithAnyArgs()
+            .CalculateAsync(default!, default);
     }
 
     [Fact]

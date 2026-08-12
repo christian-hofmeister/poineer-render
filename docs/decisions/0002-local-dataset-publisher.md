@@ -46,9 +46,22 @@ its first implementation:
   `PublisherOptions.OverwritePolicy` (`Skip` (default), `Overwrite`, or
   `Fail`), rather than an implicit, undocumented behavior.
 - `RenderRegion` calls `IDatasetPublisher.PublishAsync` right after
-  promoting a validated dataset to its canonical `outDir` location,
-  generating the version as a UTC timestamp (`yyyyMMddHHmmssfff`), the same
-  format already used for quarantining invalid datasets.
+  promoting a validated dataset to its canonical `outDir` location. The
+  version is computed by `IDatasetVersionCalculator`
+  (`FileHashDatasetVersionCalculator`): a SHA-256 hash of the source PBF
+  (the *cut* PBF, so a poly-file change is picked up too, not just a raw
+  PBF re-download) combined with `PublisherOptions.SchemaVersion`. This was
+  originally a UTC timestamp, but that made every render - including a
+  forced re-render of byte-identical input while testing - publish a new
+  file, even with nothing actually different about the data. A
+  content-derived version fixes that: identical PBF content and an
+  unchanged `SchemaVersion` always compute the identical version string,
+  so republishing unchanged data lands on the same destination filename
+  and is skipped by `IDatasetPublisher`'s default `Skip` overwrite policy
+  instead of accumulating a new file on every run. A new version - and a
+  new published file - is only produced when the OSM PBF genuinely
+  changed, or a deployment deliberately bumps `SchemaVersion` (e.g. a new
+  POIneer.Render release changes the exported schema or POI mapping).
 - `PublisherOptions.DestinationDir` is required and validated on startup
   (`ValidateOnStart`), matching `RendererOptions`. The value itself is never
   hardcoded to a specific machine: `appsettings.Development.json` points at
@@ -83,10 +96,20 @@ synchronization between VPS and Azure, and public download URLs.
   `POINEER_RENDER__PUBLISHER__DESTINATIONDIR`.
 - Testable: `LocalDatasetPublisher` is covered by integration tests against
   the real filesystem (copy, directory creation, all three overwrite
-  policies, missing-source handling, staging-file cleanup), and
-  `RenderRegion`'s call into `IDatasetPublisher` is covered by unit tests
-  with a mocked publisher (correct request contents, no publish on
-  validation failure, exception propagation on publish failure).
+  policies, missing-source handling, staging-file cleanup);
+  `FileHashDatasetVersionCalculator` is covered by integration tests
+  asserting the stability property that matters (identical input -> identical
+  version, across repeated calls too; different PBF content or a different
+  `SchemaVersion` -> a different version); and `RenderRegion`'s calls into
+  `IDatasetPublisher`/`IDatasetVersionCalculator` are covered by unit tests
+  with mocked dependencies (correct request contents, version sourced from
+  the cut PBF, no publish on validation failure, exception propagation on
+  publish failure).
+- A forced re-render (`Renderer:OverwriteDatabase`/`OverwritePbf`) of
+  unchanged input still re-renders and re-validates the dataset - that
+  behavior is unrelated to publishing and out of scope here - but no longer
+  clutters the publish destination with a near-duplicate file, since the
+  publish step is now idempotent on unchanged content.
 
 ## References
 

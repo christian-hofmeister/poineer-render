@@ -87,6 +87,7 @@ internal class Program
         builder.Services.AddSingleton<IRawPoiMapper, RawPoiMapper>();
         builder.Services.AddSingleton<IDatasetValidator, SqliteDatasetValidator>();
         builder.Services.AddSingleton<IDatasetPublisher, LocalDatasetPublisher>();
+        builder.Services.AddSingleton<IDatasetVersionCalculator, FileHashDatasetVersionCalculator>();
         builder.Services.AddSingleton<ISingleInstanceLockFactory, FileSingleInstanceLockFactory>();
 
         // CLI entry point

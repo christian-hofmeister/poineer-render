@@ -24,12 +24,14 @@ public static class TestOptionsFactory
 
     public static IOptions<PublisherOptions> CreatePublisherOptions(
         string destinationDir,
-        DatasetPublishOverwritePolicy overwritePolicy = DatasetPublishOverwritePolicy.Skip)
+        DatasetPublishOverwritePolicy overwritePolicy = DatasetPublishOverwritePolicy.Skip,
+        string schemaVersion = "1")
     {
         return Options.Create(new PublisherOptions
         {
             DestinationDir = destinationDir,
-            OverwritePolicy = overwritePolicy
+            OverwritePolicy = overwritePolicy,
+            SchemaVersion = schemaVersion
         });
     }
 }
