@@ -24,6 +24,7 @@ public sealed class RenderRegionTests
     private readonly IDatasetValidator _datasetValidator = Substitute.For<IDatasetValidator>();
     private readonly IDatasetPublisher _datasetPublisher = Substitute.For<IDatasetPublisher>();
     private readonly IDatasetVersionCalculator _datasetVersionCalculator = Substitute.For<IDatasetVersionCalculator>();
+    private readonly IDatasetArtifactMetadataFactory _datasetArtifactMetadataFactory = Substitute.For<IDatasetArtifactMetadataFactory>();
 
 
     private RenderRegion CreateSut(
@@ -36,6 +37,7 @@ public sealed class RenderRegionTests
         IDatasetValidator? datasetValidator = null,
         IDatasetPublisher? datasetPublisher = null,
         IDatasetVersionCalculator? datasetVersionCalculator = null,
+        IDatasetArtifactMetadataFactory? datasetArtifactMetadataFactory = null,
         bool overwriteDatabase = false,
         bool overwritePbf = false)
     {
@@ -67,6 +69,22 @@ public sealed class RenderRegionTests
                 Arg.Any<CancellationToken>())
             .Returns("test-version");
 
+        var metadataFactory = datasetArtifactMetadataFactory ?? _datasetArtifactMetadataFactory;
+
+        metadataFactory
+            .CreateAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new DatasetArtifactMetadata(
+                RegionId: "test-region",
+                Version: "test-version",
+                FileName: "poi.sqlite",
+                FileSizeBytes: 0,
+                CreatedUtc: DateTimeOffset.UtcNow,
+                Sha256Checksum: "test-checksum"));
+
         return new RenderRegion(
             logger ?? _logger,
             polygonCutter ?? _polygonCutter,
@@ -77,7 +95,8 @@ public sealed class RenderRegionTests
             TestRendererOptions.Create(overwriteDatabase, overwritePbf),
             validator,
             publisher,
-            versionCalculator);
+            versionCalculator,
+            metadataFactory);
     }
 
     [Fact]
@@ -174,6 +193,10 @@ public sealed class RenderRegionTests
         await _datasetVersionCalculator
             .DidNotReceiveWithAnyArgs()
             .CalculateAsync(default!, default);
+
+        await _datasetArtifactMetadataFactory
+            .DidNotReceiveWithAnyArgs()
+            .CreateAsync(default!, default!, default!, default);
     }
 
     [Fact]
@@ -238,6 +261,8 @@ public sealed class RenderRegionTests
                 expectedStagingPath,
                 Arg.Any<CancellationToken>());
             _datasetVersionCalculator.CalculateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+            _datasetArtifactMetadataFactory.CreateAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
             _datasetPublisher.PublishAsync(Arg.Any<DatasetPublishRequest>(), Arg.Any<CancellationToken>());
         });
 
@@ -304,6 +329,8 @@ public sealed class RenderRegionTests
 
         await _datasetPublisher.Received(1).PublishAsync(Arg.Any<DatasetPublishRequest>(), ct);
         await _datasetVersionCalculator.Received(1).CalculateAsync(Arg.Any<string>(), ct);
+        await _datasetArtifactMetadataFactory.Received(1).CreateAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), ct);
     }
 
     [Fact]
@@ -454,6 +481,64 @@ public sealed class RenderRegionTests
     }
 
     [Fact]
+    public async Task RunAsync_GeneratesArtifactMetadata_ForTheCanonicalDataset_UsingTheCalculatedVersion()
+    {
+        // Arrange: metadata (issue #130) must describe the promoted canonical artifact,
+        // not the staging file, and must reuse the same version computed for publishing.
+        var versionCalculator = Substitute.For<IDatasetVersionCalculator>();
+        var metadataFactory = Substitute.For<IDatasetArtifactMetadataFactory>();
+        var sut = CreateSut(
+            datasetVersionCalculator: versionCalculator,
+            datasetArtifactMetadataFactory: metadataFactory);
+
+        versionCalculator
+            .CalculateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns("1-abc123");
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "http://example.com/berlin.osm.pbf",
+            Poly: "berlin.poly");
+
+        await using var tempDir = TestTemporaryDirectories.Create("generates-artifact-metadata", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
+
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        _osmReader
+            .ReadAmenityNodesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<RawPoi>());
+
+        _exporter
+            .ExportAsync(
+                Arg.Any<IAsyncEnumerable<Poi>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText(callInfo.ArgAt<string>(1), "dummy sqlite bytes");
+                return Task.CompletedTask;
+            });
+
+        // Act
+        await sut.RunAsync(region, workDir, outDir, CancellationToken.None);
+
+        // Assert
+        var expectedCanonicalPath = Path.Combine(outDir, region.Id, "poi.sqlite");
+
+        await metadataFactory
+            .Received(1)
+            .CreateAsync(
+                region.Id,
+                "1-abc123",
+                expectedCanonicalPath,
+                Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task RunAsync_CalculatesVersion_FromTheCutPbf_AndUsesItForPublishing()
     {
         // Arrange: the version calculator is meant to hash the actual data that was
@@ -567,6 +652,10 @@ public sealed class RenderRegionTests
         await _datasetVersionCalculator
             .DidNotReceiveWithAnyArgs()
             .CalculateAsync(default!, default);
+
+        await _datasetArtifactMetadataFactory
+            .DidNotReceiveWithAnyArgs()
+            .CreateAsync(default!, default!, default!, default);
     }
 
     [Fact]

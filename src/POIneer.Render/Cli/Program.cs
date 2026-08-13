@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -88,6 +88,7 @@ internal class Program
         builder.Services.AddSingleton<IDatasetValidator, SqliteDatasetValidator>();
         builder.Services.AddSingleton<IDatasetPublisher, LocalDatasetPublisher>();
         builder.Services.AddSingleton<IDatasetVersionCalculator, FileHashDatasetVersionCalculator>();
+        builder.Services.AddSingleton<IDatasetArtifactMetadataFactory, FileDatasetArtifactMetadataFactory>();
         builder.Services.AddSingleton<ISingleInstanceLockFactory, FileSingleInstanceLockFactory>();
 
         // CLI entry point
