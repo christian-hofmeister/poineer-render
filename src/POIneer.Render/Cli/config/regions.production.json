@@ -3,7 +3,7 @@
     "Id": "berlin",
     "Name": "Berlin",
     "Country": "Germany",
-    "ategory": "City",
+    "Category": "City",
     "PbfUrl": "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf"
   },
   {
