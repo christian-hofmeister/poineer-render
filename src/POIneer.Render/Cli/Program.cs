@@ -89,6 +89,7 @@ internal class Program
         builder.Services.AddSingleton<IDatasetPublisher, LocalDatasetPublisher>();
         builder.Services.AddSingleton<IDatasetVersionCalculator, FileHashDatasetVersionCalculator>();
         builder.Services.AddSingleton<IDatasetArtifactMetadataFactory, FileDatasetArtifactMetadataFactory>();
+        builder.Services.AddSingleton<IPublishedDatasetVerifier, FilePublishedDatasetVerifier>();
         builder.Services.AddSingleton<ISingleInstanceLockFactory, FileSingleInstanceLockFactory>();
 
         // CLI entry point

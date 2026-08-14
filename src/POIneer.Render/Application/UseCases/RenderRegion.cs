@@ -27,6 +27,7 @@ public sealed class RenderRegion : IRenderRegion
     private readonly IDatasetPublisher _datasetPublisher;
     private readonly IDatasetVersionCalculator _datasetVersionCalculator;
     private readonly IDatasetArtifactMetadataFactory _datasetArtifactMetadataFactory;
+    private readonly IPublishedDatasetVerifier _publishedDatasetVerifier;
 
     public RenderRegion(
         ILogger<RenderRegion> log,
@@ -39,7 +40,8 @@ public sealed class RenderRegion : IRenderRegion
         IDatasetValidator datasetValidator,
         IDatasetPublisher datasetPublisher,
         IDatasetVersionCalculator datasetVersionCalculator,
-        IDatasetArtifactMetadataFactory datasetArtifactMetadataFactory)
+        IDatasetArtifactMetadataFactory datasetArtifactMetadataFactory,
+        IPublishedDatasetVerifier publishedDatasetVerifier)
     {
         _logger = log;
         _polygonCutter = polygonCutter;
@@ -52,6 +54,7 @@ public sealed class RenderRegion : IRenderRegion
         _datasetPublisher = datasetPublisher;
         _datasetVersionCalculator = datasetVersionCalculator;
         _datasetArtifactMetadataFactory = datasetArtifactMetadataFactory;
+        _publishedDatasetVerifier = publishedDatasetVerifier;
     }
 
     public async Task RunAsync(
@@ -171,6 +174,32 @@ public sealed class RenderRegion : IRenderRegion
             version,
             publishResult.DestinationPath,
             publishResult.WasSkipped);
+
+        // Verified on every publish call, not only when WasSkipped is false: a publish is
+        // only considered successful once what is actually present at the destination is
+        // confirmed to match, regardless of whether this run wrote new bytes there or found
+        // a matching file already published by an earlier run (issue #135).
+        var verificationResult = await _publishedDatasetVerifier.VerifyAsync(
+            artifactMetadata,
+            publishResult.DestinationPath,
+            ct);
+
+        if (!verificationResult.IsVerified)
+        {
+            _logger.LogError(
+                "({Id}) Published dataset failed integrity verification at {DestinationPath} and will not be marked as successfully published. Errors: {Errors}",
+                regionDto.Id,
+                publishResult.DestinationPath,
+                string.Join("; ", verificationResult.Errors));
+
+            throw new InvalidOperationException(
+                $"Published dataset for region '{regionDto.Id}' failed integrity verification at {publishResult.DestinationPath}: {string.Join(", ", verificationResult.Errors)}");
+        }
+
+        _logger.LogInformation(
+            "({Id}) Published dataset verified successfully at {DestinationPath}.",
+            regionDto.Id,
+            publishResult.DestinationPath);
 
         _logger.LogInformation("({Id}) Done.", regionDto.Id);
     }
