@@ -42,6 +42,15 @@ with `FilePublishedDatasetVerifier` (`Infrastructure/FileSystem`) as its first i
   *destination* artifact is an expected failure mode this feature exists to detect.
   `FilePublishedDatasetVerifier` still validates its own required arguments
   (`ArgumentNullException`/`ArgumentException`) before doing any I/O.
+- The upfront `File.Exists` check can't fully rule out a missing/unreadable artifact: the
+  published file can disappear, be replaced, or become unreadable between that check and the
+  `IDatasetArtifactMetadataFactory.CreateAsync` call right after it (a concurrent publish,
+  external cleanup, a permissions/disk issue). Found by Copilot's review on PR #144,
+  `FilePublishedDatasetVerifier` now catches `FileNotFoundException`/`IOException`/
+  `UnauthorizedAccessException` from that call and converts them into the same
+  `DatasetVerificationResult` failure path, instead of letting them propagate as exceptions
+  that would bypass `RenderRegion`'s verification-failure handling entirely. Any other
+  exception (e.g. a genuine programming error) still propagates unchanged.
 - Both a size mismatch and a checksum mismatch are collected into `Errors` in the same pass
   rather than stopping at the first one found, so an operator diagnosing a failed publish
   sees every problem at once.
@@ -82,7 +91,10 @@ implementation behind the same abstraction once such a destination exists.
 - Testable: `FilePublishedDatasetVerifier` is covered by integration tests against the real
   filesystem and the real `FileDatasetArtifactMetadataFactory` (verified on an exact match,
   not verified on a missing destination/size mismatch/checksum mismatch, both mismatches
-  reported together, invalid-argument handling); `RenderRegion`'s call into
+  reported together, invalid-argument handling), plus unit tests with a mocked
+  `IDatasetArtifactMetadataFactory` for the race condition above (`FileNotFoundException`/
+  `IOException`/`UnauthorizedAccessException` from the factory become a failed result rather
+  than propagating; any other exception still propagates); `RenderRegion`'s call into
   `IPublishedDatasetVerifier` is covered by unit tests with a mocked dependency (correct
   metadata/destination path passed, verification runs even when the publish was skipped,
   a verification failure throws and fails the region without disturbing the canonical

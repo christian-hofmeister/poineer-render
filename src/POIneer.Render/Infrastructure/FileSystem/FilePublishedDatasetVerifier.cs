@@ -48,11 +48,28 @@ public sealed class FilePublishedDatasetVerifier : IPublishedDatasetVerifier
         // that produced expectedMetadata for the source artifact, rather than a second,
         // independent hashing implementation that could disagree with the source
         // calculation about what "the checksum" of a dataset even means.
-        var actualMetadata = await _metadataFactory.CreateAsync(
-            expectedMetadata.RegionId,
-            expectedMetadata.Version,
-            destinationPath,
-            cancellationToken);
+        DatasetArtifactMetadata actualMetadata;
+
+        try
+        {
+            actualMetadata = await _metadataFactory.CreateAsync(
+                expectedMetadata.RegionId,
+                expectedMetadata.Version,
+                destinationPath,
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or IOException or UnauthorizedAccessException)
+        {
+            // The File.Exists check above can't fully rule this out: the published artifact
+            // may disappear, be replaced, or become unreadable between that check and this
+            // call (a concurrent publish, external cleanup, a permissions/disk issue) -
+            // reported via the Copilot review on PR #144. These are expected operational
+            // failure modes at the publish destination, not programming errors, so they must
+            // become a DatasetVerificationResult failure (logged, caller decides what to do)
+            // instead of an exception bypassing that reporting path.
+            return Fail(expectedMetadata, destinationPath,
+                $"Published artifact at '{destinationPath}' could not be read for verification: {ex.Message}");
+        }
 
         var errors = new List<string>();
 
