@@ -25,6 +25,7 @@ public sealed class RenderRegionTests
     private readonly IDatasetPublisher _datasetPublisher = Substitute.For<IDatasetPublisher>();
     private readonly IDatasetVersionCalculator _datasetVersionCalculator = Substitute.For<IDatasetVersionCalculator>();
     private readonly IDatasetArtifactMetadataFactory _datasetArtifactMetadataFactory = Substitute.For<IDatasetArtifactMetadataFactory>();
+    private readonly IPublishedDatasetVerifier _publishedDatasetVerifier = Substitute.For<IPublishedDatasetVerifier>();
 
 
     private RenderRegion CreateSut(
@@ -38,6 +39,7 @@ public sealed class RenderRegionTests
         IDatasetPublisher? datasetPublisher = null,
         IDatasetVersionCalculator? datasetVersionCalculator = null,
         IDatasetArtifactMetadataFactory? datasetArtifactMetadataFactory = null,
+        IPublishedDatasetVerifier? publishedDatasetVerifier = null,
         bool overwriteDatabase = false,
         bool overwritePbf = false)
     {
@@ -85,6 +87,17 @@ public sealed class RenderRegionTests
                 CreatedUtc: DateTimeOffset.UtcNow,
                 Sha256Checksum: "test-checksum"));
 
+        var verifier = publishedDatasetVerifier ?? _publishedDatasetVerifier;
+
+        verifier
+            .VerifyAsync(
+                Arg.Any<DatasetArtifactMetadata>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new DatasetVerificationResult(
+                IsVerified: true,
+                Errors: []));
+
         return new RenderRegion(
             logger ?? _logger,
             polygonCutter ?? _polygonCutter,
@@ -96,7 +109,8 @@ public sealed class RenderRegionTests
             validator,
             publisher,
             versionCalculator,
-            metadataFactory);
+            metadataFactory,
+            verifier);
     }
 
     [Fact]
@@ -197,6 +211,10 @@ public sealed class RenderRegionTests
         await _datasetArtifactMetadataFactory
             .DidNotReceiveWithAnyArgs()
             .CreateAsync(default!, default!, default!, default);
+
+        await _publishedDatasetVerifier
+            .DidNotReceiveWithAnyArgs()
+            .VerifyAsync(default!, default!, default);
     }
 
     [Fact]
@@ -264,6 +282,8 @@ public sealed class RenderRegionTests
             _datasetArtifactMetadataFactory.CreateAsync(
                 Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
             _datasetPublisher.PublishAsync(Arg.Any<DatasetPublishRequest>(), Arg.Any<CancellationToken>());
+            _publishedDatasetVerifier.VerifyAsync(
+                Arg.Any<DatasetArtifactMetadata>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
         });
 
         // Once validation passes, the staging file is promoted to the canonical path.
@@ -331,6 +351,8 @@ public sealed class RenderRegionTests
         await _datasetVersionCalculator.Received(1).CalculateAsync(Arg.Any<string>(), ct);
         await _datasetArtifactMetadataFactory.Received(1).CreateAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), ct);
+        await _publishedDatasetVerifier.Received(1).VerifyAsync(
+            Arg.Any<DatasetArtifactMetadata>(), Arg.Any<string>(), ct);
     }
 
     [Fact]
@@ -706,6 +728,190 @@ public sealed class RenderRegionTests
         // failed, so the canonical file is still in place - only publishing itself failed.
         var expectedCanonicalPath = Path.Combine(outDir, region.Id, "poi.sqlite");
         Assert.True(File.Exists(expectedCanonicalPath));
+
+        // A publish that never completed successfully has nothing to verify.
+        await _publishedDatasetVerifier
+            .DidNotReceiveWithAnyArgs()
+            .VerifyAsync(default!, default!, default);
+    }
+
+    [Fact]
+    public async Task RunAsync_VerifiesThePublishedDataset_WithTheArtifactMetadataAndDestinationPath()
+    {
+        // Arrange: verification (issue #135) must compare the metadata already computed for
+        // the canonical artifact against what PublishAsync reports as the actual publish
+        // destination - not, say, the canonical path itself, since the destination is a
+        // separately configured location (see PublisherOptions).
+        var publisher = Substitute.For<IDatasetPublisher>();
+        var metadataFactory = Substitute.For<IDatasetArtifactMetadataFactory>();
+        var verifier = Substitute.For<IPublishedDatasetVerifier>();
+        var sut = CreateSut(
+            datasetPublisher: publisher,
+            datasetArtifactMetadataFactory: metadataFactory,
+            publishedDatasetVerifier: verifier);
+
+        var expectedMetadata = new DatasetArtifactMetadata(
+            RegionId: "berlin",
+            Version: "1-abc123",
+            FileName: "poi.sqlite",
+            FileSizeBytes: 42,
+            CreatedUtc: DateTimeOffset.UtcNow,
+            Sha256Checksum: "abc123checksum");
+
+        metadataFactory
+            .CreateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(expectedMetadata);
+
+        publisher
+            .PublishAsync(Arg.Any<DatasetPublishRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new DatasetPublishResult(
+                DestinationPath: "test-publish-destination-path",
+                WasSkipped: false));
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "http://example.com/berlin.osm.pbf",
+            Poly: "berlin.poly");
+
+        await using var tempDir = TestTemporaryDirectories.Create("verifies-published-dataset", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
+
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        _osmReader
+            .ReadAmenityNodesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<RawPoi>());
+
+        _exporter
+            .ExportAsync(
+                Arg.Any<IAsyncEnumerable<Poi>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText(callInfo.ArgAt<string>(1), "dummy sqlite bytes");
+                return Task.CompletedTask;
+            });
+
+        // Act
+        await sut.RunAsync(region, workDir, outDir, CancellationToken.None);
+
+        // Assert
+        await verifier
+            .Received(1)
+            .VerifyAsync(expectedMetadata, "test-publish-destination-path", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_ThrowsAndFailsTheRegion_WhenPublishedDatasetVerificationFails()
+    {
+        // Arrange: a publish call that returns successfully is not enough - the render must
+        // still fail if what actually landed at the destination doesn't match (issue #135).
+        var verifier = Substitute.For<IPublishedDatasetVerifier>();
+        var sut = CreateSut(publishedDatasetVerifier: verifier);
+
+        var verificationErrors = new[] { "Checksum mismatch at 'test-publish-destination-path': expected abc, found def." };
+
+        verifier
+            .VerifyAsync(Arg.Any<DatasetArtifactMetadata>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DatasetVerificationResult(IsVerified: false, Errors: verificationErrors));
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "http://example.com/berlin.osm.pbf",
+            Poly: "berlin.poly");
+
+        await using var tempDir = TestTemporaryDirectories.Create("throws-when-verification-fails", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
+
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        _osmReader
+            .ReadAmenityNodesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<RawPoi>());
+
+        _exporter
+            .ExportAsync(
+                Arg.Any<IAsyncEnumerable<Poi>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText(callInfo.ArgAt<string>(1), "dummy sqlite bytes");
+                return Task.CompletedTask;
+            });
+
+        // Act
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sut.RunAsync(region, workDir, outDir, CancellationToken.None));
+
+        // Assert
+        Assert.Contains("failed integrity verification", ex.Message);
+        Assert.Contains(verificationErrors[0], ex.Message);
+
+        // The canonical dataset itself is still valid and promoted - only the published
+        // copy failed verification - so it must not be quarantined or removed.
+        var expectedCanonicalPath = Path.Combine(outDir, region.Id, "poi.sqlite");
+        Assert.True(File.Exists(expectedCanonicalPath));
+    }
+
+    [Fact]
+    public async Task RunAsync_VerifiesEvenWhenPublishWasSkipped()
+    {
+        // Arrange: WasSkipped only means this run didn't need to copy new bytes - it does
+        // not mean the destination was already verified by this feature, so verification
+        // must still run (issue #135).
+        var publisher = Substitute.For<IDatasetPublisher>();
+        var verifier = Substitute.For<IPublishedDatasetVerifier>();
+        var sut = CreateSut(datasetPublisher: publisher, publishedDatasetVerifier: verifier);
+
+        publisher
+            .PublishAsync(Arg.Any<DatasetPublishRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new DatasetPublishResult(
+                DestinationPath: "test-publish-destination-path",
+                WasSkipped: true));
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "http://example.com/berlin.osm.pbf",
+            Poly: "berlin.poly");
+
+        await using var tempDir = TestTemporaryDirectories.Create("verifies-even-when-skipped", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
+
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        _osmReader
+            .ReadAmenityNodesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<RawPoi>());
+
+        _exporter
+            .ExportAsync(
+                Arg.Any<IAsyncEnumerable<Poi>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText(callInfo.ArgAt<string>(1), "dummy sqlite bytes");
+                return Task.CompletedTask;
+            });
+
+        // Act
+        await sut.RunAsync(region, workDir, outDir, CancellationToken.None);
+
+        // Assert
+        await verifier
+            .Received(1)
+            .VerifyAsync(Arg.Any<DatasetArtifactMetadata>(), "test-publish-destination-path", Arg.Any<CancellationToken>());
     }
 
     [Fact]
