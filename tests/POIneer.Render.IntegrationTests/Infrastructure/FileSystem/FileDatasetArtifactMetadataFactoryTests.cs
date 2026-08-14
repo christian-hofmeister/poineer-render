@@ -71,22 +71,40 @@ public sealed class FileDatasetArtifactMetadataFactoryTests
     }
 
     [Fact]
-    public async Task CreateAsync_SetsCreatedUtc_CloseToNow()
+    public async Task CreateAsync_SetsCreatedUtc_ToTheArtifactFilesLastWriteTimeUtc()
     {
         // Arrange
         await using var tempDir = TestTemporaryDirectories.Create("artifact-metadata-created-utc", false);
         var artifactPath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
         TestFiles.WriteAllText(artifactPath, "some dataset bytes");
 
+        var expectedCreatedUtc = new FileInfo(artifactPath).LastWriteTimeUtc;
+
         var sut = new FileDatasetArtifactMetadataFactory();
-        var before = DateTimeOffset.UtcNow;
 
         // Act
         var metadata = await sut.CreateAsync("berlin", "1-abc123", artifactPath, CancellationToken.None);
 
         // Assert
-        var after = DateTimeOffset.UtcNow;
-        metadata.CreatedUtc.Should().BeOnOrAfter(before).And.BeOnOrBefore(after);
+        metadata.CreatedUtc.Should().Be(expectedCreatedUtc);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ReturnsTheSameCreatedUtc_AcrossRepeatedCalls_ForAnUnchangedFile()
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("artifact-metadata-created-utc-stable", false);
+        var artifactPath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
+        TestFiles.WriteAllText(artifactPath, "unchanged dataset content");
+
+        var sut = new FileDatasetArtifactMetadataFactory();
+
+        // Act
+        var first = await sut.CreateAsync("berlin", "1-abc123", artifactPath, CancellationToken.None);
+        var second = await sut.CreateAsync("berlin", "1-abc123", artifactPath, CancellationToken.None);
+
+        // Assert
+        first.CreatedUtc.Should().Be(second.CreatedUtc);
     }
 
     [Fact]

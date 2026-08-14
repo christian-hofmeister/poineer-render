@@ -4,9 +4,12 @@ using POIneer.Render.Application.Ports;
 
 namespace POIneer.Render.Infrastructure.FileSystem;
 
-// Default IDatasetArtifactMetadataFactory: reads basic filesystem facts (file name, size)
-// and computes a SHA-256 checksum of an already-validated, already-canonical dataset
-// artifact. Deliberately has no dependency on PublisherOptions or IDatasetPublisher - the
+// Default IDatasetArtifactMetadataFactory: reads basic filesystem facts (file name, size,
+// last-write timestamp) and computes a SHA-256 checksum of an already-validated,
+// already-canonical dataset artifact. CreatedUtc is derived from the artifact file's
+// LastWriteTimeUtc rather than DateTimeOffset.UtcNow, so it stays deterministic and
+// reflects when the dataset file was actually produced/promoted, not when this factory
+// happened to run. Deliberately has no dependency on PublisherOptions or IDatasetPublisher - the
 // metadata describes the artifact itself, not a publish destination (issue #130), so it
 // stays usable unchanged regardless of which publisher implementation(s) exist (local
 // #132, Azure #134, ...).
@@ -38,7 +41,7 @@ public sealed class FileDatasetArtifactMetadataFactory : IDatasetArtifactMetadat
             Version: version,
             FileName: fileInfo.Name,
             FileSizeBytes: fileInfo.Length,
-            CreatedUtc: DateTimeOffset.UtcNow,
+            CreatedUtc: fileInfo.LastWriteTimeUtc,
             Sha256Checksum: checksum);
     }
 
