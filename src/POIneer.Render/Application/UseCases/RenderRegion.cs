@@ -26,6 +26,7 @@ public sealed class RenderRegion : IRenderRegion
     private readonly IDatasetValidator _datasetValidator;
     private readonly IDatasetPublisher _datasetPublisher;
     private readonly IDatasetVersionCalculator _datasetVersionCalculator;
+    private readonly IDatasetArtifactMetadataFactory _datasetArtifactMetadataFactory;
 
     public RenderRegion(
         ILogger<RenderRegion> log,
@@ -37,7 +38,8 @@ public sealed class RenderRegion : IRenderRegion
         IOptions<RendererOptions> options,
         IDatasetValidator datasetValidator,
         IDatasetPublisher datasetPublisher,
-        IDatasetVersionCalculator datasetVersionCalculator)
+        IDatasetVersionCalculator datasetVersionCalculator,
+        IDatasetArtifactMetadataFactory datasetArtifactMetadataFactory)
     {
         _logger = log;
         _polygonCutter = polygonCutter;
@@ -49,6 +51,7 @@ public sealed class RenderRegion : IRenderRegion
         _datasetValidator = datasetValidator;
         _datasetPublisher = datasetPublisher;
         _datasetVersionCalculator = datasetVersionCalculator;
+        _datasetArtifactMetadataFactory = datasetArtifactMetadataFactory;
     }
 
     public async Task RunAsync(
@@ -139,6 +142,25 @@ public sealed class RenderRegion : IRenderRegion
         // cutPbf (not the original pbfPath) so a poly-file change is also picked up, since
         // it can change what actually gets rendered even when the raw PBF download did not.
         var version = await _datasetVersionCalculator.CalculateAsync(cutPbf, ct);
+
+        // Metadata is generated from the canonical artifact - only after validation and
+        // promotion have both succeeded - and stays independent from IDatasetPublisher, so
+        // it describes the artifact itself rather than a specific publish destination
+        // (issue #130).
+        var artifactMetadata = await _datasetArtifactMetadataFactory.CreateAsync(
+            regionDto.Id,
+            version,
+            canonicalPath,
+            ct);
+
+        _logger.LogInformation(
+            "({Id}) Dataset artifact metadata: fileName={FileName}, sizeBytes={SizeBytes}, sha256={Sha256}, createdUtc={CreatedUtc}.",
+            regionDto.Id,
+            artifactMetadata.FileName,
+            artifactMetadata.FileSizeBytes,
+            artifactMetadata.Sha256Checksum,
+            artifactMetadata.CreatedUtc);
+
         var publishResult = await _datasetPublisher.PublishAsync(
             new DatasetPublishRequest(regionDto.Id, version, canonicalPath),
             ct);
