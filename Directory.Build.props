@@ -3,6 +3,12 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
+  <!-- Repo-wide release version (AssemblyVersion/FileVersion/InformationalVersion).
+       Bump this as part of cutting each release/* branch (see README-GIT-FLOW.md). -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
  <!-- Non-test projects: collect coverage -->
   <PropertyGroup Condition="'$(IsTestProject)' != 'true'">
     <CollectCoverage>true</CollectCoverage>

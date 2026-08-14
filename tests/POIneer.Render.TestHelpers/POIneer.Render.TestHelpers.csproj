@@ -10,8 +10,8 @@
 
 <ItemGroup>
     <!-- Nur wenn deine Helper-Utilities Logging brauchen -->
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.7" />
-    <PackageReference Include="xunit.abstractions" Version="2.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="xunit.abstractions" />
   </ItemGroup>
 
 <ItemGroup>

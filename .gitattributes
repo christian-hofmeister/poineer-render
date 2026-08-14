@@ -1,0 +1,20 @@
+# Normalize line endings for text files to LF in the repository itself, so
+# git's own comparisons (diff/status/add) are consistent regardless of any
+# individual machine's or tool's core.autocrlf setting - Windows dev
+# machines, this project's Linux CI, and any other environment that reads
+# this repo all see the same bytes. Editors on Windows (VS Code, Rider,
+# Visual Studio) handle LF-only files without any issue.
+* text=auto eol=lf
+
+# Explicit for tooling/CI that specifically cares about the executable bit
+# semantics of shell/PowerShell scripts.
+*.sh text eol=lf
+*.ps1 text eol=lf
+
+# Never touch line endings in binary-ish or generated content.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.sqlite binary
+*.pbf binary

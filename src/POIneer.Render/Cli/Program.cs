@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -7,11 +7,13 @@ using POIneer.Render.Adapters.Input;
 using POIneer.Render.Adapters.Output;
 using POIneer.Render.Application.Mapping;
 using POIneer.Render.Application.Options;
+using POIneer.Render.Application.Ports;
 using POIneer.Render.Application.UseCases;
 using POIneer.Render.Infrastructure.Adapters.Osm;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
 using POIneer.Render.Infrastructure.Process;
+using POIneer.Render.Infrastructure.Sqlite;
 using POIneer.Render.Ports;
 
 
@@ -48,6 +50,12 @@ internal class Program
             .ValidateOnStart();
 
         builder.Services
+            .AddOptions<PublisherOptions>()
+            .Bind(builder.Configuration.GetSection("Publisher"))
+            .Validate(PublisherOptionsValidation.HasRequiredDestinationDir, PublisherOptionsValidation.RequiredDestinationDirMessage)
+            .ValidateOnStart();
+
+        builder.Services
             .AddOptions<FlywayOptions>()
             .Bind(builder.Configuration.GetSection(FlywayOptions.SectionName));
 
@@ -77,6 +85,12 @@ internal class Program
         builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
         builder.Services.AddSingleton<IRenderRegion, RenderRegion>();
         builder.Services.AddSingleton<IRawPoiMapper, RawPoiMapper>();
+        builder.Services.AddSingleton<IDatasetValidator, SqliteDatasetValidator>();
+        builder.Services.AddSingleton<IDatasetPublisher, LocalDatasetPublisher>();
+        builder.Services.AddSingleton<IDatasetVersionCalculator, FileHashDatasetVersionCalculator>();
+        builder.Services.AddSingleton<IDatasetArtifactMetadataFactory, FileDatasetArtifactMetadataFactory>();
+        builder.Services.AddSingleton<IPublishedDatasetVerifier, FilePublishedDatasetVerifier>();
+        builder.Services.AddSingleton<ISingleInstanceLockFactory, FileSingleInstanceLockFactory>();
 
         // CLI entry point
         builder.Services.AddSingleton<Runner>();

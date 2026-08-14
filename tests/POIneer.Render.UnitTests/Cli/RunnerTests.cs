@@ -4,8 +4,10 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Options;
+using POIneer.Render.Application.Ports;
 using POIneer.Render.Ports;
 using POIneer.Render.TestHelpers;
 using Xunit;
@@ -17,6 +19,15 @@ public sealed class RunnerTests
     private readonly IFileDownloader _fileDownloader = Substitute.For<IFileDownloader>();
     private readonly IRegionSource _regionSource = Substitute.For<IRegionSource>();
     private readonly IRenderRegion _renderRegion = Substitute.For<IRenderRegion>();
+    private readonly ISingleInstanceLockFactory _lockFactory = Substitute.For<ISingleInstanceLockFactory>();
+    private readonly ISingleInstanceLock _instanceLock = Substitute.For<ISingleInstanceLock>();
+
+    public RunnerTests()
+    {
+        // By default the lock is always available, so existing rendering behavior is unaffected.
+        _instanceLock.TryAcquire().Returns(true);
+        _lockFactory.Create(Arg.Any<string>()).Returns(_instanceLock);
+    }
 
     [Fact]
     public async Task RunAsync_ReturnsSuccessAndDoesNothing_WhenDryRunIsEnabled()
@@ -194,6 +205,43 @@ public sealed class RunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_ContinuesWithRemainingRegions_AndReturnsNonZero_WhenARegionFails()
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("runner-continues-after-region-failure", false);
+        var options = CreateOptions();
+        var sut = CreateSut(tempDir.DirectoryPath, options);
+
+        var regionsPath = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.RegionsJson));
+        TestFiles.WriteAllText(regionsPath, "[]");
+
+        var berlin = BerlinRegion();
+        var hamburg = new RegionDto(
+            Id: "hamburg",
+            Name: "Hamburg",
+            PbfUrl: "https://example.com/hamburg.osm.pbf",
+            Poly: "hamburg.poly");
+
+        _regionSource.GetRegionsAsync(regionsPath, Arg.Any<CancellationToken>())
+            .Returns(new[] { berlin, hamburg });
+
+        var workDir = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.WorkDir));
+        var outDir = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.OutDir));
+
+        _renderRegion
+            .RunAsync(berlin, workDir, outDir, Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("Generated dataset is invalid"));
+
+        // Act
+        var result = await sut.RunAsync(CancellationToken.None);
+
+        // Assert
+        result.Should().Be(1);
+        await _renderRegion.Received(1).RunAsync(berlin, workDir, outDir, Arg.Any<CancellationToken>());
+        await _renderRegion.Received(1).RunAsync(hamburg, workDir, outDir, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task RunAsync_ForwardsCancellationToken_ToCollaborators()
     {
         // Arrange
@@ -227,6 +275,104 @@ public sealed class RunnerTests
             ct);
     }
 
+    [Fact]
+    public async Task RunAsync_SkipsExecutionAndReturnsZero_WhenAnotherInstanceHoldsTheLock()
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("runner-skips-when-locked", false);
+        var options = CreateOptions();
+        _instanceLock.TryAcquire().Returns(false);
+        var sut = CreateSut(tempDir.DirectoryPath, options);
+
+        // Act
+        var result = await sut.RunAsync(CancellationToken.None);
+
+        // Assert
+        result.Should().Be(0);
+        await _regionSource.DidNotReceiveWithAnyArgs().GetRegionsAsync(default!, default);
+        await _fileDownloader.DidNotReceiveWithAnyArgs().DownloadAsync(default!, default!, default);
+        await _renderRegion.DidNotReceiveWithAnyArgs().RunAsync(default!, default!, default!, default);
+    }
+
+    [Fact]
+    public async Task RunAsync_DoesNotAcquireLock_WhenDryRunIsEnabled()
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("runner-dry-run-no-lock", false);
+        var sut = CreateSut(tempDir.DirectoryPath, CreateOptions(dryRun: true));
+
+        // Act
+        await sut.RunAsync(CancellationToken.None);
+
+        // Assert
+        _lockFactory.DidNotReceiveWithAnyArgs().Create(default!);
+    }
+
+    [Fact]
+    public async Task RunAsync_DisposesTheLock_AfterProcessingCompletes()
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("runner-disposes-lock", false);
+        var options = CreateOptions();
+        var sut = CreateSut(tempDir.DirectoryPath, options);
+
+        var regionsPath = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.RegionsJson));
+        TestFiles.WriteAllText(regionsPath, "[]");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<RegionDto>());
+
+        // Act
+        await sut.RunAsync(CancellationToken.None);
+
+        // Assert
+        _instanceLock.Received(1).Dispose();
+    }
+
+    [Fact]
+    public async Task RunAsync_UsesWorkDirDefaultLockFile_WhenLockFilePathIsNotConfigured()
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("runner-default-lock-path", false);
+        var options = CreateOptions(workDir: "work");
+        var sut = CreateSut(tempDir.DirectoryPath, options);
+
+        var regionsPath = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.RegionsJson));
+        TestFiles.WriteAllText(regionsPath, "[]");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<RegionDto>());
+
+        var workDir = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.WorkDir));
+        var expectedLockFilePath = Path.Combine(workDir, "poineer-render.lock");
+
+        // Act
+        await sut.RunAsync(CancellationToken.None);
+
+        // Assert
+        _lockFactory.Received(1).Create(expectedLockFilePath);
+    }
+
+    [Fact]
+    public async Task RunAsync_ResolvesConfiguredLockFilePath_AgainstContentRoot()
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("runner-configured-lock-path", false);
+        var options = CreateOptions(lockFilePath: "locks/render.lock");
+        var sut = CreateSut(tempDir.DirectoryPath, options);
+
+        var regionsPath = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.RegionsJson));
+        TestFiles.WriteAllText(regionsPath, "[]");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<RegionDto>());
+
+        var expectedLockFilePath = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.LockFilePath!));
+
+        // Act
+        await sut.RunAsync(CancellationToken.None);
+
+        // Assert
+        _lockFactory.Received(1).Create(expectedLockFilePath);
+    }
+
     private Runner CreateSut(
         string contentRoot,
         RendererOptions options)
@@ -239,6 +385,7 @@ public sealed class RunnerTests
             _fileDownloader,
             _regionSource,
             _renderRegion,
+            _lockFactory,
             Options.Create(options));
 
     private static RendererOptions CreateOptions(
@@ -247,7 +394,8 @@ public sealed class RunnerTests
         string regionsJson = "regions.json",
         bool overwritePbf = false,
         bool dryRun = false,
-        string? onlyRegionId = null)
+        string? onlyRegionId = null,
+        string? lockFilePath = null)
         => new()
         {
             WorkDir = workDir,
@@ -256,7 +404,8 @@ public sealed class RunnerTests
             OverwritePbf = overwritePbf,
             DryRun = dryRun,
             OnlyRegionId = onlyRegionId,
-            DownloadTimeoutSeconds = 600
+            DownloadTimeoutSeconds = 600,
+            LockFilePath = lockFilePath
         };
 
     private static RegionDto BerlinRegion()

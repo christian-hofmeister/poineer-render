@@ -225,6 +225,15 @@ Important renderer options:
 | `Renderer:RegionsJson` | Region configuration file | `Cli/config/regions.local.json` |
 | `Renderer:OnlyRegionId` | Optional filter for one region | `berlin` |
 | `Renderer:DryRun` | Exit after configuration/logging without rendering | `false` |
+| `Renderer:LockFilePath` | Lock file preventing overlapping runs (e.g. concurrent cron executions) | `<WorkDir>/poineer-render.lock` (auto) |
+
+Important publisher options:
+
+| Option | Purpose | Development default |
+| --- | --- | --- |
+| `Publisher:DestinationDir` | Directory validated datasets are published to (local filesystem; also used for the VPS deployment) | `data/dev/renderer-publish-dir` |
+| `Publisher:OverwritePolicy` | What happens when a file for the same region/version already exists at the destination (`Skip`, `Overwrite`, `Fail`) | `Skip` |
+| `Publisher:SchemaVersion` | Bumped deliberately when a new POIneer.Render release changes the exported schema/mapping; combined with a hash of the source PBF to form the dataset version, so unchanged input never republishes under a new version | `1` |
 
 Important Flyway options:
 
@@ -414,3 +423,6 @@ This project is intended as a learning and open-source project. The final licens
 - [Git - Pull Requests Flow Guide](README-GIT-PR.md)
 - [Git - Handling Dependabot Branches](README-GIT-DEPENDABOT.md)
 - [Tests README](tests/README.md)
+- [ADR 0001: Prevent Overlapping Scheduled Renders](docs/decisions/0001-prevent-overlapping-scheduled-renders.md)
+- [ADR 0002: Local Dataset Publisher](docs/decisions/0002-local-dataset-publisher.md)
+- [ADR 0003: Dataset Artifact Metadata](docs/decisions/0003-dataset-artifact-metadata.md)
