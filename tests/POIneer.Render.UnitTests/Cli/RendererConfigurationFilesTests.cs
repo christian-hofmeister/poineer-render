@@ -1,5 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.Configuration;
+using POIneer.Render.Application.Options;
 using Xunit;
 
 namespace POIneer.Render.UnitTests.Cli;
@@ -7,12 +9,13 @@ namespace POIneer.Render.UnitTests.Cli;
 public sealed class RendererConfigurationFilesTests
 {
     [Theory]
-    [InlineData("appsettings.json", "Cli/config/regions.production.json")]
-    [InlineData("appsettings.Development.json", "Cli/config/regions.local.json")]
-    [InlineData("appsettings.Production.json", "Cli/config/regions.production.json")]
-    public void RendererConfiguration_DefaultsToBerlinAndExistingRegionsFile(
+    [InlineData("appsettings.json", "Cli/config/regions.production.json", "berlin")]
+    [InlineData("appsettings.Development.json", "Cli/config/regions.local.json", "berlin")]
+    [InlineData("appsettings.Production.json", "Cli/config/regions.production.json", null)]
+    public void RendererConfiguration_HasExpectedOnlyRegionIdAndExistingRegionsFile(
         string settingsFileName,
-        string expectedRegionsJson)
+        string expectedRegionsJson,
+        string? expectedOnlyRegionId)
     {
         var repositoryRoot = FindRepositoryRoot();
         var settingsPath = Path.Combine(repositoryRoot, "src", "POIneer.Render", settingsFileName);
@@ -20,7 +23,22 @@ public sealed class RendererConfigurationFilesTests
         using var document = JsonDocument.Parse(File.ReadAllText(settingsPath));
         var renderer = document.RootElement.GetProperty("Renderer");
 
-        renderer.GetProperty("OnlyRegionId").GetString().Should().Be("berlin");
+        // OnlyRegionId must be set explicitly (even to null) rather than omitted - an
+        // omitted key silently falls back to whatever a lower-priority settings file
+        // defines instead of actually clearing it (see the Production incident this
+        // guards against: appsettings.json defaults OnlyRegionId to "berlin" for local/dev
+        // runs, and simply removing the key from appsettings.Production.json left that
+        // default in effect in Production too).
+        renderer.TryGetProperty("OnlyRegionId", out var onlyRegionIdElement)
+            .Should().BeTrue(
+                $"{settingsFileName} should set OnlyRegionId explicitly (even to null) instead of omitting it — " +
+                "an omitted key silently falls back to whatever a lower-priority settings file defines");
+
+        var actualOnlyRegionId = onlyRegionIdElement.ValueKind == JsonValueKind.Null
+            ? null
+            : onlyRegionIdElement.GetString();
+
+        actualOnlyRegionId.Should().Be(expectedOnlyRegionId);
 
         var configuredRegionsPath = renderer.GetProperty("RegionsJson").GetString();
 
@@ -38,6 +56,37 @@ public sealed class RendererConfigurationFilesTests
 
             File.Exists(resolvedRegionsPath).Should().BeTrue();
         }
+    }
+
+    // Unlike the per-file check above, this builds the actual layered IConfiguration the
+    // same way Program.cs does (appsettings.json, then appsettings.{Environment}.json on
+    // top) and binds it to RendererOptions - it exercises the real merge behavior instead
+    // of each file's raw JSON in isolation. This is the test that would have caught the
+    // original bug: a per-file check can be "correct" (Production explicitly nulls the
+    // key) while the merged runtime configuration still silently resolves to the base
+    // file's "berlin" default if the override is ever dropped again. Environment
+    // variables and command-line args are intentionally not layered in here - they are
+    // not part of what this regression is about.
+    [Theory]
+    [InlineData("Development", "berlin")]
+    [InlineData("Production", null)]
+    public void RendererConfiguration_MergedEnvironmentConfig_ResolvesExpectedOnlyRegionId(
+        string environmentName,
+        string? expectedOnlyRegionId)
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var settingsBasePath = Path.Combine(repositoryRoot, "src", "POIneer.Render");
+
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(settingsBasePath)
+            .AddJsonFile("appsettings.json", optional: true)
+            .AddJsonFile($"appsettings.{environmentName}.json", optional: true)
+            .Build();
+
+        var rendererOptions = configuration.GetSection("Renderer").Get<RendererOptions>();
+
+        rendererOptions.Should().NotBeNull();
+        rendererOptions!.OnlyRegionId.Should().Be(expectedOnlyRegionId);
     }
 
     private static string FindRepositoryRoot()
