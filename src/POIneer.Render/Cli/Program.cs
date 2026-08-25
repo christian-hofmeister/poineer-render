@@ -14,6 +14,7 @@ using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
 using POIneer.Render.Infrastructure.Process;
 using POIneer.Render.Infrastructure.Sqlite;
+using POIneer.Render.Infrastructure.VectorTiles;
 using POIneer.Render.Ports;
 
 
@@ -59,6 +60,13 @@ internal class Program
             .AddOptions<FlywayOptions>()
             .Bind(builder.Configuration.GetSection(FlywayOptions.SectionName));
 
+        builder.Services
+            .AddOptions<VectorTileOptions>()
+            .Bind(builder.Configuration.GetSection(VectorTileOptions.SectionName))
+            .Validate(VectorTileOptionsValidation.HasRequiredPlanetilerPaths, VectorTileOptionsValidation.RequiredPlanetilerPathsMessage)
+            .Validate(VectorTileOptionsValidation.HasValidZoomRange, VectorTileOptionsValidation.ZoomRangeMessage)
+            .ValidateOnStart();
+
         builder.Services.AddHttpClient<IFileDownloader, HttpFileDownloader>((sp, client) =>
         {
             var options = sp.GetRequiredService<IOptions<RendererOptions>>().Value;
@@ -83,6 +91,7 @@ internal class Program
         builder.Services.AddSingleton<ISqliteDatabaseInitializer, FlywaySqliteDatabaseInitializer>();
         builder.Services.AddSingleton<IExporter, SqliteExporter>();
         builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
+        builder.Services.AddSingleton<IVectorTileGenerator, PlanetilerVectorTileGenerator>();
         builder.Services.AddSingleton<IRenderRegion, RenderRegion>();
         builder.Services.AddSingleton<IRawPoiMapper, RawPoiMapper>();
         builder.Services.AddSingleton<IDatasetValidator, SqliteDatasetValidator>();

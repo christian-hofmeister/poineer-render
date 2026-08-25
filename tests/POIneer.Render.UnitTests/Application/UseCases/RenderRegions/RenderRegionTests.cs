@@ -26,6 +26,7 @@ public sealed class RenderRegionTests
     private readonly IDatasetVersionCalculator _datasetVersionCalculator = Substitute.For<IDatasetVersionCalculator>();
     private readonly IDatasetArtifactMetadataFactory _datasetArtifactMetadataFactory = Substitute.For<IDatasetArtifactMetadataFactory>();
     private readonly IPublishedDatasetVerifier _publishedDatasetVerifier = Substitute.For<IPublishedDatasetVerifier>();
+    private readonly IVectorTileGenerator _vectorTileGenerator = Substitute.For<IVectorTileGenerator>();
 
 
     private RenderRegion CreateSut(
@@ -40,8 +41,10 @@ public sealed class RenderRegionTests
         IDatasetVersionCalculator? datasetVersionCalculator = null,
         IDatasetArtifactMetadataFactory? datasetArtifactMetadataFactory = null,
         IPublishedDatasetVerifier? publishedDatasetVerifier = null,
+        IVectorTileGenerator? vectorTileGenerator = null,
         bool overwriteDatabase = false,
-        bool overwritePbf = false)
+        bool overwritePbf = false,
+        bool vectorTilesEnabled = false)
     {
         var validator = datasetValidator ?? _datasetValidator;
 
@@ -110,7 +113,11 @@ public sealed class RenderRegionTests
             publisher,
             versionCalculator,
             metadataFactory,
-            verifier);
+            verifier,
+            vectorTileGenerator ?? _vectorTileGenerator,
+            TestRendererOptions.CreateVectorTiles(
+                enabled: vectorTilesEnabled,
+                planetilerJarPath: vectorTilesEnabled ? "planetiler.jar" : null));
     }
 
     [Fact]
@@ -289,6 +296,203 @@ public sealed class RenderRegionTests
         // Once validation passes, the staging file is promoted to the canonical path.
         Assert.True(File.Exists(expectedCanonicalPath));
         Assert.False(File.Exists(expectedStagingPath));
+    }
+
+    [Fact]
+    public async Task RunAsync_GeneratesVectorTilesFromTheCutPbf_WhenVectorTilesAreEnabled()
+    {
+        // Arrange
+        var vectorTileGenerator = Substitute.For<IVectorTileGenerator>();
+        var sut = CreateSut(
+            vectorTileGenerator: vectorTileGenerator,
+            vectorTilesEnabled: true);
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "http://example.com/berlin.osm.pbf",
+            Poly: "berlin.poly");
+
+        await using var tempDir = TestTemporaryDirectories.Create("generates-vector-tiles", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
+
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        using var cts = new CancellationTokenSource();
+
+        var cutPbfPath = Path.Combine(workDir, region.Id, "cut.osm.pbf");
+        _polygonCutter
+            .CutAsync(pbfPath, region.Poly, cts.Token)
+            .Returns(cutPbfPath);
+
+        _osmReader
+            .ReadAmenityNodesAsync(cutPbfPath, cts.Token)
+            .Returns(AsyncEnumerable.Empty<RawPoi>());
+
+        _exporter
+            .ExportAsync(
+                Arg.Any<IAsyncEnumerable<Poi>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText(callInfo.ArgAt<string>(1), "dummy sqlite bytes");
+                return Task.CompletedTask;
+            });
+
+        vectorTileGenerator
+            .GenerateAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText(callInfo.ArgAt<string>(1), "dummy pmtiles bytes");
+                return Task.CompletedTask;
+            });
+
+        // Act
+        await sut.RunAsync(region, workDir, outDir, cts.Token);
+
+        // Assert
+        var expectedCanonicalMapPath = Path.Combine(outDir, region.Id, "map.pmtiles");
+        var expectedStagingMapPath = expectedCanonicalMapPath + ".tmp";
+
+        await vectorTileGenerator
+            .Received(1)
+            .GenerateAsync(cutPbfPath, expectedStagingMapPath, cts.Token);
+
+        Assert.True(File.Exists(expectedCanonicalMapPath));
+        Assert.False(File.Exists(expectedStagingMapPath));
+    }
+
+    [Fact]
+    public async Task RunAsync_DoesNotPromoteOrPublish_WhenVectorTileGenerationFails()
+    {
+        // Arrange
+        var vectorTileGenerator = Substitute.For<IVectorTileGenerator>();
+        var sut = CreateSut(
+            vectorTileGenerator: vectorTileGenerator,
+            vectorTilesEnabled: true);
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "http://example.com/berlin.osm.pbf",
+            Poly: "berlin.poly");
+
+        await using var tempDir = TestTemporaryDirectories.Create("fails-when-vector-tiles-fail", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
+
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        var cutPbfPath = Path.Combine(workDir, region.Id, "cut.osm.pbf");
+        _polygonCutter
+            .CutAsync(pbfPath, region.Poly, Arg.Any<CancellationToken>())
+            .Returns(cutPbfPath);
+
+        _osmReader
+            .ReadAmenityNodesAsync(cutPbfPath, Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<RawPoi>());
+
+        _exporter
+            .ExportAsync(
+                Arg.Any<IAsyncEnumerable<Poi>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText(callInfo.ArgAt<string>(1), "dummy sqlite bytes");
+                return Task.CompletedTask;
+            });
+
+        vectorTileGenerator
+            .GenerateAsync(
+                cutPbfPath,
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new InvalidOperationException("Planetiler failed"));
+
+        // Act
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sut.RunAsync(region, workDir, outDir, CancellationToken.None));
+
+        // Assert
+        Assert.Contains("Planetiler failed", ex.Message);
+
+        Assert.False(File.Exists(Path.Combine(outDir, region.Id, "poi.sqlite")));
+        Assert.False(File.Exists(Path.Combine(outDir, region.Id, "map.pmtiles")));
+
+        await _datasetPublisher
+            .DidNotReceiveWithAnyArgs()
+            .PublishAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task RunAsync_ReRendersWhenVectorTilesAreEnabled_AndOnlySqliteAlreadyExists()
+    {
+        // Arrange
+        var vectorTileGenerator = Substitute.For<IVectorTileGenerator>();
+        var sut = CreateSut(
+            vectorTileGenerator: vectorTileGenerator,
+            vectorTilesEnabled: true);
+
+        var region = new RegionDto(
+            Id: "berlin",
+            Name: "Berlin",
+            PbfUrl: "http://example.com/berlin.osm.pbf",
+            Poly: "berlin.poly");
+
+        await using var tempDir = TestTemporaryDirectories.Create("renders-missing-vector-tiles", false);
+        var workDir = tempDir.CreateSubDir("work").DirectoryPath;
+        var outDir = tempDir.CreateSubDir("out").DirectoryPath;
+
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(pbfPath, "dummy");
+
+        var existingSqlitePath = Path.Combine(outDir, region.Id, "poi.sqlite");
+        TestFiles.WriteAllText(existingSqlitePath, "existing sqlite bytes");
+
+        _osmReader
+            .ReadAmenityNodesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<RawPoi>());
+
+        _exporter
+            .ExportAsync(
+                Arg.Any<IAsyncEnumerable<Poi>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText(callInfo.ArgAt<string>(1), "new sqlite bytes");
+                return Task.CompletedTask;
+            });
+
+        vectorTileGenerator
+            .GenerateAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText(callInfo.ArgAt<string>(1), "dummy pmtiles bytes");
+                return Task.CompletedTask;
+            });
+
+        // Act
+        await sut.RunAsync(region, workDir, outDir, CancellationToken.None);
+
+        // Assert
+        await vectorTileGenerator
+            .Received(1)
+            .GenerateAsync(Arg.Any<string>(), Path.Combine(outDir, region.Id, "map.pmtiles.tmp"), Arg.Any<CancellationToken>());
+
+        Assert.Equal("new sqlite bytes", File.ReadAllText(existingSqlitePath));
+        Assert.True(File.Exists(Path.Combine(outDir, region.Id, "map.pmtiles")));
     }
 
     [Fact]
