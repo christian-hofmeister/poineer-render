@@ -31,11 +31,14 @@ public sealed class PlanetilerVectorTileGenerator : IVectorTileGenerator
         ArgumentException.ThrowIfNullOrWhiteSpace(pbfPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
 
-        if (string.IsNullOrWhiteSpace(_options.PlanetilerJarPath))
-            throw new InvalidOperationException("Vector tile generation is enabled, but no Planetiler JAR path is configured.");
+        if (_options.Enabled)
+        {
+            if (string.IsNullOrWhiteSpace(_options.PlanetilerJarPath))
+                throw new InvalidOperationException("Vector tile generation is enabled, but no Planetiler JAR path is configured.");
 
-        if (!File.Exists(_options.PlanetilerJarPath))
-            throw new FileNotFoundException($"Planetiler JAR not found: {_options.PlanetilerJarPath}", _options.PlanetilerJarPath);
+            if (!File.Exists(_options.PlanetilerJarPath))
+                throw new FileNotFoundException($"Planetiler JAR not found: {_options.PlanetilerJarPath}", _options.PlanetilerJarPath);
+        }
 
         if (!File.Exists(pbfPath))
             throw new FileNotFoundException($"PBF file not found: {pbfPath}", pbfPath);

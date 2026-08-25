@@ -21,7 +21,9 @@ public sealed class PlanetilerVectorTileGeneratorTests
         await using var tempDir = TestTemporaryDirectories.Create("planetiler-arguments", false);
         var pbfPath = Path.Combine(tempDir.DirectoryPath, "berlin.osm.pbf");
         var outputPath = Path.Combine(tempDir.DirectoryPath, "map.pmtiles");
+        var planetilerJarPath = Path.Combine(tempDir.DirectoryPath, "planetiler.jar");
         TestFiles.WriteAllText(pbfPath, "dummy pbf");
+        TestFiles.WriteAllText(planetilerJarPath, "dummy jar");
 
         ProcessStartInfo? capturedStartInfo = null;
         CancellationToken capturedCancellationToken = default;
@@ -42,7 +44,7 @@ public sealed class PlanetilerVectorTileGeneratorTests
             {
                 Enabled = true,
                 JavaExecutablePath = "java",
-                PlanetilerJarPath = "planetiler.jar",
+                PlanetilerJarPath = planetilerJarPath,
                 JavaMaxHeapSize = "1g",
                 Profile = "openmaptiles",
                 MinZoom = 0,
@@ -67,7 +69,7 @@ public sealed class PlanetilerVectorTileGeneratorTests
         Assert.False(capturedStartInfo.UseShellExecute);
         Assert.Contains("-Xmx1g", capturedStartInfo.ArgumentList);
         Assert.Contains("-jar", capturedStartInfo.ArgumentList);
-        Assert.Contains("planetiler.jar", capturedStartInfo.ArgumentList);
+        Assert.Contains(planetilerJarPath, capturedStartInfo.ArgumentList);
         Assert.Contains($"--osm-path={Path.GetFullPath(pbfPath)}", capturedStartInfo.ArgumentList);
         Assert.Contains($"--output={Path.GetFullPath(outputPath)}", capturedStartInfo.ArgumentList);
         Assert.Contains("--force", capturedStartInfo.ArgumentList);
@@ -87,13 +89,15 @@ public sealed class PlanetilerVectorTileGeneratorTests
         await using var tempDir = TestTemporaryDirectories.Create("planetiler-fails", false);
         var pbfPath = Path.Combine(tempDir.DirectoryPath, "berlin.osm.pbf");
         var outputPath = Path.Combine(tempDir.DirectoryPath, "map.pmtiles");
+        var planetilerJarPath = Path.Combine(tempDir.DirectoryPath, "planetiler.jar");
         TestFiles.WriteAllText(pbfPath, "dummy pbf");
+        TestFiles.WriteAllText(planetilerJarPath, "dummy jar");
 
         processRunner
             .RunAsync(Arg.Any<ProcessStartInfo>(), Arg.Any<CancellationToken>())
             .Returns(new ProcessResult(23, "", "bad things happened"));
 
-        var sut = CreateSut(processRunner);
+        var sut = CreateSut(processRunner, CreateEnabledOptions(planetilerJarPath));
 
         // Act
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -114,13 +118,15 @@ public sealed class PlanetilerVectorTileGeneratorTests
         await using var tempDir = TestTemporaryDirectories.Create("planetiler-missing-output", false);
         var pbfPath = Path.Combine(tempDir.DirectoryPath, "berlin.osm.pbf");
         var outputPath = Path.Combine(tempDir.DirectoryPath, "map.pmtiles");
+        var planetilerJarPath = Path.Combine(tempDir.DirectoryPath, "planetiler.jar");
         TestFiles.WriteAllText(pbfPath, "dummy pbf");
+        TestFiles.WriteAllText(planetilerJarPath, "dummy jar");
 
         processRunner
             .RunAsync(Arg.Any<ProcessStartInfo>(), Arg.Any<CancellationToken>())
             .Returns(new ProcessResult(0, "", ""));
 
-        var sut = CreateSut(processRunner);
+        var sut = CreateSut(processRunner, CreateEnabledOptions(planetilerJarPath));
 
         // Act
         var ex = await Assert.ThrowsAsync<FileNotFoundException>(() =>
@@ -129,6 +135,49 @@ public sealed class PlanetilerVectorTileGeneratorTests
         // Assert
         Assert.Contains("expected PMTiles output was not created", ex.Message);
     }
+
+    [Fact]
+    public async Task GenerateAsync_DoesNotValidatePlanetilerJar_WhenVectorTilesAreDisabled()
+    {
+        // Arrange
+        var processRunner = Substitute.For<IProcessRunner>();
+
+        await using var tempDir = TestTemporaryDirectories.Create("planetiler-disabled", false);
+        var pbfPath = Path.Combine(tempDir.DirectoryPath, "berlin.osm.pbf");
+        var outputPath = Path.Combine(tempDir.DirectoryPath, "map.pmtiles");
+        TestFiles.WriteAllText(pbfPath, "dummy pbf");
+
+        processRunner
+            .RunAsync(Arg.Any<ProcessStartInfo>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                TestFiles.WriteAllText(outputPath, "dummy pmtiles");
+                return Task.FromResult(new ProcessResult(0, "", ""));
+            });
+
+        var sut = CreateSut(
+            processRunner,
+            new VectorTileOptions
+            {
+                Enabled = false,
+                JavaExecutablePath = "java",
+                PlanetilerJarPath = Path.Combine(tempDir.DirectoryPath, "missing.jar")
+            });
+
+        // Act
+        await sut.GenerateAsync(pbfPath, outputPath);
+
+        // Assert
+        await processRunner.Received(1).RunAsync(Arg.Any<ProcessStartInfo>(), Arg.Any<CancellationToken>());
+    }
+
+    private static VectorTileOptions CreateEnabledOptions(string planetilerJarPath)
+        => new()
+        {
+            Enabled = true,
+            JavaExecutablePath = "java",
+            PlanetilerJarPath = planetilerJarPath
+        };
 
     private static PlanetilerVectorTileGenerator CreateSut(
         IProcessRunner processRunner,
