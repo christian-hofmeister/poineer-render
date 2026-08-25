@@ -34,6 +34,9 @@ public sealed class PlanetilerVectorTileGenerator : IVectorTileGenerator
         if (string.IsNullOrWhiteSpace(_options.PlanetilerJarPath))
             throw new InvalidOperationException("Vector tile generation is enabled, but no Planetiler JAR path is configured.");
 
+        if (!File.Exists(_options.PlanetilerJarPath))
+            throw new FileNotFoundException($"Planetiler JAR not found: {_options.PlanetilerJarPath}", _options.PlanetilerJarPath);
+
         if (!File.Exists(pbfPath))
             throw new FileNotFoundException($"PBF file not found: {pbfPath}", pbfPath);
 
@@ -114,14 +117,24 @@ public sealed class PlanetilerVectorTileGenerator : IVectorTileGenerator
 
     private void LogPlanetilerOutput(string standardOutput, string standardError)
     {
+        const int maxChars = 8_000;
+
         if (!string.IsNullOrWhiteSpace(standardOutput))
         {
-            _logger.LogInformation("Planetiler StandardOutput: {StdOut}", standardOutput);
+            var stdout = standardOutput.Length <= maxChars
+                ? standardOutput
+                : standardOutput[..maxChars] + "…(truncated)";
+
+            _logger.LogDebug("Planetiler stdout: {StdOut}", stdout);
         }
 
         if (!string.IsNullOrWhiteSpace(standardError))
         {
-            _logger.LogWarning("Planetiler StandardError: {StdErr}", standardError);
+            var stderr = standardError.Length <= maxChars
+                ? standardError
+                : standardError[..maxChars] + "…(truncated)";
+
+            _logger.LogWarning("Planetiler stderr: {StdErr}", stderr);
         }
     }
 }
