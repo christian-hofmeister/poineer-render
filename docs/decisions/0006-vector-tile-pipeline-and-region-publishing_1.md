@@ -1,4 +1,4 @@
-# ADR 0006: Vector Tile Pipeline, Region Publishing & Update Scheduling
+# ADR 0006: Integrated Vector Tile Generation for Regional Render Outputs
 
 ## Status
 
@@ -6,106 +6,164 @@ Proposed
 
 ## Context
 
-POIneer.Render currently only produces a POI dataset (`poi.sqlite`) - individual points
-(lat/lon plus attributes) with no road, building, or land-use geometry. That is enough to
-place pins, but not enough to render an actual offline basemap: without the underlying OSM
-ways/relations, a map view offline is just markers floating on an empty background.
+POIneer.Render currently produces a POI dataset (`poi.sqlite`) for a rendered region. This
+contains individual points with attributes, but no road, building, land-use, or other basemap
+geometry. That is enough to place POI pins, but not enough for an offline map view in the
+mobile application.
 
 Pre-rendering raster tiles for full offline coverage was considered and rejected: tile count
-(and therefore storage) grows roughly 4x per zoom level, so covering a region at the zoom
-levels a navigation-style app needs is not realistic to ship as a downloadable offline
-artifact.
+and storage grow roughly 4x per zoom level, so covering a region at the zoom levels a
+navigation-style app needs is not realistic to ship as a downloadable offline artifact.
 
-The alternative - vector tiles rendered on-device - avoids that storage blowup, because the
-same compact geometry data is restyled at render time instead of being baked into per-zoom
-raster images. This requires:
+The preferred basemap artifact is a regional vector tile archive:
 
-- A **vector tile generator** that turns a raw OSM PBF extract into tiles. We evaluated
-  building this ourselves versus using an established tool, and chose
-  [Planetiler](https://github.com/onthegomap/planetiler) - it is purpose-built for exactly
-  this (OSM PBF -> vector tiles), actively maintained, and outputs **PMTiles** directly
-  (a single flat file, not a tile server).
-- A **client-side renderer** that can read that output. MapLibre Native for Android has
-  documented, built-in support for local PMTiles files since v11.7.0
-  (`pmtiles://file://<path>`), which matches our distribution model - a fully pre-built file
-  downloaded once, not a live tile server. No equivalent confirmation exists yet for iOS,
-  which is a separate, mobile-side concern tracked outside this ADR.
+- Vector tiles keep geometry compact and allow the mobile app to style the map at render time.
+- PMTiles is a single-file artifact that matches POIneer's region download model.
+- MapLibre Native for Android has documented support for local PMTiles files via
+  `pmtiles://file://<path>`. iOS support remains a separate mobile-side concern.
 
-Planetiler's own guidance puts regional (non-planet) memory needs at roughly 0.5x the input
-`.osm.pbf` size in RAM and 5-10x in disk - modest for a single region, but the VPS running
-POIneer.Render's existing pipeline is not provisioned generously, and this is materially
-heavier (and requires a JVM) than the existing .NET-only POI extraction. Coupling the two
-into one pipeline would mean a slow or failed tile build blocks POI updates, and vice versa.
+Generating vector tiles inside POIneer.Render from first principles would require substantial
+GIS-specific implementation:
 
-Once there are more than a handful of regions, a further problem appears: if a pipeline run
-simply iterates `regions.production.json` from the top each time and does not have the
-capacity to get through the whole list, regions further down the file are starved - they
-never get processed while the run keeps restarting at position 1.
+- OSM feature processing
+- zoom-dependent generalization
+- MVT encoding
+- tile indexing
+- PMTiles archive generation
 
-Finally, splitting POI and tile generation into independent pipelines creates a coordination
-gap: something needs to decide when a region has *both* artifacts and is safe to expose to
-the mobile app, without a window where a consumer could see one artifact but not the other.
+[Planetiler](https://github.com/onthegomap/planetiler) already provides this functionality and
+can generate PMTiles directly from OSM PBF input. POIneer.Render should therefore orchestrate
+Planetiler instead of implementing a custom vector tile pipeline.
+
+An earlier direction in this ADR favored a separate `MapTileBuilder` pipeline with independent
+scheduling and later manifest-based coordination. That approach reduced coupling, but it also
+introduced a release coordination problem: `poi.sqlite` and the basemap could be produced from
+different OSM snapshots, fail independently, and require extra publishing state before the
+mobile app could safely consume both artifacts as one regional release.
+
+For the current MVP, consistency between the POI dataset and the offline basemap is more useful
+than independent scheduling. The regional render should produce both artifacts from the same
+regional OSM source during the same render execution.
 
 ## Decision
 
-1. **Add a second, independent build pipeline: `MapTileBuilder`.** It invokes Planetiler as
-   an external process (JVM dependency, separate from the existing .NET toolchain) against
-   the same per-region OSM PBF extract `PoiDatasetBuilder` uses, producing
-   `<region>.pmtiles`. It is triggered and scheduled independently of `PoiDatasetBuilder` -
-   nothing requires the two to run together, and either can be moved to different compute
-   (e.g. a temporary higher-memory build host) without touching the other.
+1. **Generate vector tiles as part of the existing regional render pipeline.** The scheduled
+   render process remains the single entry point. For each rendered region, POIneer.Render
+   should generate `poi.sqlite` and, when vector tile generation is enabled, `map.pmtiles` in
+   the same render execution.
 
-2. **Coordinate publishing through a manifest, not direct artifact checks.** A single
-   `manifest.json`, published to Azure Blob Storage, is the sole source of truth for what's
-   available. Per region, it tracks `poi: { lastBuiltAt }`, `tiles: { lastBuiltAt }`, and a
-   `published` flag. Neither builder sets `published` unilaterally: on successfully finishing
-   its own artifact for a region, a builder updates only its own field, then checks whether
-   the sibling artifact's field is already present for that region. If so, *that* builder
-   flips `published: true`. This "whoever finishes last flips the switch" pattern needs no
-   separate watcher/poller and is correct regardless of which pipeline happens to run first.
-   The mobile app (and any future consumer) reads only this manifest - it never probes Blob
-   paths directly - which removes the race window entirely.
+2. **Introduce an `IVectorTileGenerator` abstraction.** Render orchestration coordinates vector
+   tile generation through an application-level interface, for example:
 
-3. **Select regions to (re)build by staleness, not list position.** Each pipeline run sorts
-   regions by `lastBuiltAt` for its own artifact type (a region never built counts as
-   infinitely stale, so new regions are always prioritized) and processes oldest-first until
-   either the list is exhausted or a per-run **time budget** is spent - not until a fixed
-   count N is reached, since region extract sizes vary enough that a fixed N could either
-   waste capacity or blow the budget. `lastBuiltAt` is only updated on success, so a run that
-   fails or is interrupted partway leaves the affected regions stale and automatically
-   eligible for immediate retry next run, with no separate failure-handling path required.
+   ```csharp
+   public interface IVectorTileGenerator
+   {
+       Task GenerateAsync(
+           string pbfPath,
+           string outputPath,
+           CancellationToken cancellationToken);
+   }
+   ```
 
-4. **Explicitly out of scope for now: version-pairing between POI and tile artifacts.** A
-   region is "published" once both artifact types have completed at least once; later,
-   independent updates to either side do not require rebuilding the other. This accepts a
-   known, low-severity inconsistency window (e.g. a newly-opened venue's pin appearing before
-   its building shows up on the basemap) as an acceptable tradeoff rather than a problem worth
-   solving up front.
+   `RenderRegion` may coordinate when this operation runs, but it must not contain
+   Planetiler-specific process execution logic.
+
+3. **Use Planetiler as the first vector tile generator implementation.**
+   `PlanetilerVectorTileGenerator` invokes Planetiler as an external process, passes the
+   regional OSM PBF input path and the target `map.pmtiles` output path, captures stdout and
+   stderr, forwards relevant output to `ILogger`, propagates cancellation where possible, and
+   fails if Planetiler exits with a non-zero exit code.
+
+4. **Publish regional artifacts as one render output.** For a region such as Berlin, the render
+   output should contain:
+
+   ```text
+   berlin/
+   |-- poi.sqlite
+   `-- map.pmtiles
+   ```
+
+   The PMTiles artifact name is always `map.pmtiles`. Both files belong to the same regional
+   dataset generation and originate from the same regional OSM input.
+
+5. **Make vector tile generation configurable.** Planetiler-specific values must be supplied
+   through configuration rather than hard-coded. Initial options may be limited to what the MVP
+   implementation needs, such as:
+
+   ```text
+   Enabled
+   JavaExecutablePath
+   PlanetilerJarPath
+   Profile
+   MinZoom
+   MaxZoom
+   ```
+
+6. **Fail the render when requested vector tile generation fails.** If vector tile generation is
+   enabled for a render, the render must fail when Planetiler cannot be started, exits
+   unsuccessfully, generation is cancelled, or the expected `map.pmtiles` file is not created.
+   Partial or failed PMTiles artifacts must not be treated as successful regional output.
+
+7. **Defer independent tile scheduling and remote publishing.** A future larger-scale pipeline
+   may split POI and tile generation again if Planetiler runtime, memory, or scheduling pressure
+   becomes too high for the shared render job. That future design will need explicit artifact
+   versioning or manifest coordination. It is not part of the current MVP decision.
 
 ## Consequences
 
-- POI and tile generation can run on independent schedules and independent hardware; a slow
-  or failing Planetiler run no longer blocks POI updates.
-- New or previously-failed regions are always prioritized on the next run regardless of their
-  position in `regions.production.json`, so the "only the top 40 ever get updated" starvation
-  scenario cannot happen.
-- No special recovery logic is needed for a failed/interrupted run - staleness-based
-  selection self-heals on the next run.
-- Adds a JVM runtime dependency (for Planetiler) wherever `MapTileBuilder` runs, alongside the
-  existing .NET toolchain.
-- `manifest.json` is a new shared piece of state both pipelines depend on. This design does
-  not yet handle two overlapping runs of the *same* artifact type writing to it concurrently;
-  if run frequency increases to the point that's a real risk, add optimistic-concurrency
-  writes (e.g. Azure Blob conditional `ETag` writes) rather than assuming it away.
-- No consistency is enforced between POI and basemap versions (see Decision point 4) - revisit
-  only if real usage shows this is a noticeable problem, not preemptively.
-- The manifest's per-region availability list is a natural foundation for a future in-app
-  region picker, though building that UI is not part of this decision.
+- `poi.sqlite` and `map.pmtiles` are generated from the same regional OSM source, so the mobile
+  app can treat them as one coherent regional dataset release.
+- Scheduling remains simple: the existing scheduled render remains the entry point, and
+  scheduling does not move into individual dataset builders.
+- Render failures are easier to reason about because POI and map artifacts succeed or fail as
+  part of one regional execution.
+- Vector tile generation remains isolated from POI dataset generation behind
+  `IVectorTileGenerator`.
+- POIneer.Render gains a JVM and Planetiler dependency when vector tile generation is enabled.
+- A slow or failed Planetiler run can block completion of the regional render. This is accepted
+  for the MVP in exchange for simpler coordination and artifact consistency.
+- Running POI and tile generation independently, selecting regions by artifact staleness, and
+  manifest-based "whoever finishes last publishes" coordination are deferred until there is a
+  concrete scaling need.
+
+## Testing Guidance
+
+Tests should cover the orchestration boundary without requiring Java or Planetiler for ordinary
+unit tests.
+
+At minimum, verify:
+
+- vector tile generation is invoked with the expected regional PBF path
+- the expected `map.pmtiles` output path is passed
+- cancellation is propagated
+- a failed generator causes the render to fail
+- vector tile generation can be disabled through configuration, if the MVP introduces an
+  `Enabled` option
+- Planetiler process exit failures are handled correctly
+- the Planetiler implementation verifies that the expected output file was created
+
+Process execution should stay behind an abstraction where useful so tests can simulate exit
+codes, stderr/stdout, cancellation, and missing output files deterministically.
+
+## Out of Scope
+
+This decision does not include:
+
+- mobile MapLibre integration
+- map styling
+- online tile serving
+- POI image handling
+- custom implementation of PMTiles
+- custom implementation of vector tile generation
+- publishing `map.pmtiles` to remote storage
+- validation of PMTiles contents beyond basic artifact existence
+- independent `MapTileBuilder` scheduling
+- manifest-based coordination between independently produced POI and tile artifacts
 
 ## References
 
-- ADR 0002 - Local Dataset Publisher (the existing POI distribution pattern this mirrors)
-- ADR 0005 - Automated VPS Deployment (existing pipeline/VPS constraints this extends)
-- [Planetiler](https://github.com/onthegomap/planetiler) - OSM PBF -> PMTiles generator
+- ADR 0002 - Local Dataset Publisher
+- ADR 0005 - Automated VPS Deployment
+- [Planetiler](https://github.com/onthegomap/planetiler) - OSM PBF to PMTiles generator
 - [MapLibre Native Android - PMTiles support](https://maplibre.org/maplibre-native/android/examples/data/PMTiles/) -
   local `pmtiles://file://` sources since v11.7.0

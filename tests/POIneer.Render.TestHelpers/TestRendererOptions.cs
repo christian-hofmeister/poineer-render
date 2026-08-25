@@ -15,4 +15,14 @@ public static class TestRendererOptions
             OverwritePbf = overwritePbf,
             DownloadTimeoutSeconds = 600
         });
+
+    public static IOptions<VectorTileOptions> CreateVectorTiles(
+        bool enabled = false,
+        string? planetilerJarPath = null)
+        => Options.Create(new VectorTileOptions
+        {
+            Enabled = enabled,
+            JavaExecutablePath = "java",
+            PlanetilerJarPath = planetilerJarPath
+        });
 }
