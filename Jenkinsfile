@@ -254,7 +254,7 @@ pipeline {
           docker run --rm "${IMAGE_TAG}" --Renderer:DryRun=true
 
           docker run --rm --entrypoint sh "${IMAGE_TAG}" -c \
-            'id && java -version && flyway -v && osmium --version && test -s /opt/poineer-render/tools/planetiler/planetiler.jar'
+            'id && java -version && flyway -v && osmium --version && test -s /opt/poineer-render/tools/planetiler/planetiler.jar && test -f /opt/poineer-render/app/migrations/flyway-poi.toml && test -d /opt/poineer-render/app/migrations/sql/poi'
         '''
       }
     }
