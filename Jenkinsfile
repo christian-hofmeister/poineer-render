@@ -221,6 +221,13 @@ pipeline {
           IMAGE_TAG="${DOCKER_IMAGE}:${SAFE_BRANCH}-${BUILD_NUMBER}"
           echo "${IMAGE_TAG}" > docker-image-tag.txt
 
+          if printf '%s' "$BRANCH_NAME" | grep -Eq '^release/.+'; then
+            if [ -z "${PLANETILER_SHA256:-}" ] || [ -z "${FLYWAY_SHA256:-}" ]; then
+              echo "Release Docker builds require PLANETILER_SHA256 and FLYWAY_SHA256."
+              exit 1
+            fi
+          fi
+
           docker build \
             --build-arg PLANETILER_VERSION="${PLANETILER_VERSION}" \
             --build-arg PLANETILER_SHA256="${PLANETILER_SHA256:-}" \

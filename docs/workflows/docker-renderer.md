@@ -31,6 +31,9 @@ docker build \
   -t poineer-render:<version> .
 ```
 
+Jenkins enforces `PLANETILER_SHA256` and `FLYWAY_SHA256` for `release/*` branch builds.
+Feature branch builds may use the upstream checksum sidecars as a convenience while iterating.
+
 The image runs as a non-root `poineer` user. Its default UID/GID is `10001`, and both can be
 overridden at build time:
 
