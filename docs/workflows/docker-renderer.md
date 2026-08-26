@@ -51,7 +51,7 @@ docker run --rm poineer-render:local --Renderer:DryRun=true
 Check the bundled external tools:
 
 ```bash
-docker run --rm --entrypoint sh poineer-render:local -c "java -version && flyway -v && osmium --version && test -s /opt/poineer-render/tools/planetiler/planetiler.jar"
+docker run --rm --entrypoint sh poineer-render:local -c "id && java -version && flyway -v && osmium --version && test -s /opt/poineer-render/tools/planetiler/planetiler.jar"
 ```
 
 ## Run On The VPS

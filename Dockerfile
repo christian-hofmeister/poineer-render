@@ -71,6 +71,7 @@ RUN curl -fsSL \
     fi \
     && tar -xzf /tmp/flyway.tar.gz -C /opt/flyway \
     && ln -s "/opt/flyway/flyway-${FLYWAY_VERSION}" /opt/flyway/current \
+    && chmod 755 "/opt/flyway/flyway-${FLYWAY_VERSION}/flyway" \
     && rm /tmp/flyway.tar.gz
 
 RUN curl -fsSL \

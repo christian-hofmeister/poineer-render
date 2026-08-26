@@ -242,7 +242,7 @@ pipeline {
           docker run --rm "${IMAGE_TAG}" --Renderer:DryRun=true
 
           docker run --rm --entrypoint sh "${IMAGE_TAG}" -c \
-            'java -version && flyway -v && osmium --version && test -s /opt/poineer-render/tools/planetiler/planetiler.jar'
+            'id && java -version && flyway -v && osmium --version && test -s /opt/poineer-render/tools/planetiler/planetiler.jar'
         '''
       }
     }
