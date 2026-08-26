@@ -29,6 +29,8 @@ pipeline {
     PUBLISH_DIR = 'out/POIneer.Render'
     DOCKER_IMAGE = 'poineer-render'
     PLANETILER_VERSION = '0.10.2'
+    PLANETILER_SHA256 = ''
+    FLYWAY_SHA1 = ''
 
     COVERAGE_MIN = '25'
 
