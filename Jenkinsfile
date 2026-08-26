@@ -27,6 +27,8 @@ pipeline {
     RENDER_CSPROJ = 'src/POIneer.Render/POIneer.Render.csproj'
     RENDER_PROJECT_DIR = 'src/POIneer.Render'
     PUBLISH_DIR = 'out/POIneer.Render'
+    DOCKER_IMAGE = 'poineer-render'
+    PLANETILER_VERSION = '0.10.2'
 
     COVERAGE_MIN = '25'
 
@@ -200,6 +202,44 @@ pipeline {
         success {
           archiveArtifacts artifacts: 'poineer-render_*.tar.gz', fingerprint: true
         }
+      }
+    }
+
+    stage('Build Docker Image') {
+      steps {
+        sh '''
+          set -eux
+
+          SAFE_BRANCH="$(echo "$BRANCH_NAME" | tr '/ ' '__')"
+          IMAGE_TAG="${DOCKER_IMAGE}:${SAFE_BRANCH}-${BUILD_NUMBER}"
+
+          docker build \
+            --build-arg PLANETILER_VERSION="${PLANETILER_VERSION}" \
+            -t "${IMAGE_TAG}" \
+            .
+
+          echo "${IMAGE_TAG}" > docker-image-tag.txt
+        '''
+      }
+      post {
+        success {
+          archiveArtifacts artifacts: 'docker-image-tag.txt', fingerprint: false
+        }
+      }
+    }
+
+    stage('Verify Docker Image') {
+      steps {
+        sh '''
+          set -eux
+
+          IMAGE_TAG="$(cat docker-image-tag.txt)"
+
+          docker run --rm "${IMAGE_TAG}" --Renderer:DryRun=true
+
+          docker run --rm --entrypoint sh "${IMAGE_TAG}" -c \
+            'java -version && flyway -v && osmium --version && test -s /opt/poineer-render/tools/planetiler/planetiler.jar'
+        '''
       }
     }
 
