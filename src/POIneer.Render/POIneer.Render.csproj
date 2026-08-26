@@ -14,9 +14,10 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
     <PackageReference Include="OsmSharp" />
     <Content Include="..\..\migrations\**\*">
-    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    <Link>migrations\%(RecursiveDir)%(Filename)%(Extension)</Link>
-  </Content>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <Link>migrations\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

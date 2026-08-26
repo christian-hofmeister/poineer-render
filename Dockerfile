@@ -22,6 +22,7 @@ RUN dotnet publish src/POIneer.Render/POIneer.Render.csproj \
 FROM ${DOTNET_RUNTIME_IMAGE} AS runtime
 
 ARG FLYWAY_VERSION=11.8.2
+ARG FLYWAY_SHA1=
 ARG PLANETILER_VERSION=0.10.2
 ARG PLANETILER_SHA256=
 
@@ -48,6 +49,15 @@ RUN mkdir -p \
 RUN curl -fsSL \
         "https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/${FLYWAY_VERSION}/flyway-commandline-${FLYWAY_VERSION}-linux-x64.tar.gz" \
         -o /tmp/flyway.tar.gz \
+    && if [ -n "${FLYWAY_SHA1}" ]; then \
+        echo "${FLYWAY_SHA1}  /tmp/flyway.tar.gz" | sha1sum -c -; \
+    else \
+        curl -fsSL \
+            "https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/${FLYWAY_VERSION}/flyway-commandline-${FLYWAY_VERSION}-linux-x64.tar.gz.sha1" \
+            -o /tmp/flyway.tar.gz.sha1; \
+        awk '{ print $1 "  /tmp/flyway.tar.gz" }' /tmp/flyway.tar.gz.sha1 | sha1sum -c -; \
+        rm /tmp/flyway.tar.gz.sha1; \
+    fi \
     && tar -xzf /tmp/flyway.tar.gz -C /opt/flyway \
     && ln -s "/opt/flyway/flyway-${FLYWAY_VERSION}" /opt/flyway/current \
     && rm /tmp/flyway.tar.gz
