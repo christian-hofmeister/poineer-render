@@ -212,13 +212,12 @@ pipeline {
 
           SAFE_BRANCH="$(echo "$BRANCH_NAME" | tr '/ ' '__')"
           IMAGE_TAG="${DOCKER_IMAGE}:${SAFE_BRANCH}-${BUILD_NUMBER}"
+          echo "${IMAGE_TAG}" > docker-image-tag.txt
 
           docker build \
             --build-arg PLANETILER_VERSION="${PLANETILER_VERSION}" \
             -t "${IMAGE_TAG}" \
             .
-
-          echo "${IMAGE_TAG}" > docker-image-tag.txt
         '''
       }
       post {
@@ -322,6 +321,14 @@ pipeline {
         def emoji = currentBuild.currentResult == 'SUCCESS' ? '✅' : (currentBuild.currentResult == 'UNSTABLE' ? '⚠️' : '❌')
         echo "${emoji} Build result: ${currentBuild.currentResult}"
       }
+      sh '''
+        set +e
+        if [ -f docker-image-tag.txt ]; then
+          IMAGE_TAG="$(cat docker-image-tag.txt)"
+          echo "[docker] Removing CI image ${IMAGE_TAG} ..."
+          docker image rm -f "${IMAGE_TAG}" >/dev/null 2>&1 || true
+        fi
+      '''
     }
     failure {
       echo "Build failed. See logs above."

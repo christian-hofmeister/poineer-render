@@ -27,7 +27,6 @@ ARG PLANETILER_VERSION=0.10.2
 ARG PLANETILER_SHA256=
 
 ENV DOTNET_ENVIRONMENT=Production \
-    POINEER_RENDER_ROOT=/opt/poineer-render \
     PATH="/opt/flyway/current:${PATH}"
 
 RUN apt-get update \
