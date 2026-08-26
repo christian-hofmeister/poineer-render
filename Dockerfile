@@ -22,6 +22,8 @@ RUN dotnet publish src/POIneer.Render/POIneer.Render.csproj \
 
 FROM ${DOTNET_RUNTIME_IMAGE} AS runtime
 
+ARG APP_UID=10001
+ARG APP_GID=10001
 ARG FLYWAY_VERSION=11.8.2
 ARG FLYWAY_SHA1=
 ARG PLANETILER_VERSION=0.10.2
@@ -45,6 +47,15 @@ RUN mkdir -p \
         /opt/poineer-render/data \
         /opt/poineer-render/logs \
         /opt/poineer-render/tools/planetiler
+
+RUN groupadd --gid "${APP_GID}" poineer \
+    && useradd \
+        --uid "${APP_UID}" \
+        --gid "${APP_GID}" \
+        --home-dir /opt/poineer-render \
+        --shell /usr/sbin/nologin \
+        --no-create-home \
+        poineer
 
 RUN curl -fsSL \
         "https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/${FLYWAY_VERSION}/flyway-commandline-${FLYWAY_VERSION}-linux-x64.tar.gz" \
@@ -77,7 +88,11 @@ RUN curl -fsSL \
 
 COPY --from=build /app/publish/ /opt/poineer-render/app/
 
+RUN chown -R poineer:poineer /opt/poineer-render
+
 WORKDIR /opt/poineer-render/app
 VOLUME ["/opt/poineer-render/data", "/opt/poineer-render/logs"]
+
+USER poineer
 
 ENTRYPOINT ["dotnet", "/opt/poineer-render/app/POIneer.Render.dll"]

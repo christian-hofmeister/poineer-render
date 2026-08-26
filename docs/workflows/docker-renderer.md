@@ -30,6 +30,16 @@ docker build \
   -t poineer-render:<version> .
 ```
 
+The image runs as a non-root `poineer` user. Its default UID/GID is `10001`, and both can be
+overridden at build time:
+
+```bash
+docker build \
+  --build-arg APP_UID=10001 \
+  --build-arg APP_GID=10001 \
+  -t poineer-render:local .
+```
+
 ## Verify
 
 Run a dry start against the production configuration:
@@ -54,6 +64,14 @@ docker run --rm \
   -v /opt/poineer-render/data:/opt/poineer-render/data \
   -v /opt/poineer-render/logs:/opt/poineer-render/logs \
   poineer-render:local
+```
+
+When using bind mounts on Linux, make sure the mounted directories are writable by the
+container user:
+
+```bash
+sudo mkdir -p /opt/poineer-render/data /opt/poineer-render/logs
+sudo chown -R 10001:10001 /opt/poineer-render/data /opt/poineer-render/logs
 ```
 
 Configuration is still loaded from `appsettings.Production.json`, environment variables with
