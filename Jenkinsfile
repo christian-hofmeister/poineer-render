@@ -212,7 +212,11 @@ pipeline {
 
           SAFE_BRANCH="$(printf '%s' "$BRANCH_NAME" | sed 's/[^A-Za-z0-9_.-]/_/g; s/^[.-]/_/')"
           MAX_SAFE_BRANCH_LENGTH=$((128 - ${#BUILD_NUMBER} - 1))
-          SAFE_BRANCH="$(printf '%s' "$SAFE_BRANCH" | cut -c "1-${MAX_SAFE_BRANCH_LENGTH}")"
+          if [ "$MAX_SAFE_BRANCH_LENGTH" -ge 1 ]; then
+            SAFE_BRANCH="$(printf '%s' "$SAFE_BRANCH" | cut -c "1-${MAX_SAFE_BRANCH_LENGTH}")"
+          else
+            SAFE_BRANCH=branch
+          fi
           [ -n "$SAFE_BRANCH" ] || SAFE_BRANCH=branch
           IMAGE_TAG="${DOCKER_IMAGE}:${SAFE_BRANCH}-${BUILD_NUMBER}"
           echo "${IMAGE_TAG}" > docker-image-tag.txt
@@ -220,6 +224,7 @@ pipeline {
           docker build \
             --build-arg PLANETILER_VERSION="${PLANETILER_VERSION}" \
             --build-arg PLANETILER_SHA256="${PLANETILER_SHA256:-}" \
+            --build-arg FLYWAY_SHA256="${FLYWAY_SHA256:-}" \
             --build-arg FLYWAY_SHA1="${FLYWAY_SHA1:-}" \
             -t "${IMAGE_TAG}" \
             .

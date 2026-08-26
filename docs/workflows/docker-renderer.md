@@ -27,6 +27,7 @@ For release builds, also pass the expected Planetiler checksum:
 docker build \
   --build-arg PLANETILER_VERSION=0.10.2 \
   --build-arg PLANETILER_SHA256=<sha256> \
+  --build-arg FLYWAY_SHA256=<sha256> \
   -t poineer-render:<version> .
 ```
 

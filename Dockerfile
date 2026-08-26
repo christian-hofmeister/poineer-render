@@ -25,6 +25,7 @@ FROM ${DOTNET_RUNTIME_IMAGE} AS runtime
 ARG APP_UID=10001
 ARG APP_GID=10001
 ARG FLYWAY_VERSION=11.8.2
+ARG FLYWAY_SHA256=
 ARG FLYWAY_SHA1=
 ARG PLANETILER_VERSION=0.10.2
 ARG PLANETILER_SHA256=
@@ -60,7 +61,9 @@ RUN groupadd --gid "${APP_GID}" poineer \
 RUN curl -fsSL \
         "https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/${FLYWAY_VERSION}/flyway-commandline-${FLYWAY_VERSION}-linux-x64.tar.gz" \
         -o /tmp/flyway.tar.gz \
-    && if [ -n "${FLYWAY_SHA1}" ]; then \
+    && if [ -n "${FLYWAY_SHA256}" ]; then \
+        echo "${FLYWAY_SHA256}  /tmp/flyway.tar.gz" | sha256sum -c -; \
+    elif [ -n "${FLYWAY_SHA1}" ]; then \
         echo "${FLYWAY_SHA1}  /tmp/flyway.tar.gz" | sha1sum -c -; \
     else \
         curl -fsSL \
