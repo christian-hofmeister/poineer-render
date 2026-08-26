@@ -87,6 +87,9 @@ RUN curl -fsSL \
         rm /tmp/planetiler.jar.sha256; \
     fi
 
+RUN apt-get purge -y --auto-remove curl tar \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app/publish/ /opt/poineer-render/app/
 
 RUN chown -R poineer:poineer /opt/poineer-render
