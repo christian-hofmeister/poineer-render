@@ -219,6 +219,8 @@ pipeline {
 
           docker build \
             --build-arg PLANETILER_VERSION="${PLANETILER_VERSION}" \
+            --build-arg PLANETILER_SHA256="${PLANETILER_SHA256}" \
+            --build-arg FLYWAY_SHA1="${FLYWAY_SHA1}" \
             -t "${IMAGE_TAG}" \
             .
         '''
