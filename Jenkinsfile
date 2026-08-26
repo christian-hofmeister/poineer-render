@@ -210,7 +210,10 @@ pipeline {
         sh '''
           set -eux
 
-          SAFE_BRANCH="$(echo "$BRANCH_NAME" | tr '/ ' '__')"
+          SAFE_BRANCH="$(printf '%s' "$BRANCH_NAME" | sed 's/[^A-Za-z0-9_.-]/_/g; s/^[.-]/_/')"
+          MAX_SAFE_BRANCH_LENGTH=$((128 - ${#BUILD_NUMBER} - 1))
+          SAFE_BRANCH="$(printf '%s' "$SAFE_BRANCH" | cut -c "1-${MAX_SAFE_BRANCH_LENGTH}")"
+          [ -n "$SAFE_BRANCH" ] || SAFE_BRANCH=branch
           IMAGE_TAG="${DOCKER_IMAGE}:${SAFE_BRANCH}-${BUILD_NUMBER}"
           echo "${IMAGE_TAG}" > docker-image-tag.txt
 

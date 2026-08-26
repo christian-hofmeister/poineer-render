@@ -16,6 +16,7 @@ COPY migrations migrations
 COPY src src
 RUN dotnet publish src/POIneer.Render/POIneer.Render.csproj \
     --configuration Release \
+    --no-restore \
     --output /app/publish \
     --nologo
 
@@ -54,7 +55,7 @@ RUN curl -fsSL \
         curl -fsSL \
             "https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/${FLYWAY_VERSION}/flyway-commandline-${FLYWAY_VERSION}-linux-x64.tar.gz.sha1" \
             -o /tmp/flyway.tar.gz.sha1; \
-        awk '{ print $1 "  /tmp/flyway.tar.gz" }' /tmp/flyway.tar.gz.sha1 | sha1sum -c -; \
+        echo "$(cut -d ' ' -f 1 /tmp/flyway.tar.gz.sha1)  /tmp/flyway.tar.gz" | sha1sum -c -; \
         rm /tmp/flyway.tar.gz.sha1; \
     fi \
     && tar -xzf /tmp/flyway.tar.gz -C /opt/flyway \
@@ -70,7 +71,7 @@ RUN curl -fsSL \
         curl -fsSL \
             "https://github.com/onthegomap/planetiler/releases/download/v${PLANETILER_VERSION}/planetiler.jar.sha256" \
             -o /tmp/planetiler.jar.sha256; \
-        awk '{ print $1 "  /opt/poineer-render/tools/planetiler/planetiler.jar" }' /tmp/planetiler.jar.sha256 | sha256sum -c -; \
+        echo "$(cut -d ' ' -f 1 /tmp/planetiler.jar.sha256)  /opt/poineer-render/tools/planetiler/planetiler.jar" | sha256sum -c -; \
         rm /tmp/planetiler.jar.sha256; \
     fi
 
