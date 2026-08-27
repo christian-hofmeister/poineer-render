@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 ARG DOTNET_SDK_IMAGE=mcr.microsoft.com/dotnet/sdk:10.0.201
-ARG DOTNET_RUNTIME_IMAGE=mcr.microsoft.com/dotnet/runtime:10.0.10-noble
+ARG DOTNET_RUNTIME_IMAGE=mcr.microsoft.com/dotnet/runtime:10.0.11-noble
 
 FROM ${DOTNET_SDK_IMAGE} AS build
 WORKDIR /src
@@ -89,7 +89,6 @@ RUN apt-get update \
 RUN mkdir -p \
         /opt/poineer-render/app \
         /opt/poineer-render/data \
-        /opt/poineer-render/logs \
         /opt/poineer-render/tools/planetiler
 
 RUN groupadd --gid "${APP_GID}" poineer \
@@ -108,7 +107,7 @@ COPY --from=tools /opt/poineer-render/tools/planetiler/ /opt/poineer-render/tool
 RUN chown -R poineer:poineer /opt/poineer-render
 
 WORKDIR /opt/poineer-render/app
-VOLUME ["/opt/poineer-render/data", "/opt/poineer-render/logs"]
+VOLUME ["/opt/poineer-render/data"]
 
 USER poineer
 

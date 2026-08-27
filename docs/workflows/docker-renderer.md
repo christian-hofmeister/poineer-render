@@ -10,8 +10,12 @@ artifact plus the external tools required by production rendering:
 - `osmium-tool` for polygon extraction when a region provides a `.poly` file
 
 The image stores application files below `/opt/poineer-render/app` and bundled tools below
-`/opt/poineer-render/tools`. Runtime data, rendered region outputs, and logs should be
-mounted from the host instead of baked into the image.
+`/opt/poineer-render/tools`. Runtime data, rendered region outputs, published datasets, and
+the single-instance lock live below `/opt/poineer-render/data` so concurrent containers that
+share the same data mount also share the same lock.
+
+The renderer writes application logs to stdout/stderr. Use `docker logs` or the Docker logging
+driver configured by the host to retain container logs.
 
 ## Build
 
@@ -58,24 +62,29 @@ Check the bundled external tools:
 docker run --rm --entrypoint sh poineer-render:local -c "id && java -version && flyway -v && osmium --version && test -s /opt/poineer-render/tools/planetiler/planetiler.jar"
 ```
 
+Run a Flyway migration smoke test against a temporary SQLite database inside the container:
+
+```bash
+docker run --rm --entrypoint sh poineer-render:local -c "cd /opt/poineer-render/app && flyway -configFiles=\"migrations/flyway-poi.toml\" -url=\"jdbc:sqlite:/tmp/poineer-migration-smoke.sqlite\" -locations=\"filesystem:migrations/sql/poi\" migrate && test -s /tmp/poineer-migration-smoke.sqlite"
+```
+
 ## Run On The VPS
 
-Mount the production data and log directories:
+Mount the production data directory:
 
 ```bash
 docker run --rm \
   --name poineer-render \
   -v /opt/poineer-render/data:/opt/poineer-render/data \
-  -v /opt/poineer-render/logs:/opt/poineer-render/logs \
   poineer-render:local
 ```
 
-When using bind mounts on Linux, make sure the mounted directories are writable by the
+When using bind mounts on Linux, make sure the mounted data directory is writable by the
 container user:
 
 ```bash
-sudo mkdir -p /opt/poineer-render/data /opt/poineer-render/logs
-sudo chown -R 10001:10001 /opt/poineer-render/data /opt/poineer-render/logs
+sudo mkdir -p /opt/poineer-render/data
+sudo chown -R 10001:10001 /opt/poineer-render/data
 ```
 
 Configuration is still loaded from `appsettings.Production.json`, environment variables with
@@ -84,7 +93,6 @@ the `POINEER_RENDER__` prefix, and command-line arguments. For example:
 ```bash
 docker run --rm \
   -v /opt/poineer-render/data:/opt/poineer-render/data \
-  -v /opt/poineer-render/logs:/opt/poineer-render/logs \
   poineer-render:local \
   --Renderer:OnlyRegionId=berlin \
   --VectorTiles:Enabled=true

@@ -89,6 +89,24 @@ public sealed class RendererConfigurationFilesTests
         rendererOptions!.OnlyRegionId.Should().Be(expectedOnlyRegionId);
     }
 
+    [Fact]
+    public void ProductionRendererConfiguration_PlacesLockFileInsideSharedDataMount()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var settingsPath = Path.Combine(repositoryRoot, "src", "POIneer.Render", "appsettings.Production.json");
+
+        using var document = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        var renderer = document.RootElement.GetProperty("Renderer");
+
+        var lockFilePath = renderer.GetProperty("LockFilePath").GetString();
+
+        lockFilePath.Should().NotBeNullOrWhiteSpace();
+        lockFilePath!
+            .Replace('\\', '/')
+            .Should()
+            .StartWith("/opt/poineer-render/data/");
+    }
+
     private static string FindRepositoryRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

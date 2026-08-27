@@ -51,10 +51,11 @@ Because the lock now lives in the application, the crontab entry no longer needs
 0 3 * * * /opt/dotnet/current/dotnet /opt/poineer-render/app/POIneer.Render.dll >> /opt/poineer-render/logs/render.log 2>&1
 ```
 
-`Renderer:LockFilePath` in `appsettings.Production.json` points at the same
-`/opt/poineer-render/poineer-render.lock` path the original issue proposed, so
-the lock file stays inspectable on the VPS the same way (`cat` it to see which
-PID currently holds it).
+`Renderer:LockFilePath` in `appsettings.Production.json` points at
+`/opt/poineer-render/data/prod/poineer-render.lock`, so the lock file lives with
+the shared production data. This keeps direct VPS runs inspectable (`cat` it to
+see which PID currently holds it) and also preserves exclusivity for container
+runs that share the same `/opt/poineer-render/data` bind mount.
 
 ## Consequences
 
