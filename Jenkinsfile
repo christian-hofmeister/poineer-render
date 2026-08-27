@@ -45,6 +45,16 @@ pipeline {
       defaultValue: false,
       description: 'Run a quick sanity check on develop. This must not perform heavy rendering.'
     )
+    string(
+      name: 'PLANETILER_SHA256',
+      defaultValue: '',
+      description: 'Required for release/* Docker builds. SHA-256 of planetiler.jar.'
+    )
+    string(
+      name: 'FLYWAY_SHA256',
+      defaultValue: '',
+      description: 'Required for release/* Docker builds. SHA-256 of flyway-commandline linux-x64 tar.gz.'
+    )
   }
 
   stages {
@@ -258,6 +268,67 @@ pipeline {
 
           docker run --rm --entrypoint sh "${IMAGE_TAG}" -c \
             'cd /opt/poineer-render/app && flyway -configFiles="migrations/flyway-poi.toml" -url="jdbc:sqlite:/tmp/poineer-migration-smoke.sqlite" -locations="filesystem:migrations/sql/poi" migrate && test -s /tmp/poineer-migration-smoke.sqlite'
+        '''
+      }
+    }
+
+    stage('Promote Release Docker Image') {
+      when {
+        expression {
+          return env.BRANCH_NAME ==~ /release\/.+/
+        }
+      }
+      steps {
+        sh '''
+          set -eux
+
+          IMAGE_TAG="$(cat docker-image-tag.txt)"
+          RELEASE_VERSION="${BRANCH_NAME#release/}"
+
+          if ! printf '%s' "$RELEASE_VERSION" | grep -Eq '^v[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9_.-]+)?$'; then
+            echo "Release branch must be named like release/v0.2.1. Got: ${BRANCH_NAME}"
+            exit 1
+          fi
+
+          RELEASE_IMAGE_TAG="${DOCKER_IMAGE}:${RELEASE_VERSION}"
+          PRODUCTION_IMAGE_TAG="${DOCKER_IMAGE}:production"
+
+          docker tag "${IMAGE_TAG}" "${RELEASE_IMAGE_TAG}"
+          docker tag "${IMAGE_TAG}" "${PRODUCTION_IMAGE_TAG}"
+
+          {
+            echo "${RELEASE_IMAGE_TAG}"
+            echo "${PRODUCTION_IMAGE_TAG}"
+          } > docker-promoted-tags.txt
+
+          echo "[docker] Promoted ${IMAGE_TAG} to ${RELEASE_IMAGE_TAG} and ${PRODUCTION_IMAGE_TAG}."
+          docker image ls "${DOCKER_IMAGE}"
+        '''
+      }
+      post {
+        success {
+          archiveArtifacts artifacts: 'docker-promoted-tags.txt', fingerprint: false
+        }
+      }
+    }
+
+    stage('Prune Old Release Docker Images') {
+      when {
+        expression {
+          return env.BRANCH_NAME ==~ /release\/.+/
+        }
+      }
+      steps {
+        sh '''
+          set -eux
+
+          # Keep the two newest semantic release tags. The stable "production" tag is
+          # never selected here because it does not match the version tag pattern.
+          docker image ls "${DOCKER_IMAGE}" --format '{{.Repository}}:{{.Tag}}' \
+            | grep -E "^${DOCKER_IMAGE}:v[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9_.-]+)?$" \
+            | sort -V \
+            | head -n -2 \
+            | xargs -r docker image rm || true
         '''
       }
     }
