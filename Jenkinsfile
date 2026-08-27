@@ -27,6 +27,8 @@ pipeline {
     RENDER_CSPROJ = 'src/POIneer.Render/POIneer.Render.csproj'
     RENDER_PROJECT_DIR = 'src/POIneer.Render'
     PUBLISH_DIR = 'out/POIneer.Render'
+    DOCKER_IMAGE = 'poineer-render'
+    PLANETILER_VERSION = '0.10.2'
 
     COVERAGE_MIN = '25'
 
@@ -203,6 +205,63 @@ pipeline {
       }
     }
 
+    stage('Build Docker Image') {
+      steps {
+        sh '''
+          set -eux
+
+          SAFE_BRANCH="$(printf '%s' "$BRANCH_NAME" | sed 's/[^A-Za-z0-9_.-]/_/g; s/^[.-]/_/')"
+          MAX_SAFE_BRANCH_LENGTH=$((128 - ${#BUILD_NUMBER} - 1))
+          if [ "$MAX_SAFE_BRANCH_LENGTH" -ge 1 ]; then
+            SAFE_BRANCH="$(printf '%s' "$SAFE_BRANCH" | cut -c "1-${MAX_SAFE_BRANCH_LENGTH}")"
+          else
+            SAFE_BRANCH=branch
+          fi
+          [ -n "$SAFE_BRANCH" ] || SAFE_BRANCH=branch
+          IMAGE_TAG="${DOCKER_IMAGE}:${SAFE_BRANCH}-${BUILD_NUMBER}"
+          echo "${IMAGE_TAG}" > docker-image-tag.txt
+
+          if printf '%s' "$BRANCH_NAME" | grep -Eq '^release/.+'; then
+            if [ -z "${PLANETILER_SHA256:-}" ] || [ -z "${FLYWAY_SHA256:-}" ]; then
+              echo "Release Docker builds require PLANETILER_SHA256 and FLYWAY_SHA256."
+              exit 1
+            fi
+          fi
+
+          docker build \
+            --build-arg PLANETILER_VERSION="${PLANETILER_VERSION}" \
+            --build-arg PLANETILER_SHA256="${PLANETILER_SHA256:-}" \
+            --build-arg FLYWAY_SHA256="${FLYWAY_SHA256:-}" \
+            --build-arg FLYWAY_SHA1="${FLYWAY_SHA1:-}" \
+            -t "${IMAGE_TAG}" \
+            .
+        '''
+      }
+      post {
+        success {
+          archiveArtifacts artifacts: 'docker-image-tag.txt', fingerprint: false
+        }
+      }
+    }
+
+    stage('Verify Docker Image') {
+      steps {
+        sh '''
+          set -eux
+
+          IMAGE_TAG="$(cat docker-image-tag.txt)"
+
+          docker run --rm "${IMAGE_TAG}" --Renderer:DryRun=true
+
+          docker run --rm --entrypoint sh "${IMAGE_TAG}" -c \
+            'id && java -version && flyway -v && osmium --version && test -s /opt/poineer-render/tools/planetiler/planetiler.jar && test -f /opt/poineer-render/app/migrations/flyway-poi.toml && test -d /opt/poineer-render/app/migrations/sql/poi'
+
+          docker run --rm --entrypoint sh "${IMAGE_TAG}" -c \
+            'cd /opt/poineer-render/app && flyway -configFiles="migrations/flyway-poi.toml" -url="jdbc:sqlite:/tmp/poineer-migration-smoke.sqlite" -locations="filesystem:migrations/sql/poi" migrate && test -s /tmp/poineer-migration-smoke.sqlite'
+        '''
+      }
+    }
+
     stage('Deploy to VPS') {
       // Jenkins runs directly on the VPS (confirmed: /opt/poineer-render is already
       // owned by the jenkins user) - so unlike the original placeholder sketch, this
@@ -282,6 +341,14 @@ pipeline {
         def emoji = currentBuild.currentResult == 'SUCCESS' ? '✅' : (currentBuild.currentResult == 'UNSTABLE' ? '⚠️' : '❌')
         echo "${emoji} Build result: ${currentBuild.currentResult}"
       }
+      sh '''
+        set +e
+        if [ -f docker-image-tag.txt ]; then
+          IMAGE_TAG="$(cat docker-image-tag.txt)"
+          echo "[docker] Removing CI image ${IMAGE_TAG} ..."
+          docker image rm -f "${IMAGE_TAG}" >/dev/null 2>&1 || true
+        fi
+      '''
     }
     failure {
       echo "Build failed. See logs above."

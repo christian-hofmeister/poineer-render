@@ -13,6 +13,8 @@ namespace POIneer.Render.Application.UseCases;
 public sealed class RenderRegion : IRenderRegion
 {
     private const string StagingFileSuffix = ".tmp";
+    private const string PoiDatasetFileName = "poi.sqlite";
+    private const string VectorTileFileName = "map.pmtiles";
 
     private static readonly string[] SqliteSidecarSuffixes = ["-wal", "-shm", "-journal"];
 
@@ -28,6 +30,8 @@ public sealed class RenderRegion : IRenderRegion
     private readonly IDatasetVersionCalculator _datasetVersionCalculator;
     private readonly IDatasetArtifactMetadataFactory _datasetArtifactMetadataFactory;
     private readonly IPublishedDatasetVerifier _publishedDatasetVerifier;
+    private readonly IVectorTileGenerator _vectorTileGenerator;
+    private readonly VectorTileOptions _vectorTileOptions;
 
     public RenderRegion(
         ILogger<RenderRegion> log,
@@ -41,7 +45,9 @@ public sealed class RenderRegion : IRenderRegion
         IDatasetPublisher datasetPublisher,
         IDatasetVersionCalculator datasetVersionCalculator,
         IDatasetArtifactMetadataFactory datasetArtifactMetadataFactory,
-        IPublishedDatasetVerifier publishedDatasetVerifier)
+        IPublishedDatasetVerifier publishedDatasetVerifier,
+        IVectorTileGenerator vectorTileGenerator,
+        IOptions<VectorTileOptions> vectorTileOptions)
     {
         _logger = log;
         _polygonCutter = polygonCutter;
@@ -55,6 +61,8 @@ public sealed class RenderRegion : IRenderRegion
         _datasetVersionCalculator = datasetVersionCalculator;
         _datasetArtifactMetadataFactory = datasetArtifactMetadataFactory;
         _publishedDatasetVerifier = publishedDatasetVerifier;
+        _vectorTileGenerator = vectorTileGenerator;
+        _vectorTileOptions = vectorTileOptions.Value;
     }
 
     public async Task RunAsync(
@@ -72,11 +80,12 @@ public sealed class RenderRegion : IRenderRegion
         var regionOutDir = Path.Combine(outDir, regionDto.Id);
         Directory.CreateDirectory(regionOutDir);
 
-        var canonicalPath = Path.GetFullPath(Path.Combine(regionOutDir, "poi.sqlite"));
+        var canonicalPath = Path.GetFullPath(Path.Combine(regionOutDir, PoiDatasetFileName));
+        var canonicalVectorTilePath = Path.GetFullPath(Path.Combine(regionOutDir, VectorTileFileName));
 
         if (File.Exists(canonicalPath))
         {
-            if (!recreateDatabase)
+            if (!recreateDatabase && (!_vectorTileOptions.Enabled || File.Exists(canonicalVectorTilePath)))
             {
                 _logger.LogInformation("({Id}) Output SQLite already exists at {Out}, skipping rendering (overwrite disabled).", regionDto.Id, canonicalPath);
                 return;
@@ -89,6 +98,7 @@ public sealed class RenderRegion : IRenderRegion
         }
 
         var stagingPath = canonicalPath + StagingFileSuffix;
+        var stagingVectorTilePath = canonicalVectorTilePath + StagingFileSuffix;
 
         if (File.Exists(stagingPath))
         {
@@ -97,6 +107,15 @@ public sealed class RenderRegion : IRenderRegion
                 regionDto.Id,
                 stagingPath);
             DeleteSqliteDatabaseWithSidecars(stagingPath);
+        }
+
+        if (File.Exists(stagingVectorTilePath))
+        {
+            _logger.LogWarning(
+                "({Id}) Found a leftover staging PMTiles file from a previous interrupted run at {Staging}, removing it before re-rendering.",
+                regionDto.Id,
+                stagingVectorTilePath);
+            File.Delete(stagingVectorTilePath);
         }
 
         _logger.LogInformation("({Id}) Cutting polygon...", regionDto.Id);
@@ -135,8 +154,30 @@ public sealed class RenderRegion : IRenderRegion
                 $"Generated dataset for region '{regionDto.Id}' is invalid and was quarantined at {quarantinePath}: {string.Join(", ", result.Errors)}");
         }
 
+        if (_vectorTileOptions.Enabled)
+        {
+            _logger.LogInformation(
+                "({Id}) Generating vector tile dataset: {Out}",
+                regionDto.Id,
+                stagingVectorTilePath);
+
+            await _vectorTileGenerator.GenerateAsync(
+                cutPbf,
+                stagingVectorTilePath,
+                ct);
+        }
+
         _logger.LogInformation("({Id}) Promoting validated dataset to canonical location: {Out}", regionDto.Id, canonicalPath);
         PromoteStagingToCanonical(stagingPath, canonicalPath);
+
+        if (_vectorTileOptions.Enabled)
+        {
+            _logger.LogInformation(
+                "({Id}) Promoting vector tile dataset to canonical location: {Out}",
+                regionDto.Id,
+                canonicalVectorTilePath);
+            PromoteVectorTileToCanonical(stagingVectorTilePath, canonicalVectorTilePath);
+        }
 
         // Hash-based, not wall-clock: a forced re-render of byte-identical PBF input (same
         // SchemaVersion too) computes the same version and therefore the same destination
@@ -232,6 +273,9 @@ public sealed class RenderRegion : IRenderRegion
 
         File.Move(stagingPath, canonicalPath, overwrite: true);
     }
+
+    private static void PromoteVectorTileToCanonical(string stagingPath, string canonicalPath)
+        => File.Move(stagingPath, canonicalPath, overwrite: true);
 
     /// <summary>
     /// Moves an invalid dataset out of the staging location into a per-region quarantine
