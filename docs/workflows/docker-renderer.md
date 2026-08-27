@@ -10,8 +10,8 @@ artifact plus the external tools required by production rendering:
 - `osmium-tool` for polygon extraction when a region provides a `.poly` file
 
 The image stores application files below `/opt/poineer-render/app` and bundled tools below
-`/opt/poineer-render/tools`. Runtime data, rendered outputs, published artifacts, and logs
-should be mounted from the host instead of baked into the image.
+`/opt/poineer-render/tools`. Runtime data, rendered region outputs, and logs should be
+mounted from the host instead of baked into the image.
 
 ## Build
 
