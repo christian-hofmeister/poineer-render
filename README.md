@@ -16,6 +16,7 @@ The current MVP keeps the scope deliberately small: render Berlin first, import 
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
+- [Docker Image](#docker-image)
 - [Build, Test, and Coverage](#build-test-and-coverage)
 - [Database Migrations](#database-migrations)
 - [Development Notes](#development-notes)
@@ -250,6 +251,32 @@ POINEER_RENDER__RENDERER__DRYRUN=true \
 POINEER_RENDER__RENDERER__ONLYREGIONID=berlin \
 dotnet run --project src/POIneer.Render/POIneer.Render.csproj
 ```
+
+---
+
+## Docker Image
+
+The renderer can be packaged as a Docker image for the VPS and later Azure deployment. The
+image contains the published .NET renderer, Java 21, Flyway, `osmium-tool`, and a pinned
+Planetiler JAR. Runtime data and logs should be mounted from the host.
+
+Build and dry-run verify the image:
+
+```bash
+docker build --build-arg PLANETILER_VERSION=0.10.2 -t poineer-render:local .
+docker run --rm poineer-render:local --Renderer:DryRun=true
+```
+
+Run with production-style mounts:
+
+```bash
+docker run --rm \
+  -v /opt/poineer-render/data:/opt/poineer-render/data \
+  -v /opt/poineer-render/logs:/opt/poineer-render/logs \
+  poineer-render:local
+```
+
+See [Docker Renderer Image](docs/workflows/docker-renderer.md) for details.
 
 ---
 
