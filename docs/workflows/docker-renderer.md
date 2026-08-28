@@ -112,9 +112,10 @@ build verifies the image, Jenkins promotes that exact image to two stable local 
 - `poineer-render:<release-version>`, for example `poineer-render:v0.2.1`
 - `poineer-render:production`
 
-The VPS cronjob should use `poineer-render:production`, so future releases do not require a
-crontab change. Releasing a new version moves the `production` tag to the newly verified
-image.
+The VPS scheduler should use `poineer-render:production`, so future releases do not require a
+scheduler change. Releasing a new version moves the `production` tag to the newly verified
+image. See [Scheduled Renderer Execution](scheduled-renders.md) for the recommended systemd
+timer setup.
 
 Release branches must be named like `release/v0.2.1`; Jenkins derives the release image tag
 from the branch suffix. After promotion, Jenkins removes the temporary CI tag during post-build
