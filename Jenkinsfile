@@ -275,7 +275,7 @@ pipeline {
     stage('Promote Release Docker Image') {
       when {
         expression {
-          return env.BRANCH_NAME?.startsWith('release/')
+          return (env.BRANCH_NAME ?: '') ==~ /^release\/.+/
         }
       }
       steps {
@@ -315,7 +315,7 @@ pipeline {
     stage('Prune Old Release Docker Images') {
       when {
         expression {
-          return env.BRANCH_NAME?.startsWith('release/')
+          return (env.BRANCH_NAME ?: '') ==~ /^release\/.+/
         }
       }
       steps {
@@ -327,8 +327,8 @@ pipeline {
           docker image ls "${DOCKER_IMAGE}" --format '{{.Repository}}:{{.Tag}}' \
             | grep -E "^${DOCKER_IMAGE}:v[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9_.-]+)?$" \
             | sort -V \
-            | head -n -2 \
-            | xargs -r docker image rm || true
+            | awk '{ if (older2 != "") print older2; older2 = older1; older1 = $0 }' \
+            | while IFS= read -r image_tag; do docker image rm "$image_tag" || true; done
         '''
       }
     }
@@ -339,7 +339,7 @@ pipeline {
       // is a local filesystem sync, not an SSH/rsync-to-a-remote-host step (issue #107).
       when {
         expression {
-          return env.BRANCH_NAME?.startsWith('release/')
+          return (env.BRANCH_NAME ?: '') ==~ /^release\/.+/
         }
       }
       steps {
@@ -369,7 +369,7 @@ pipeline {
       // or any region, so this is safe to run unattended on the VPS (issue #107).
       when {
         expression {
-          return env.BRANCH_NAME?.startsWith('release/')
+          return (env.BRANCH_NAME ?: '') ==~ /^release\/.+/
         }
       }
       steps {
