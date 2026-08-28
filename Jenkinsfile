@@ -275,7 +275,7 @@ pipeline {
     stage('Promote Release Docker Image') {
       when {
         expression {
-          return env.BRANCH_NAME ==~ /release\/.+/
+          return env.BRANCH_NAME?.startsWith('release/')
         }
       }
       steps {
@@ -315,7 +315,7 @@ pipeline {
     stage('Prune Old Release Docker Images') {
       when {
         expression {
-          return env.BRANCH_NAME ==~ /release\/.+/
+          return env.BRANCH_NAME?.startsWith('release/')
         }
       }
       steps {
@@ -339,7 +339,7 @@ pipeline {
       // is a local filesystem sync, not an SSH/rsync-to-a-remote-host step (issue #107).
       when {
         expression {
-          return env.BRANCH_NAME ==~ /release\/.+/
+          return env.BRANCH_NAME?.startsWith('release/')
         }
       }
       steps {
@@ -369,7 +369,7 @@ pipeline {
       // or any region, so this is safe to run unattended on the VPS (issue #107).
       when {
         expression {
-          return env.BRANCH_NAME ==~ /release\/.+/
+          return env.BRANCH_NAME?.startsWith('release/')
         }
       }
       steps {
