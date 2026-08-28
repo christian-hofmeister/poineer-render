@@ -2,6 +2,18 @@
 
 All notable changes to POIneer.Render will be documented in this file.
 
+## [0.2.1] - 2026-08-28
+
+### Added
+
+- Added Jenkins promotion for verified release Docker images to versioned and `production` tags.
+- Added Jenkins build parameters for release Docker tool checksums.
+- Added release Docker image pruning that keeps the two newest semantic release tags.
+
+### Changed
+
+- Updated Docker renderer workflow documentation for production image usage and release promotion.
+
 ## [0.2.0] - 2026-08-27
 
 ### Added
