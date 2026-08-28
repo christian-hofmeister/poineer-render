@@ -327,7 +327,7 @@ pipeline {
           docker image ls "${DOCKER_IMAGE}" --format '{{.Repository}}:{{.Tag}}' \
             | grep -E "^${DOCKER_IMAGE}:v[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9_.-]+)?$" \
             | sort -V \
-            | awk '{ if (older2 != "") print older2; older2 = older1; older1 = $0 }' \
+            | awk 'NR>2{print p2} {p2=p1; p1=$0}' \
             | while IFS= read -r image_tag; do docker image rm "$image_tag" || true; done
         '''
       }
