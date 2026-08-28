@@ -83,6 +83,14 @@ Kubernetes, zero-downtime deployment, multi-server deployment.
   the whole Jenkins build, which is deliberate: a release that deploys but can't even start
   should not be reported as a successful pipeline run.
 
+## Current Scheduler Note
+
+This ADR documents the original published-DLL deployment path. Since `v0.2.1`, release Docker
+builds are also verified and promoted to the stable local VPS tag `poineer-render:production`.
+Future scheduled production runs should prefer that Docker image via a systemd timer and
+oneshot service instead of adding or updating crontab entries. See
+`docs/workflows/scheduled-renders.md`.
+
 ## References
 
 - #107 - Automated deployment of POIneer.Render release artifacts
