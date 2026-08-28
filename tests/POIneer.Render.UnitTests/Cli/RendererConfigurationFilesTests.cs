@@ -107,6 +107,21 @@ public sealed class RendererConfigurationFilesTests
             .StartWith("/opt/poineer-render/data/");
     }
 
+    [Theory]
+    [InlineData("appsettings.json")]
+    [InlineData("appsettings.Development.json")]
+    [InlineData("appsettings.Production.json")]
+    public void PublisherConfiguration_UsesCurrentSchemaVersion(string settingsFileName)
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var settingsPath = Path.Combine(repositoryRoot, "src", "POIneer.Render", settingsFileName);
+
+        using var document = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        var publisher = document.RootElement.GetProperty("Publisher");
+
+        publisher.GetProperty("SchemaVersion").GetString().Should().Be("2");
+    }
+
     private static string FindRepositoryRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

@@ -62,6 +62,12 @@ its first implementation:
   new published file - is only produced when the OSM PBF genuinely
   changed, or a deployment deliberately bumps `SchemaVersion` (e.g. a new
   POIneer.Render release changes the exported schema or POI mapping).
+- `PublisherOptions.SchemaVersion` must be bumped whenever a change intentionally alters the
+  generated SQLite dataset artifact while the source PBF can remain unchanged. This includes
+  SQLite schema changes, POI tag mapping changes, export logic changes, and dataset semantics
+  changes. Without the bump, the publisher can correctly skip an existing artifact with the
+  same `{SchemaVersion}-{PbfHash}` version while the post-publish verifier detects that the
+  newly rendered canonical SQLite no longer matches the older published file.
 - `PublisherOptions.DestinationDir` is required and validated on startup
   (`ValidateOnStart`), matching `RendererOptions`. The value itself is never
   hardcoded to a specific machine: `appsettings.Development.json` points at
