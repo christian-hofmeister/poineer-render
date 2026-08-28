@@ -119,7 +119,7 @@ public sealed class RendererConfigurationFilesTests
         using var document = JsonDocument.Parse(File.ReadAllText(settingsPath));
         var publisher = document.RootElement.GetProperty("Publisher");
 
-        publisher.GetProperty("SchemaVersion").GetString().Should().Be("2");
+        publisher.GetProperty("SchemaVersion").GetString().Should().Be(new PublisherOptions { DestinationDir = "unused" }.SchemaVersion);
     }
 
     private static string FindRepositoryRoot()
