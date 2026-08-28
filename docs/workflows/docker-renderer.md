@@ -25,7 +25,7 @@ docker build \
   -t poineer-render:local .
 ```
 
-For release builds, also pass the expected Planetiler checksum:
+For release builds, also pass the expected tool checksums:
 
 ```bash
 docker build \
@@ -37,6 +37,8 @@ docker build \
 
 Jenkins enforces `PLANETILER_SHA256` and `FLYWAY_SHA256` for `release/*` branch builds.
 Feature branch builds may use the upstream checksum sidecars as a convenience while iterating.
+In Jenkins, provide the release checksums through the `PLANETILER_SHA256` and `FLYWAY_SHA256`
+build parameters. They are public integrity values, not secrets.
 
 The image runs as a non-root `poineer` user. Its default UID/GID is `10001`, and both can be
 overridden at build time:
@@ -76,7 +78,7 @@ Mount the production data directory:
 docker run --rm \
   --name poineer-render \
   -v /opt/poineer-render/data:/opt/poineer-render/data \
-  poineer-render:local
+  poineer-render:production
 ```
 
 When using bind mounts on Linux, make sure the mounted data directory is writable by the
@@ -93,10 +95,28 @@ the `POINEER_RENDER__` prefix, and command-line arguments. For example:
 ```bash
 docker run --rm \
   -v /opt/poineer-render/data:/opt/poineer-render/data \
-  poineer-render:local \
+  poineer-render:production \
   --Renderer:OnlyRegionId=berlin \
   --VectorTiles:Enabled=true
 ```
 
 Vector tile generation remains disabled by default in production configuration until a release
 explicitly enables it or passes `--VectorTiles:Enabled=true`.
+
+## Release Image Deployment
+
+Jenkins builds every Docker image with a temporary CI tag derived from the branch and build
+number, for example `poineer-render:release_v0.2.1-42`. After a successful `release/*`
+build verifies the image, Jenkins promotes that exact image to two stable local VPS tags:
+
+- `poineer-render:<release-version>`, for example `poineer-render:v0.2.1`
+- `poineer-render:production`
+
+The VPS cronjob should use `poineer-render:production`, so future releases do not require a
+crontab change. Releasing a new version moves the `production` tag to the newly verified
+image.
+
+Release branches must be named like `release/v0.2.1`; Jenkins derives the release image tag
+from the branch suffix. After promotion, Jenkins removes the temporary CI tag during post-build
+cleanup. A release cleanup step keeps the two newest semantic release tags and leaves
+`poineer-render:production` untouched.
