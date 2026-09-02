@@ -121,7 +121,7 @@ public sealed class RunnerTests
     {
         // Arrange
         await using var tempDir = TestTemporaryDirectories.Create("runner-skip-existing-pbf", false);
-        var options = CreateOptions(overwritePbf: false);
+        var options = CreateOptions(overwriteDatabase: true, overwritePbf: false);
         var sut = CreateSut(tempDir.DirectoryPath, options);
 
         var regionsPath = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.RegionsJson));
@@ -153,6 +153,11 @@ public sealed class RunnerTests
             region,
             workDir,
             Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.OutDir)),
+            Arg.Any<CancellationToken>());
+        await _regionUpdateChecker.Received(1).MarkProcessedAsync(
+            region,
+            statePath,
+            metadata,
             Arg.Any<CancellationToken>());
     }
 
@@ -384,54 +389,6 @@ public sealed class RunnerTests
 
         // Assert
         _lockFactory.Received(1).Create(expectedLockFilePath);
-    }
-
-    [Fact]
-    public async Task RunAsync_DoesNotBypassRenderUseCase_WhenOverwriteDatabaseIsEnabledAndRemoteMetadataIsUnchanged()
-    {
-        // Arrange
-        await using var tempDir = TestTemporaryDirectories.Create("runner-render-unchanged-region-with-overwrite-db", false);
-        var options = CreateOptions(overwriteDatabase: true, overwritePbf: false);
-        var sut = CreateSut(tempDir.DirectoryPath, options);
-
-        var regionsPath = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.RegionsJson));
-        TestFiles.WriteAllText(regionsPath, "[]");
-
-        var region = BerlinRegion();
-        _regionSource.GetRegionsAsync(regionsPath, Arg.Any<CancellationToken>())
-            .Returns(new[] { region });
-
-        var workDir = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.WorkDir));
-        var regionWorkDir = Path.Combine(workDir, region.Id);
-        var pbfPath = Path.Combine(regionWorkDir, "osm.pbf");
-        var statePath = Path.Combine(regionWorkDir, "render-state.json");
-        TestFiles.WriteAllText(pbfPath, "existing pbf");
-
-        var metadata = new RegionUpdateMetadata("\"abc\"", DateTimeOffset.Parse("2026-01-01T00:00:00Z"), 42);
-        _regionUpdateChecker
-            .CheckAsync(region, statePath, Arg.Any<CancellationToken>())
-            .Returns(new RegionUpdateCheckResult(
-                ShouldRender: false,
-                Reason: "Remote PBF metadata is unchanged.",
-                RemoteMetadata: metadata,
-                StoredState: new RegionRenderState(region.Id, region.PbfUrl, metadata, DateTimeOffset.UtcNow)));
-
-        // Act
-        var result = await sut.RunAsync(CancellationToken.None);
-
-        // Assert
-        result.Should().Be(0);
-        await _fileDownloader.DidNotReceiveWithAnyArgs().DownloadAsync(default!, default!, default);
-        await _renderRegion.Received(1).RunAsync(
-            region,
-            workDir,
-            Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.OutDir)),
-            Arg.Any<CancellationToken>());
-        await _regionUpdateChecker.Received(1).MarkProcessedAsync(
-            region,
-            statePath,
-            metadata,
-            Arg.Any<CancellationToken>());
     }
 
     [Fact]
