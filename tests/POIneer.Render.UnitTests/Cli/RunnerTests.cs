@@ -139,7 +139,7 @@ public sealed class RunnerTests
         _regionUpdateChecker
             .CheckAsync(region, statePath, Arg.Any<CancellationToken>())
             .Returns(new RegionUpdateCheckResult(
-                ShouldRender: false,
+                ShouldRedownloadPbf: false,
                 Reason: "Remote PBF metadata is unchanged.",
                 RemoteMetadata: metadata,
                 StoredState: new RegionRenderState(region.Id, region.PbfUrl, metadata, DateTimeOffset.UtcNow)));
@@ -494,7 +494,7 @@ public sealed class RunnerTests
     {
         var metadata = new RegionUpdateMetadata("\"etag\"", DateTimeOffset.Parse("2026-01-01T00:00:00Z"), 1024);
         return new RegionUpdateCheckResult(
-            ShouldRender: true,
+            ShouldRedownloadPbf: true,
             Reason: "Remote ETag changed.",
             RemoteMetadata: metadata,
             StoredState: new RegionRenderState(

@@ -43,6 +43,22 @@ public sealed class FileRegionRenderStateStoreTests
     }
 
     [Fact]
+    public async Task ReadAsync_ReturnsNull_WhenStateFileIsIncomplete()
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("incomplete-render-state", false);
+        var statePath = Path.Combine(tempDir.DirectoryPath, "render-state.json");
+        TestFiles.WriteAllText(statePath, "{}");
+        var sut = new FileRegionRenderStateStore(Logger);
+
+        // Act
+        var state = await sut.ReadAsync(statePath);
+
+        // Assert
+        state.Should().BeNull();
+    }
+
+    [Fact]
     public async Task WriteAsync_AndReadAsync_RoundTripState()
     {
         // Arrange

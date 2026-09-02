@@ -113,7 +113,7 @@ public sealed class Runner
                         _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, but overwrite is enabled, re-downloading.", r.Id, pbfPath);
                         await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
                     }
-                    else if (updateCheck.ShouldRender)
+                    else if (updateCheck.ShouldRedownloadPbf)
                     {
                         _logger.LogInformation(
                             "PBF metadata changed for {Region} ({Reason}), re-downloading to {TargetPath}. ETag={ETag}, LastModified={LastModified}, ContentLength={ContentLength}",

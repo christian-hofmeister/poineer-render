@@ -26,7 +26,7 @@ public sealed class RegionUpdateChecker : IRegionUpdateChecker
         var reason = GetChangeReason(region, remoteMetadata, storedState);
 
         return new RegionUpdateCheckResult(
-            ShouldRender: reason is not null,
+            ShouldRedownloadPbf: reason is not null,
             Reason: reason ?? "Remote PBF metadata is unchanged.",
             RemoteMetadata: remoteMetadata,
             StoredState: storedState);
