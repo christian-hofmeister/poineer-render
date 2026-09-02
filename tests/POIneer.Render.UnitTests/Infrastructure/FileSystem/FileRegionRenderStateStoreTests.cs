@@ -10,15 +10,14 @@ namespace POIneer.Render.UnitTests.Infrastructure.FileSystem;
 
 public sealed class FileRegionRenderStateStoreTests
 {
-    private static readonly ILogger<FileRegionRenderStateStore> _logger =
-    NullLogger<FileRegionRenderStateStore>.Instance;
+    public static ILogger<FileRegionRenderStateStore> Logger { get; } = NullLogger<FileRegionRenderStateStore>.Instance;
 
     [Fact]
     public async Task ReadAsync_ReturnsNull_WhenStateFileDoesNotExist()
     {
         // Arrange
         await using var tempDir = TestTemporaryDirectories.Create("missing-render-state", false);
-        var sut = new FileRegionRenderStateStore(_logger);
+        var sut = new FileRegionRenderStateStore(Logger);
 
         // Act
         var state = await sut.ReadAsync(Path.Combine(tempDir.DirectoryPath, "render-state.json"));
@@ -34,7 +33,7 @@ public sealed class FileRegionRenderStateStoreTests
         await using var tempDir = TestTemporaryDirectories.Create("corrupt-render-state", false);
         var statePath = Path.Combine(tempDir.DirectoryPath, "render-state.json");
         TestFiles.WriteAllText(statePath, "{ partially-written");
-        var sut = new FileRegionRenderStateStore(_logger);
+        var sut = new FileRegionRenderStateStore(Logger);
 
         // Act
         var state = await sut.ReadAsync(statePath);
@@ -57,7 +56,7 @@ public sealed class FileRegionRenderStateStoreTests
                 LastModified: DateTimeOffset.Parse("2026-01-01T00:00:00Z"),
                 ContentLength: 42),
             ProcessedAtUtc: DateTimeOffset.Parse("2026-01-02T00:00:00Z"));
-        var sut = new FileRegionRenderStateStore(_logger);
+        var sut = new FileRegionRenderStateStore(Logger);
 
         // Act
         await sut.WriteAsync(statePath, expectedState);
@@ -87,7 +86,7 @@ public sealed class FileRegionRenderStateStoreTests
             LastProcessedMetadata = oldState.LastProcessedMetadata with { ETag = "\"new\"" },
             ProcessedAtUtc = DateTimeOffset.Parse("2026-01-03T00:00:00Z")
         };
-        var sut = new FileRegionRenderStateStore(_logger);
+        var sut = new FileRegionRenderStateStore(Logger);
 
         // Act
         await sut.WriteAsync(statePath, oldState);
