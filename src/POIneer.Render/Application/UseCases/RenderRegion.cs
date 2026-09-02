@@ -185,8 +185,8 @@ public sealed class RenderRegion : IRenderRegion
 
         // Hash-based, not wall-clock: a forced re-render of byte-identical PBF input (same
         // SchemaVersion too) computes the same version and therefore the same destination
-        // filename, so IDatasetPublisher's default Skip overwrite policy makes republishing
-        // unchanged data a no-op instead of accumulating a new file on every run. Hashing
+        // filename, so IDatasetPublisher's configured overwrite policy can make
+        // republishing unchanged data a no-op instead of accumulating a new file on every run. Hashing
         // cutPbf (not the original pbfPath) so a poly-file change is also picked up, since
         // it can change what actually gets rendered even when the raw PBF download did not.
         var version = await _datasetVersionCalculator.CalculateAsync(cutPbf, ct);

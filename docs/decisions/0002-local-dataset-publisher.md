@@ -43,8 +43,11 @@ its first implementation:
   file at the real destination path.
 - What happens when a file for the same region/version already exists at
   the destination is governed by an explicit
-  `PublisherOptions.OverwritePolicy` (`Skip` (default), `Overwrite`, or
-  `Fail`), rather than an implicit, undocumented behavior.
+  `PublisherOptions.OverwritePolicy` (`Skip` (default), `SkipIfIdentical`,
+  `Overwrite`, or `Fail`), rather than an implicit, undocumented behavior.
+  `Skip` preserves the existing file unconditionally. `SkipIfIdentical`
+  preserves it only when it already matches the source bytes; otherwise it
+  replaces the destination with the current validated artifact.
 - `RenderRegion` calls `IDatasetPublisher.PublishAsync` right after
   promoting a validated dataset to its canonical `outDir` location. The
   version is computed by `IDatasetVersionCalculator`
@@ -57,7 +60,7 @@ its first implementation:
   content-derived version fixes that: identical PBF content and an
   unchanged `SchemaVersion` always compute the identical version string,
   so republishing unchanged data lands on the same destination filename
-  and is skipped by `IDatasetPublisher`'s default `Skip` overwrite policy
+  and can be skipped by `IDatasetPublisher`'s overwrite policy
   instead of accumulating a new file on every run. A new version - and a
   new published file - is only produced when the OSM PBF genuinely
   changed, or a deployment deliberately bumps `SchemaVersion` (e.g. a new
@@ -65,9 +68,11 @@ its first implementation:
 - `PublisherOptions.SchemaVersion` must be bumped whenever a change intentionally alters the
   generated SQLite dataset artifact while the source PBF can remain unchanged. This includes
   SQLite schema changes, POI tag mapping changes, export logic changes, and dataset semantics
-  changes. Without the bump, the publisher can correctly skip an existing artifact with the
-  same `{SchemaVersion}-{PbfHash}` version while the post-publish verifier detects that the
-  newly rendered canonical SQLite no longer matches the older published file.
+  changes. Without the bump, the same `{SchemaVersion}-{PbfHash}` version can be reused for
+  byte-different SQLite output. Dev and production configuration use `SkipIfIdentical` so the
+  local publisher repairs that mismatch by replacing the destination; deployments that choose
+  `Skip` instead keep the older artifact and should expect post-publish verification to fail
+  if the newly rendered canonical SQLite no longer matches it.
 - `PublisherOptions.DestinationDir` is required and validated on startup
   (`ValidateOnStart`), matching `RendererOptions`. The value itself is never
   hardcoded to a specific machine: `appsettings.Development.json` points at

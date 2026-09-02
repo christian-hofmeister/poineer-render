@@ -111,10 +111,10 @@ public sealed class LocalDatasetPublisherTests
     }
 
     [Fact]
-    public async Task PublishAsync_ReplacesExistingDestination_WhenOverwritePolicyIsSkip_ButDestinationDiffersFromSource()
+    public async Task PublishAsync_SkipsExistingDestination_WhenOverwritePolicyIsSkip_EvenWhenDestinationDiffersFromSource()
     {
         // Arrange
-        await using var tempDir = TestTemporaryDirectories.Create("publish-replaces-mismatched-skip-target", false);
+        await using var tempDir = TestTemporaryDirectories.Create("publish-skips-mismatched-skip-target", false);
         var sourcePath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
         TestFiles.WriteAllText(sourcePath, "new dataset bytes");
 
@@ -122,6 +122,57 @@ public sealed class LocalDatasetPublisherTests
         var sut = new LocalDatasetPublisher(
             Logger,
             TestOptionsFactory.CreatePublisherOptions(destinationDir, DatasetPublishOverwritePolicy.Skip));
+
+        var request = new DatasetPublishRequest("berlin", "20260101000000000", sourcePath);
+        var first = await sut.PublishAsync(request, CancellationToken.None);
+        TestFiles.WriteAllText(sourcePath, "changed dataset bytes");
+
+        // Act
+        var second = await sut.PublishAsync(request, CancellationToken.None);
+
+        // Assert
+        second.WasSkipped.Should().BeTrue();
+        second.DestinationPath.Should().Be(first.DestinationPath);
+        (await File.ReadAllTextAsync(second.DestinationPath)).Should().Be("new dataset bytes");
+    }
+
+    [Fact]
+    public async Task PublishAsync_SkipsExistingDestination_WhenOverwritePolicyIsSkipIfIdentical_AndDestinationMatchesSource()
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("publish-skip-if-identical-skips-matching-target", false);
+        var sourcePath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
+        TestFiles.WriteAllText(sourcePath, "dataset bytes");
+
+        var destinationDir = Path.Combine(tempDir.DirectoryPath, "publish");
+        var sut = new LocalDatasetPublisher(
+            Logger,
+            TestOptionsFactory.CreatePublisherOptions(destinationDir, DatasetPublishOverwritePolicy.SkipIfIdentical));
+
+        var request = new DatasetPublishRequest("berlin", "20260101000000000", sourcePath);
+        var first = await sut.PublishAsync(request, CancellationToken.None);
+
+        // Act
+        var second = await sut.PublishAsync(request, CancellationToken.None);
+
+        // Assert
+        second.WasSkipped.Should().BeTrue();
+        second.DestinationPath.Should().Be(first.DestinationPath);
+        (await File.ReadAllTextAsync(second.DestinationPath)).Should().Be("dataset bytes");
+    }
+
+    [Fact]
+    public async Task PublishAsync_ReplacesExistingDestination_WhenOverwritePolicyIsSkipIfIdentical_ButDestinationDiffersFromSource()
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("publish-skip-if-identical-replaces-mismatched-target", false);
+        var sourcePath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
+        TestFiles.WriteAllText(sourcePath, "new dataset bytes");
+
+        var destinationDir = Path.Combine(tempDir.DirectoryPath, "publish");
+        var sut = new LocalDatasetPublisher(
+            Logger,
+            TestOptionsFactory.CreatePublisherOptions(destinationDir, DatasetPublishOverwritePolicy.SkipIfIdentical));
 
         var request = new DatasetPublishRequest("berlin", "20260101000000000", sourcePath);
         var first = await sut.PublishAsync(request, CancellationToken.None);

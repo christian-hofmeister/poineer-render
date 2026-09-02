@@ -64,16 +64,22 @@ public sealed class LocalDatasetPublisher : IDatasetPublisher
             switch (_options.OverwritePolicy)
             {
                 case DatasetPublishOverwritePolicy.Skip:
+                    _logger.LogInformation(
+                        "Publish target already exists at {DestinationPath}, skipping (overwrite policy: Skip).",
+                        destinationPath);
+                    return new DatasetPublishResult(destinationPath, WasSkipped: true);
+
+                case DatasetPublishOverwritePolicy.SkipIfIdentical:
                     if (await FilesAreEqualAsync(request.SourcePath, destinationPath, cancellationToken))
                     {
                         _logger.LogInformation(
-                            "Publish target already exists at {DestinationPath} and matches the source artifact, skipping (overwrite policy: Skip).",
+                            "Publish target already exists at {DestinationPath} and matches the source artifact, skipping (overwrite policy: SkipIfIdentical).",
                             destinationPath);
                         return new DatasetPublishResult(destinationPath, WasSkipped: true);
                     }
 
                     _logger.LogInformation(
-                        "Publish target already exists at {DestinationPath}, but differs from the source artifact. Replacing it so the published version matches the current validated dataset.",
+                        "Publish target already exists at {DestinationPath}, but differs from the source artifact. Replacing it (overwrite policy: SkipIfIdentical).",
                         destinationPath);
                     break;
 

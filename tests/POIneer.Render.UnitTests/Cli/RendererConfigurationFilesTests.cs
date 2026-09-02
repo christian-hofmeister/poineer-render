@@ -1,6 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
+using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Options;
 using Xunit;
 
@@ -120,6 +121,22 @@ public sealed class RendererConfigurationFilesTests
         var publisher = document.RootElement.GetProperty("Publisher");
 
         publisher.GetProperty("SchemaVersion").GetString().Should().Be(new PublisherOptions { DestinationDir = "unused" }.SchemaVersion);
+    }
+
+    [Theory]
+    [InlineData("appsettings.json")]
+    [InlineData("appsettings.Development.json")]
+    [InlineData("appsettings.Production.json")]
+    public void PublisherConfiguration_UsesSkipIfIdenticalOverwritePolicy(string settingsFileName)
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var settingsPath = Path.Combine(repositoryRoot, "src", "POIneer.Render", settingsFileName);
+
+        using var document = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        var publisher = document.RootElement.GetProperty("Publisher");
+
+        publisher.GetProperty("OverwritePolicy").GetString()
+            .Should().Be(nameof(DatasetPublishOverwritePolicy.SkipIfIdentical));
     }
 
     private static string FindRepositoryRoot()
