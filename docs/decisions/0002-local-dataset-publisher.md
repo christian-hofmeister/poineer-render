@@ -12,6 +12,8 @@ a local publisher (#132), Azure Blob Storage provisioning (#133), an Azure
 publisher (#134), published-dataset integrity verification (#135),
 configurable render execution targets (#136), and documentation of the
 resulting hybrid architecture (#137).
+The public architecture summary for that separation lives in
+[`docs/architecture/hybrid-dataset-architecture.md`](../architecture/hybrid-dataset-architecture.md).
 
 POIneer.Render already produces validated, canonical `.sqlite` datasets per
 region in `outDir` (see `RenderRegion` and ADR-less prior work). What is
@@ -132,3 +134,4 @@ synchronization between VPS and Azure, and public download URLs.
 - #137 - Document hybrid dataset architecture
 - #110 - Renderer scheduled VPS config groundwork
 - ADR 0001 - Prevent Overlapping Scheduled Renders
+- Hybrid Dataset Architecture - `docs/architecture/hybrid-dataset-architecture.md`
