@@ -62,11 +62,11 @@ with `FilePublishedDatasetVerifier` (`Infrastructure/FileSystem`) as its first i
   and the render is not silently treated as successfully published.
 - Verification runs after *every* `PublishAsync` call, including when `publishResult
   .WasSkipped` is `true`. `WasSkipped` only means this run didn't need to copy new bytes
-  because a file for the same region/version already existed at the destination (see ADR
-  0002) - it says nothing about whether that existing file was ever verified, particularly
-  on the first run after this feature ships, or if the destination was modified out of band
-  between runs. Always verifying keeps "successfully published" meaning "confirmed correct
-  right now," not "was correct as of some earlier, unverified run."
+  because the configured overwrite policy left the existing destination file in place (see
+  ADR 0002) - it says nothing about whether that existing file was ever verified,
+  particularly on the first run after this feature ships, or if the destination was modified
+  out of band between runs. Always verifying keeps "successfully published" meaning
+  "confirmed correct right now," not "was correct as of some earlier, unverified run."
 
 Out of scope for this issue (see issue #135 and the surrounding epic): re-validating POI
 content post-upload, mobile download verification, automatic corruption repair, cross-region

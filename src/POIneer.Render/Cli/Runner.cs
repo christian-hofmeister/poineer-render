@@ -11,6 +11,7 @@ public sealed class Runner
     private readonly ILogger<Runner> _logger;
     private readonly IRegionSource _regionSource;
     private readonly IRenderRegion _renderRegionUseCase;
+    private readonly IRegionUpdateChecker _regionUpdateChecker;
     private readonly RendererOptions _rendererOptions;
     private readonly ISingleInstanceLockFactory _lockFactory;
 
@@ -22,6 +23,7 @@ public sealed class Runner
         IFileDownloader fileDownloader,
         IRegionSource regionSource,
         IRenderRegion renderRegionUseCase,
+        IRegionUpdateChecker regionUpdateChecker,
         ISingleInstanceLockFactory lockFactory,
         IOptions<RendererOptions> rendererOptions)
     {
@@ -30,6 +32,7 @@ public sealed class Runner
         _fileDownloader = fileDownloader;
         _regionSource = regionSource;
         _renderRegionUseCase = renderRegionUseCase;
+        _regionUpdateChecker = regionUpdateChecker;
         _lockFactory = lockFactory;
         _rendererOptions = rendererOptions.Value;
     }
@@ -97,22 +100,42 @@ public sealed class Runner
                     var regionWorkDir = Path.Combine(workDir, r.Id);
                     Directory.CreateDirectory(regionWorkDir);
                     var pbfPath = Path.Combine(regionWorkDir, "osm.pbf");
+                    var renderStatePath = Path.Combine(regionWorkDir, "render-state.json");
+                    var updateCheck = await _regionUpdateChecker.CheckAsync(r, renderStatePath, ct);
 
                     if (!File.Exists(pbfPath))
                     {
                         _logger.LogInformation("Downloading PBF for {Region} ... to {TargetPath}", r.Id, pbfPath);
                         await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
                     }
-                    else if (!redownloadPbf)
-                    {
-                        _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, skipping download (overwrite disabled).", r.Id, pbfPath);
-                    }
-                    else
+                    else if (redownloadPbf)
                     {
                         _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, but overwrite is enabled, re-downloading.", r.Id, pbfPath);
                         await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
                     }
+                    else if (updateCheck.ShouldRedownloadPbf)
+                    {
+                        _logger.LogInformation(
+                            "PBF metadata changed for {Region} ({Reason}), re-downloading to {TargetPath}. ETag={ETag}, LastModified={LastModified}, ContentLength={ContentLength}",
+                            r.Id,
+                            updateCheck.Reason,
+                            pbfPath,
+                            updateCheck.RemoteMetadata.ETag,
+                            updateCheck.RemoteMetadata.LastModified,
+                            updateCheck.RemoteMetadata.ContentLength);
+                        await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
+                    }
+                    else
+                    {
+                        _logger.LogInformation(
+                            "PBF metadata unchanged for {Region}; skipping download. Render output checks will still run. ETag={ETag}, LastModified={LastModified}, ContentLength={ContentLength}",
+                            r.Id,
+                            updateCheck.RemoteMetadata.ETag,
+                            updateCheck.RemoteMetadata.LastModified,
+                            updateCheck.RemoteMetadata.ContentLength);
+                    }
                     await _renderRegionUseCase.RunAsync(r, workDir, outDir, ct);
+                    await _regionUpdateChecker.MarkProcessedAsync(r, renderStatePath, updateCheck.RemoteMetadata, ct);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
