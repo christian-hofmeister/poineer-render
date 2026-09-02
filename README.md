@@ -456,3 +456,4 @@ This project is intended as a learning and open-source project. The final licens
 - [ADR 0002: Local Dataset Publisher](docs/decisions/0002-local-dataset-publisher.md)
 - [ADR 0003: Dataset Artifact Metadata](docs/decisions/0003-dataset-artifact-metadata.md)
 - [Hybrid Dataset Architecture](docs/architecture/hybrid-dataset-architecture.md)
+- [Azure Dataset Storage](docs/workflows/azure-dataset-storage.md)

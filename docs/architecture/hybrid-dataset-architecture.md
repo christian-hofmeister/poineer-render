@@ -54,7 +54,8 @@ The planned architecture keeps the same boundaries while adding cloud-backed sto
 optionally, cloud-backed compute:
 
 - Azure Blob Storage can become a dataset publishing target behind the existing
-  `IDatasetPublisher` abstraction.
+  `IDatasetPublisher` abstraction. The initial storage account and dataset container are
+  defined in `infra/azure/storage.bicep`.
 - A blob-specific published-dataset verifier can verify artifacts after upload behind the
   existing `IPublishedDatasetVerifier` abstraction.
 - Azure compute can become an additional renderer execution environment if future workload,
@@ -122,6 +123,7 @@ corresponding implementation exists.
 
 - [Scheduled Renderer Execution](../workflows/scheduled-renders.md)
 - [Docker Renderer Image](../workflows/docker-renderer.md)
+- [Azure Dataset Storage](../workflows/azure-dataset-storage.md)
 - [ADR 0002: Local Dataset Publisher](../decisions/0002-local-dataset-publisher.md)
 - [ADR 0003: Dataset Artifact Metadata](../decisions/0003-dataset-artifact-metadata.md)
 - [ADR 0004: Verify Published Dataset Integrity](../decisions/0004-verify-published-dataset-integrity.md)
