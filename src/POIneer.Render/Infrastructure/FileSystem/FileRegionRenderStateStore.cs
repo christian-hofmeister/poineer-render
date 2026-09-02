@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Ports;
 
@@ -6,6 +7,12 @@ namespace POIneer.Render.Infrastructure.FileSystem;
 
 public sealed class FileRegionRenderStateStore : IRegionRenderStateStore
 {
+    public FileRegionRenderStateStore(ILogger<FileRegionRenderStateStore> logger)
+    {
+        _logger = logger;
+    }
+
+    private readonly ILogger<FileRegionRenderStateStore> _logger;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
@@ -18,11 +25,20 @@ public sealed class FileRegionRenderStateStore : IRegionRenderStateStore
         if (!File.Exists(statePath))
             return null;
 
-        await using var stream = File.OpenRead(statePath);
-        return await JsonSerializer.DeserializeAsync<RegionRenderState>(
-            stream,
-            JsonOptions,
-            ct);
+        try
+        {
+            await using var stream = File.OpenRead(statePath);
+            return await JsonSerializer.DeserializeAsync<RegionRenderState>(
+                stream,
+                JsonOptions,
+                ct);
+        }
+        catch (JsonException)
+        {
+            // Failed to deserialize the render state, possibly due to corruption or format changes.
+            _logger.LogWarning("Failed to deserialize render state from {StatePath}", statePath);
+            return null;
+        }
     }
 
     public async Task WriteAsync(
