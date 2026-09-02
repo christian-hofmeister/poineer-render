@@ -82,19 +82,23 @@ public sealed class RenderRegion : IRenderRegion
 
         var canonicalPath = Path.GetFullPath(Path.Combine(regionOutDir, PoiDatasetFileName));
         var canonicalVectorTilePath = Path.GetFullPath(Path.Combine(regionOutDir, VectorTileFileName));
+        var pbfChangedSinceOutput = File.Exists(canonicalPath)
+            && File.GetLastWriteTimeUtc(pbfPath) > File.GetLastWriteTimeUtc(canonicalPath);
 
         if (File.Exists(canonicalPath))
         {
-            if (!recreateDatabase && (!_vectorTileOptions.Enabled || File.Exists(canonicalVectorTilePath)))
+            if (!recreateDatabase && !pbfChangedSinceOutput && (!_vectorTileOptions.Enabled || File.Exists(canonicalVectorTilePath)))
             {
                 _logger.LogInformation("({Id}) Output SQLite already exists at {Out}, skipping rendering (overwrite disabled).", regionDto.Id, canonicalPath);
                 return;
             }
 
             _logger.LogInformation(
-                "({Id}) Output SQLite already exists at {Out}, but overwrite is enabled, re-rendering. It will only be replaced once the new dataset passes validation.",
+                "({Id}) Output SQLite already exists at {Out}, but re-rendering is required (overwrite: {Overwrite}, pbfChangedSinceOutput: {PbfChangedSinceOutput}). It will only be replaced once the new dataset passes validation.",
                 regionDto.Id,
-                canonicalPath);
+                canonicalPath,
+                recreateDatabase,
+                pbfChangedSinceOutput);
         }
 
         var stagingPath = canonicalPath + StagingFileSuffix;

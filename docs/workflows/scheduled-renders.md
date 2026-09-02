@@ -4,6 +4,14 @@ POIneer.Render is intended to run as a scheduled, run-to-completion job on the V
 application still owns overlap protection through `ISingleInstanceLock`; the scheduler only
 decides when a run starts.
 
+At the start of each region run, the renderer sends a `HEAD` request to the configured PBF
+URL and compares the returned metadata with the last successfully processed state in
+`<WorkDir>/<RegionId>/render-state.json`. `ETag` is preferred when available, with
+`Last-Modified` as the fallback. `Content-Length` is stored and logged as diagnostic metadata.
+When the local PBF exists and the remote metadata is unchanged, the region is skipped without
+downloading or rendering. If the metadata changed, the PBF is downloaded again and the render
+state is updated only after the region finishes successfully.
+
 Since `v0.2.1`, Jenkins promotes verified release Docker images to `poineer-render:production`.
 The VPS scheduler should run that stable Docker tag instead of invoking the deployed DLL
 directly. Releasing a new version moves the `production` tag, so the schedule does not need to

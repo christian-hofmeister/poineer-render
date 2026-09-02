@@ -73,6 +73,12 @@ internal class Program
             client.Timeout = TimeSpan.FromSeconds(options.DownloadTimeoutSeconds);
         });
 
+        builder.Services.AddHttpClient<IRemotePbfMetadataReader, HttpRemotePbfMetadataReader>((sp, client) =>
+        {
+            var options = sp.GetRequiredService<IOptions<RendererOptions>>().Value;
+            client.Timeout = TimeSpan.FromSeconds(options.DownloadTimeoutSeconds);
+        });
+
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(options =>
         {
@@ -100,6 +106,8 @@ internal class Program
         builder.Services.AddSingleton<IDatasetArtifactMetadataFactory, FileDatasetArtifactMetadataFactory>();
         builder.Services.AddSingleton<IPublishedDatasetVerifier, FilePublishedDatasetVerifier>();
         builder.Services.AddSingleton<ISingleInstanceLockFactory, FileSingleInstanceLockFactory>();
+        builder.Services.AddSingleton<IRegionRenderStateStore, FileRegionRenderStateStore>();
+        builder.Services.AddSingleton<IRegionUpdateChecker, RegionUpdateChecker>();
 
         // CLI entry point
         builder.Services.AddSingleton<Runner>();
