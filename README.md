@@ -114,6 +114,8 @@ Key principles:
 - external tools such as Flyway and process execution are behind abstractions where useful
 - filesystem-sensitive behavior is tested with isolated temporary directories
 - configuration is represented by strongly typed options
+- dataset rendering compute is separated from dataset storage and distribution; see
+  [Hybrid Dataset Architecture](docs/architecture/hybrid-dataset-architecture.md)
 
 ---
 
@@ -453,3 +455,4 @@ This project is intended as a learning and open-source project. The final licens
 - [ADR 0001: Prevent Overlapping Scheduled Renders](docs/decisions/0001-prevent-overlapping-scheduled-renders.md)
 - [ADR 0002: Local Dataset Publisher](docs/decisions/0002-local-dataset-publisher.md)
 - [ADR 0003: Dataset Artifact Metadata](docs/decisions/0003-dataset-artifact-metadata.md)
+- [Hybrid Dataset Architecture](docs/architecture/hybrid-dataset-architecture.md)
