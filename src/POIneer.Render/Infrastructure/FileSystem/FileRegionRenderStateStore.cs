@@ -28,10 +28,21 @@ public sealed class FileRegionRenderStateStore : IRegionRenderStateStore
         try
         {
             await using var stream = File.OpenRead(statePath);
-            return await JsonSerializer.DeserializeAsync<RegionRenderState>(
+            var state = await JsonSerializer.DeserializeAsync<RegionRenderState>(
                 stream,
                 JsonOptions,
                 ct);
+
+            if (state is not null &&
+                !string.IsNullOrWhiteSpace(state.RegionId) &&
+                !string.IsNullOrWhiteSpace(state.PbfUrl) &&
+                state.LastProcessedMetadata is not null)
+            {
+                return state;
+            }
+
+            _logger.LogWarning("Render state from {StatePath} is incomplete", statePath);
+            return null;
         }
         catch (JsonException)
         {

@@ -1,7 +1,7 @@
 namespace POIneer.Render.Application.Contracts;
 
 public sealed record RegionUpdateCheckResult(
-    bool ShouldRender,
+    bool ShouldRedownloadPbf,
     string Reason,
     RegionUpdateMetadata RemoteMetadata,
     RegionRenderState? StoredState);

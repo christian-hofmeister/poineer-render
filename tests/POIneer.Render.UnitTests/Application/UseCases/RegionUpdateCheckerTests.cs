@@ -15,7 +15,7 @@ public sealed class RegionUpdateCheckerTests
         Poly: "berlin.poly");
 
     [Fact]
-    public async Task CheckAsync_ShouldRender_WhenNoStoredStateExists()
+    public async Task CheckAsync_ShouldRedownloadPbf_WhenNoStoredStateExists()
     {
         // Arrange
         var metadata = new RegionUpdateMetadata("\"abc\"", DateTimeOffset.Parse("2026-01-01T00:00:00Z"), 42);
@@ -26,12 +26,12 @@ public sealed class RegionUpdateCheckerTests
         var result = await sut.CheckAsync(Berlin, "state.json");
 
         // Assert
-        result.ShouldRender.Should().BeTrue();
+        result.ShouldRedownloadPbf.Should().BeTrue();
         result.Reason.Should().Be("No previous render state exists for this region.");
     }
 
     [Fact]
-    public async Task CheckAsync_ShouldNotRender_WhenETagIsUnchanged()
+    public async Task CheckAsync_ShouldNotRedownloadPbf_WhenETagIsUnchanged()
     {
         // Arrange
         var remoteMetadata = new RegionUpdateMetadata("\"abc\"", DateTimeOffset.Parse("2026-01-02T00:00:00Z"), 128);
@@ -44,12 +44,12 @@ public sealed class RegionUpdateCheckerTests
         var result = await sut.CheckAsync(Berlin, "state.json");
 
         // Assert
-        result.ShouldRender.Should().BeFalse("ETag is preferred over Last-Modified when present");
+        result.ShouldRedownloadPbf.Should().BeFalse("ETag is preferred over Last-Modified when present");
         result.Reason.Should().Be("Remote PBF metadata is unchanged.");
     }
 
     [Fact]
-    public async Task CheckAsync_ShouldRender_WhenETagChanged()
+    public async Task CheckAsync_ShouldRedownloadPbf_WhenETagChanged()
     {
         // Arrange
         var remoteMetadata = new RegionUpdateMetadata("\"new\"", DateTimeOffset.Parse("2026-01-01T00:00:00Z"), 42);
@@ -62,12 +62,12 @@ public sealed class RegionUpdateCheckerTests
         var result = await sut.CheckAsync(Berlin, "state.json");
 
         // Assert
-        result.ShouldRender.Should().BeTrue();
+        result.ShouldRedownloadPbf.Should().BeTrue();
         result.Reason.Should().Be("Remote ETag changed.");
     }
 
     [Fact]
-    public async Task CheckAsync_ShouldUseLastModified_WhenETagIsMissing()
+    public async Task CheckAsync_ShouldNotRedownloadPbf_WhenLastModifiedIsUnchangedAndETagIsMissing()
     {
         // Arrange
         var lastModified = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
@@ -81,11 +81,11 @@ public sealed class RegionUpdateCheckerTests
         var result = await sut.CheckAsync(Berlin, "state.json");
 
         // Assert
-        result.ShouldRender.Should().BeFalse("Last-Modified is the fallback when ETag is unavailable");
+        result.ShouldRedownloadPbf.Should().BeFalse("Last-Modified is the fallback when ETag is unavailable");
     }
 
     [Fact]
-    public async Task CheckAsync_ShouldRender_WhenNoReliableRemoteMetadataExists()
+    public async Task CheckAsync_ShouldRedownloadPbf_WhenNoReliableRemoteMetadataExists()
     {
         // Arrange
         var remoteMetadata = new RegionUpdateMetadata(null, null, 128);
@@ -98,7 +98,7 @@ public sealed class RegionUpdateCheckerTests
         var result = await sut.CheckAsync(Berlin, "state.json");
 
         // Assert
-        result.ShouldRender.Should().BeTrue();
+        result.ShouldRedownloadPbf.Should().BeTrue();
         result.Reason.Should().Be("Remote metadata has no ETag or Last-Modified value.");
     }
 
