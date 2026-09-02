@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Application.Contracts;
@@ -63,10 +64,18 @@ public sealed class LocalDatasetPublisher : IDatasetPublisher
             switch (_options.OverwritePolicy)
             {
                 case DatasetPublishOverwritePolicy.Skip:
+                    if (await FilesAreEqualAsync(request.SourcePath, destinationPath, cancellationToken))
+                    {
+                        _logger.LogInformation(
+                            "Publish target already exists at {DestinationPath} and matches the source artifact, skipping (overwrite policy: Skip).",
+                            destinationPath);
+                        return new DatasetPublishResult(destinationPath, WasSkipped: true);
+                    }
+
                     _logger.LogInformation(
-                        "Publish target already exists at {DestinationPath}, skipping (overwrite policy: Skip).",
+                        "Publish target already exists at {DestinationPath}, but differs from the source artifact. Replacing it so the published version matches the current validated dataset.",
                         destinationPath);
-                    return new DatasetPublishResult(destinationPath, WasSkipped: true);
+                    break;
 
                 case DatasetPublishOverwritePolicy.Fail:
                     throw new IOException(
@@ -167,5 +176,32 @@ public sealed class LocalDatasetPublisher : IDatasetPublisher
                 "Failed to clean up leftover staging file {StagingPath} after a failed publish attempt.",
                 stagingDestinationPath);
         }
+    }
+
+    private static async Task<bool> FilesAreEqualAsync(
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken)
+    {
+        var sourceInfo = new FileInfo(sourcePath);
+        var destinationInfo = new FileInfo(destinationPath);
+
+        if (sourceInfo.Length != destinationInfo.Length)
+            return false;
+
+        var sourceHash = await ComputeSha256Async(sourcePath, cancellationToken);
+        var destinationHash = await ComputeSha256Async(destinationPath, cancellationToken);
+
+        return CryptographicOperations.FixedTimeEquals(sourceHash, destinationHash);
+    }
+
+    private static async Task<byte[]> ComputeSha256Async(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        await using var stream = new FileStream(
+            path, FileMode.Open, FileAccess.Read, FileShare.Read, CopyBufferSize, useAsync: true);
+
+        return await SHA256.HashDataAsync(stream, cancellationToken);
     }
 }
