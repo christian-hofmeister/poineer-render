@@ -102,18 +102,6 @@ public sealed class Runner
                     var pbfPath = Path.Combine(regionWorkDir, "osm.pbf");
                     var renderStatePath = Path.Combine(regionWorkDir, "render-state.json");
                     var updateCheck = await _regionUpdateChecker.CheckAsync(r, renderStatePath, ct);
-                    var shouldProcessRegion = redownloadPbf || !File.Exists(pbfPath) || updateCheck.ShouldRender;
-
-                    if (!shouldProcessRegion)
-                    {
-                        _logger.LogInformation(
-                            "PBF metadata unchanged for {Region}; skipping download and render. ETag={ETag}, LastModified={LastModified}, ContentLength={ContentLength}",
-                            r.Id,
-                            updateCheck.RemoteMetadata.ETag,
-                            updateCheck.RemoteMetadata.LastModified,
-                            updateCheck.RemoteMetadata.ContentLength);
-                        continue;
-                    }
 
                     if (!File.Exists(pbfPath))
                     {
@@ -139,7 +127,12 @@ public sealed class Runner
                     }
                     else
                     {
-                        _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, skipping download (overwrite disabled).", r.Id, pbfPath);
+                        _logger.LogInformation(
+                            "PBF metadata unchanged for {Region}; skipping download. Render output checks will still run. ETag={ETag}, LastModified={LastModified}, ContentLength={ContentLength}",
+                            r.Id,
+                            updateCheck.RemoteMetadata.ETag,
+                            updateCheck.RemoteMetadata.LastModified,
+                            updateCheck.RemoteMetadata.ContentLength);
                     }
                     await _renderRegionUseCase.RunAsync(r, workDir, outDir, ct);
                     await _regionUpdateChecker.MarkProcessedAsync(r, renderStatePath, updateCheck.RemoteMetadata, ct);

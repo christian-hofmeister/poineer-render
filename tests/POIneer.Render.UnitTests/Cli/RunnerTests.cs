@@ -117,7 +117,7 @@ public sealed class RunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_SkipsDownload_WhenPbfAlreadyExistsAndOverwritePbfIsDisabled()
+    public async Task RunAsync_SkipsDownloadButRunsRenderUseCase_WhenPbfAlreadyExistsAndRemoteMetadataIsUnchanged()
     {
         // Arrange
         await using var tempDir = TestTemporaryDirectories.Create("runner-skip-existing-pbf", false);
@@ -149,7 +149,11 @@ public sealed class RunnerTests
 
         // Assert
         await _fileDownloader.DidNotReceiveWithAnyArgs().DownloadAsync(default!, default!, default);
-        await _renderRegion.DidNotReceiveWithAnyArgs().RunAsync(default!, default!, default!, default);
+        await _renderRegion.Received(1).RunAsync(
+            region,
+            workDir,
+            Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.OutDir)),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -383,11 +387,11 @@ public sealed class RunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_SkipsDownloadAndRender_WhenPbfExistsAndRemoteMetadataIsUnchanged()
+    public async Task RunAsync_DoesNotBypassRenderUseCase_WhenOverwriteDatabaseIsEnabledAndRemoteMetadataIsUnchanged()
     {
         // Arrange
-        await using var tempDir = TestTemporaryDirectories.Create("runner-skip-unchanged-region", false);
-        var options = CreateOptions(overwritePbf: false);
+        await using var tempDir = TestTemporaryDirectories.Create("runner-render-unchanged-region-with-overwrite-db", false);
+        var options = CreateOptions(overwriteDatabase: true, overwritePbf: false);
         var sut = CreateSut(tempDir.DirectoryPath, options);
 
         var regionsPath = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.RegionsJson));
@@ -418,8 +422,16 @@ public sealed class RunnerTests
         // Assert
         result.Should().Be(0);
         await _fileDownloader.DidNotReceiveWithAnyArgs().DownloadAsync(default!, default!, default);
-        await _renderRegion.DidNotReceiveWithAnyArgs().RunAsync(default!, default!, default!, default);
-        await _regionUpdateChecker.DidNotReceiveWithAnyArgs().MarkProcessedAsync(default!, default!, default!, default);
+        await _renderRegion.Received(1).RunAsync(
+            region,
+            workDir,
+            Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.OutDir)),
+            Arg.Any<CancellationToken>());
+        await _regionUpdateChecker.Received(1).MarkProcessedAsync(
+            region,
+            statePath,
+            metadata,
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -496,6 +508,7 @@ public sealed class RunnerTests
         string workDir = "work",
         string outDir = "out",
         string regionsJson = "regions.json",
+        bool overwriteDatabase = false,
         bool overwritePbf = false,
         bool dryRun = false,
         string? onlyRegionId = null,
@@ -505,6 +518,7 @@ public sealed class RunnerTests
             WorkDir = workDir,
             OutDir = outDir,
             RegionsJson = regionsJson,
+            OverwriteDatabase = overwriteDatabase,
             OverwritePbf = overwritePbf,
             DryRun = dryRun,
             OnlyRegionId = onlyRegionId,
