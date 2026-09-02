@@ -52,11 +52,45 @@ public sealed class FileRegionRenderStateStore : IRegionRenderStateStore
             Directory.CreateDirectory(stateDirectory);
         }
 
-        await using var stream = File.Create(statePath);
-        await JsonSerializer.SerializeAsync(
-            stream,
-            state,
-            JsonOptions,
-            ct);
+        var tempPath = $"{statePath}.{Guid.NewGuid():N}.tmp";
+
+        try
+        {
+            await using (var stream = File.Create(tempPath))
+            {
+                await JsonSerializer.SerializeAsync(
+                    stream,
+                    state,
+                    JsonOptions,
+                    ct);
+
+                await stream.FlushAsync(ct);
+            }
+
+            File.Move(tempPath, statePath, overwrite: true);
+        }
+        catch
+        {
+            DeleteTemporaryStateFile(tempPath);
+            throw;
+        }
+    }
+
+    private void DeleteTemporaryStateFile(string tempPath)
+    {
+        try
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to delete temporary render state file {TempPath}",
+                tempPath);
+        }
     }
 }

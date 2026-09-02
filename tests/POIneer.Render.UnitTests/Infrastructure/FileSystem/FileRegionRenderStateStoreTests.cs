@@ -66,4 +66,36 @@ public sealed class FileRegionRenderStateStoreTests
         // Assert
         actualState.Should().Be(expectedState);
     }
+
+    [Fact]
+    public async Task WriteAsync_ReplacesExistingState_AndDoesNotLeaveTemporaryFile()
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("replace-render-state", false);
+        var statePath = Path.Combine(tempDir.DirectoryPath, "berlin", "render-state.json");
+        var oldState = new RegionRenderState(
+            RegionId: "berlin",
+            PbfUrl: "https://example.com/berlin-old.osm.pbf",
+            LastProcessedMetadata: new RegionUpdateMetadata(
+                ETag: "\"old\"",
+                LastModified: DateTimeOffset.Parse("2026-01-01T00:00:00Z"),
+                ContentLength: 42),
+            ProcessedAtUtc: DateTimeOffset.Parse("2026-01-02T00:00:00Z"));
+        var newState = oldState with
+        {
+            PbfUrl = "https://example.com/berlin-new.osm.pbf",
+            LastProcessedMetadata = oldState.LastProcessedMetadata with { ETag = "\"new\"" },
+            ProcessedAtUtc = DateTimeOffset.Parse("2026-01-03T00:00:00Z")
+        };
+        var sut = new FileRegionRenderStateStore(_logger);
+
+        // Act
+        await sut.WriteAsync(statePath, oldState);
+        await sut.WriteAsync(statePath, newState);
+        var actualState = await sut.ReadAsync(statePath);
+
+        // Assert
+        actualState.Should().Be(newState);
+        Directory.GetFiles(Path.GetDirectoryName(statePath)!, "*.tmp").Should().BeEmpty();
+    }
 }
