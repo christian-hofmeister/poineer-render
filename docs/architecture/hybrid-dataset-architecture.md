@@ -7,7 +7,7 @@ it keeps validated artifacts available for downstream services and apps.
 
 This separation is intentional. POIneer does not require every workload to run in Azure. The
 existing VPS can provide predictable fixed-cost rendering capacity, while Azure Blob Storage
-can later provide scalable, independently managed dataset storage.
+provides scalable, independently managed dataset storage.
 
 ## Architecture Overview
 
@@ -21,7 +21,7 @@ flowchart TD
     VPS --> Artifact["Validated dataset artifact<br/>(implemented)"]
     AzureCompute --> Artifact
     Artifact --> LocalStorage["Local filesystem publisher<br/>(implemented)"]
-    Artifact --> BlobStorage["Azure Blob Storage publisher<br/>(planned)"]
+    Artifact --> BlobStorage["Azure Blob Storage publisher<br/>(implemented)"]
     LocalStorage --> Server["POIneer.Server<br/>(planned consumer)"]
     BlobStorage --> Server
     Server --> Mobile["POIneer.Mobile<br/>(planned consumer)"]
@@ -33,7 +33,8 @@ deployment phase.
 
 ## Current Implementation
 
-The current implementation is intentionally small and local-first:
+The current implementation is intentionally small and can publish to either the local
+filesystem or Azure Blob Storage:
 
 - POIneer.Render runs as a command-line renderer.
 - The VPS is the initial production rendering environment.
@@ -44,6 +45,10 @@ The current implementation is intentionally small and local-first:
 - `LocalDatasetPublisher` publishes validated artifacts to a local filesystem destination.
 - `FilePublishedDatasetVerifier` verifies published filesystem artifacts by size and SHA-256
   checksum before the run is considered successful.
+- `AzureBlobDatasetPublisher` uploads validated artifacts to Azure Blob Storage when
+  `Publisher:Target` is `AzureBlob`.
+- `AzureBlobPublishedDatasetVerifier` verifies uploaded Blob artifacts using stored dataset
+  metadata before the run is considered successful.
 
 This is enough for the MVP and keeps rendering independent from any mandatory cloud
 dependency.
@@ -53,12 +58,9 @@ dependency.
 The planned architecture keeps the same boundaries while adding cloud-backed storage and,
 optionally, cloud-backed compute:
 
-- Azure Blob Storage can become a dataset publishing target behind the existing
-  `IDatasetPublisher` abstraction. The initial storage account and dataset container are
-  defined in `infra/azure/storage.bicep`; the current dev parameters use resource group
-  `rg-poineer-dev`, storage account `poineerstoragedev`, and container `regions`.
-- A blob-specific published-dataset verifier can verify artifacts after upload behind the
-  existing `IPublishedDatasetVerifier` abstraction.
+- The initial storage account and dataset container are defined in `infra/azure/storage.bicep`;
+  the current dev parameters use resource group `rg-poineer-dev`, storage account
+  `poineerstoragedev`, and container `regions`.
 - Azure compute can become an additional renderer execution environment if future workload,
   scaling, or operational requirements justify it.
 - POIneer.Server can read dataset metadata and dataset artifacts from the selected publishing
@@ -75,8 +77,8 @@ to Azure.
 | --- | --- | --- |
 | Rendering compute | VPS runs POIneer.Render as the default scheduled renderer. | Azure may also run the renderer if useful. |
 | Dataset generation | POIneer.Render downloads OSM PBF input, extracts POIs, writes SQLite, and validates output. | Same pipeline, regardless of compute environment. |
-| Dataset publishing | Local filesystem publisher stores validated artifacts under `Publisher:DestinationDir`. | Azure Blob Storage publisher can store artifacts in managed object storage. |
-| Integrity verification | Filesystem verifier compares published file size and SHA-256 checksum with source artifact metadata. | Storage-specific verifier can use blob properties, hashes, or equivalent checks. |
+| Dataset publishing | Local filesystem publisher stores validated artifacts under `Publisher:DestinationDir`; Azure Blob publisher can store artifacts in managed object storage. | Additional publishing targets can be added behind `IDatasetPublisher` if needed. |
+| Integrity verification | Filesystem verifier compares published file size and SHA-256 checksum with source artifact metadata; Azure Blob verifier compares stored Blob metadata with source artifact metadata. | Storage-specific verifier behavior can evolve with future targets. |
 | Dataset consumption | No production consumer is implemented in this repository. | POIneer.Server exposes dataset availability to POIneer.Mobile. |
 
 ## Compute And Storage Separation
