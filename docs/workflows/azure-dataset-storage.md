@@ -24,6 +24,20 @@ This workflow provisions only storage:
 It does not provision Azure compute, CDN, Azure Front Door, mobile direct-download behavior,
 cleanup jobs, geo-redundant disaster recovery, or production secrets.
 
+## Current Dev Resources
+
+The current manually created development resources are:
+
+| Resource | Value |
+| --- | --- |
+| Resource group | `rg-poineer-dev` |
+| Storage account | `poineerstoragedev` |
+| Location | `westeurope` |
+| Dataset container | `regions` |
+
+`infra/azure/storage.dev.bicepparam` records this current dev shape so the storage resources
+can be managed reproducibly later without introducing a different account or container name.
+
 ## Naming Strategy
 
 The Bicep template derives the storage account name from:
@@ -32,7 +46,7 @@ The Bicep template derives the storage account name from:
 st{projectName}{environmentName}{uniqueSuffix}
 ```
 
-For the production parameters this becomes a globally unique name shaped like:
+When no explicit name is supplied, this becomes a globally unique name shaped like:
 
 ```text
 stpoineerprodxxxxxxxx
@@ -42,18 +56,17 @@ The suffix is generated from the subscription, resource group, project name, and
 This keeps names deterministic inside the same resource group while satisfying Azure Storage
 Account global uniqueness requirements.
 
-The dataset container is named:
+For existing environments, pass `storageAccountName` explicitly. The current dev parameter
+file uses `poineerstoragedev`.
 
-```text
-datasets
-```
+The dataset container name is also parameterized. The current dev container is `regions`.
 
 ## Region
 
-The production parameter file uses `germanywestcentral`. This keeps the initial dataset
-storage geographically close to the expected European deployment and users while staying
-simple for the MVP. The region is a parameter and can be changed before deployment if the
-target subscription or organization prefers another Azure region.
+The current dev storage account is in `westeurope`. The production parameter file currently
+uses `germanywestcentral` as an initial placeholder. Both values are parameters and can be
+changed before deployment if the target subscription or organization prefers another Azure
+region.
 
 ## Security Defaults
 
@@ -66,12 +79,20 @@ The template configures the storage account and container with conservative defa
 - shared-key access disabled
 - OAuth authentication preferred by default
 - cross-tenant replication disabled
+- hierarchical namespace disabled
+- NFS v3 disabled
+- Blob versioning disabled
+- Blob change feed disabled
 - 7-day soft delete for blobs and containers
 
 The public network endpoint remains enabled for the initial hybrid architecture because the
 renderer may run from the VPS outside Azure. Authorization should use Microsoft Entra ID and
 RBAC rather than account keys. A future hardening pass can add firewall rules or private
 networking once the upload identity and network path are known.
+
+Azure Files settings are intentionally not managed by this template because POIneer datasets
+are published as Blob artifacts. File share configuration can be added later if the project
+starts using Azure Files directly.
 
 ## Cost-Conscious Defaults
 
@@ -91,18 +112,61 @@ dataset availability requirements become stricter.
 
 Create or choose a resource group, then deploy the template:
 
+Bash:
+
 ```bash
 az group create \
-  --name rg-poineer-datasets-prod \
-  --location germanywestcentral
+  --name rg-poineer-dev \
+  --location westeurope
 ```
+
+PowerShell:
+
+```powershell
+az group create `
+  --name rg-poineer-dev `
+  --location westeurope
+```
+
+Bash:
+
+```bash
+az deployment group what-if \
+  --resource-group rg-poineer-dev \
+  --template-file infra/azure/storage.bicep \
+  --parameters infra/azure/storage.dev.bicepparam
+```
+
+PowerShell:
+
+```powershell
+az deployment group what-if `
+  --resource-group rg-poineer-dev `
+  --template-file infra/azure/storage.bicep `
+  --parameters infra/azure/storage.dev.bicepparam
+```
+
+Bash:
 
 ```bash
 az deployment group create \
-  --resource-group rg-poineer-datasets-prod \
+  --resource-group rg-poineer-dev \
   --template-file infra/azure/storage.bicep \
-  --parameters infra/azure/storage.prod.bicepparam
+  --parameters infra/azure/storage.dev.bicepparam
 ```
+
+PowerShell:
+
+```powershell
+az deployment group create `
+  --resource-group rg-poineer-dev `
+  --template-file infra/azure/storage.bicep `
+  --parameters infra/azure/storage.dev.bicepparam
+```
+
+Deploying the template against an existing storage account updates that account to match the
+documented security and cost defaults. Review RBAC assignments and Shared Key usage before
+adopting an existing manually created account.
 
 The deployment outputs:
 
@@ -117,20 +181,45 @@ secrets. Publisher authentication should be configured outside source control.
 
 Confirm that the storage account and container exist:
 
+Bash:
+
 ```bash
 az storage account show \
-  --resource-group rg-poineer-datasets-prod \
-  --name <storage-account-name> \
+  --resource-group rg-poineer-dev \
+  --name poineerstoragedev \
   --query "{name:name, location:location, allowBlobPublicAccess:allowBlobPublicAccess, allowSharedKeyAccess:allowSharedKeyAccess, httpsOnly:supportsHttpsTrafficOnly}" \
   --output table
 ```
 
+PowerShell:
+
+```powershell
+az storage account show `
+  --resource-group rg-poineer-dev `
+  --name poineerstoragedev `
+  --query "{name:name, location:location, allowBlobPublicAccess:allowBlobPublicAccess, allowSharedKeyAccess:allowSharedKeyAccess, httpsOnly:supportsHttpsTrafficOnly}" `
+  --output table
+```
+
+Bash:
+
 ```bash
 az storage container show \
-  --account-name <storage-account-name> \
-  --name datasets \
+  --account-name poineerstoragedev \
+  --name regions \
   --auth-mode login \
   --query "{name:name, publicAccess:properties.publicAccess}" \
+  --output table
+```
+
+PowerShell:
+
+```powershell
+az storage container show `
+  --account-name poineerstoragedev `
+  --name regions `
+  --auth-mode login `
+  --query "{name:name, publicAccess:properties.publicAccess}" `
   --output table
 ```
 

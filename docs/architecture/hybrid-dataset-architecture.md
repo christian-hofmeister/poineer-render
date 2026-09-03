@@ -55,7 +55,8 @@ optionally, cloud-backed compute:
 
 - Azure Blob Storage can become a dataset publishing target behind the existing
   `IDatasetPublisher` abstraction. The initial storage account and dataset container are
-  defined in `infra/azure/storage.bicep`.
+  defined in `infra/azure/storage.bicep`; the current dev parameters use resource group
+  `rg-poineer-dev`, storage account `poineerstoragedev`, and container `regions`.
 - A blob-specific published-dataset verifier can verify artifacts after upload behind the
   existing `IPublishedDatasetVerifier` abstraction.
 - Azure compute can become an additional renderer execution environment if future workload,

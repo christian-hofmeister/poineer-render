@@ -14,6 +14,10 @@ param environmentName string = 'prod'
 @description('Azure region for the storage account.')
 param location string = resourceGroup().location
 
+@maxLength(24)
+@description('Optional explicit storage account name. Leave empty to derive a deterministic globally unique name.')
+param storageAccountName string = ''
+
 @description('Blob container that stores published POIneer dataset artifacts.')
 param datasetContainerName string = 'datasets'
 
@@ -23,10 +27,12 @@ param tags object = {}
 var normalizedProjectName = toLower(replace(projectName, '-', ''))
 var normalizedEnvironmentName = toLower(replace(environmentName, '-', ''))
 var uniqueSuffix = take(uniqueString(subscription().id, resourceGroup().id, projectName, environmentName), 8)
-var storageAccountName = take('st${normalizedProjectName}${normalizedEnvironmentName}${uniqueSuffix}', 24)
+var resolvedStorageAccountName = empty(storageAccountName)
+  ? take('st${normalizedProjectName}${normalizedEnvironmentName}${uniqueSuffix}', 24)
+  : storageAccountName
 
 resource datasetStorageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
-  name: storageAccountName
+  name: resolvedStorageAccountName
   location: location
   kind: 'StorageV2'
   sku: {
@@ -44,6 +50,8 @@ resource datasetStorageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = 
     allowCrossTenantReplication: false
     allowSharedKeyAccess: false
     defaultToOAuthAuthentication: true
+    isHnsEnabled: false
+    isNfsV3Enabled: false
     minimumTlsVersion: 'TLS1_2'
     publicNetworkAccess: 'Enabled'
     supportsHttpsTrafficOnly: true
@@ -58,14 +66,19 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01'
   parent: datasetStorageAccount
   name: 'default'
   properties: {
+    changeFeed: {
+      enabled: false
+    }
     deleteRetentionPolicy: {
       enabled: true
       days: 7
+      allowPermanentDelete: false
     }
     containerDeleteRetentionPolicy: {
       enabled: true
       days: 7
     }
+    isVersioningEnabled: false
   }
 }
 
@@ -73,6 +86,8 @@ resource datasetContainer 'Microsoft.Storage/storageAccounts/blobServices/contai
   parent: blobService
   name: datasetContainerName
   properties: {
+    defaultEncryptionScope: '$account-encryption-key'
+    denyEncryptionScopeOverride: false
     publicAccess: 'None'
   }
 }
