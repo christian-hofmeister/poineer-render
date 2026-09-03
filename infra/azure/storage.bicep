@@ -84,7 +84,7 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01'
 
 resource datasetContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
   parent: blobService
-  name: datasetContainerName
+  name: toLower(datasetContainerName)
   properties: {
     defaultEncryptionScope: '$account-encryption-key'
     denyEncryptionScopeOverride: false
