@@ -2,7 +2,7 @@ namespace POIneer.Render.Infrastructure.Azure;
 
 public interface IAzureBlobDatasetMetadataReader
 {
-    Task<AzureBlobDatasetMetadata?> ReadAsync(
+    Task<AzureBlobDatasetMetadataReadResult> ReadAsync(
         string blobName,
         CancellationToken cancellationToken = default);
 }

@@ -58,12 +58,26 @@ internal class Program
             .AddOptions<PublisherOptions>()
             .Bind(builder.Configuration.GetSection("Publisher"))
             .Validate(PublisherOptionsValidation.HasRequiredDestinationDir, PublisherOptionsValidation.RequiredDestinationDirMessage)
-            .Validate(PublisherOptionsValidation.HasImplementedTarget, PublisherOptionsValidation.ImplementedTargetMessage)
             .ValidateOnStart();
 
         builder.Services
             .AddOptions<AzureBlobPublisherOptions>()
-            .Bind(builder.Configuration.GetSection(AzureBlobPublisherOptions.SectionName));
+            .Bind(builder.Configuration.GetSection(AzureBlobPublisherOptions.SectionName))
+            .Validate(
+                options => IsLocalPublisherTarget(builder.Configuration)
+                           || AzureBlobPublisherOptionsValidation.HasAccountNameOrBlobEndpoint(options),
+                AzureBlobPublisherOptionsValidation.RequiredAccountOrEndpointMessage)
+            .Validate(
+                options => IsLocalPublisherTarget(builder.Configuration)
+                           || AzureBlobPublisherOptionsValidation.HasContainerName(options),
+                AzureBlobPublisherOptionsValidation.RequiredContainerNameMessage)
+            .Validate(
+                AzureBlobPublisherOptionsValidation.HasPositiveMaxUploadsPerRun,
+                AzureBlobPublisherOptionsValidation.PositiveMaxUploadsPerRunMessage)
+            .Validate(
+                AzureBlobPublisherOptionsValidation.HasPositiveMaxUploadBytesPerRun,
+                AzureBlobPublisherOptionsValidation.PositiveMaxUploadBytesPerRunMessage)
+            .ValidateOnStart();
 
         builder.Services
             .AddOptions<FlywayOptions>()
@@ -111,8 +125,12 @@ internal class Program
         builder.Services.AddSingleton<IRawPoiMapper, RawPoiMapper>();
         builder.Services.AddSingleton<IDatasetValidator, SqliteDatasetValidator>();
         builder.Services.AddSingleton<LocalDatasetPublisher>();
+        builder.Services.AddSingleton<AzureBlobDatasetPublisher>();
+        builder.Services.AddSingleton<FilePublishedDatasetVerifier>();
+        builder.Services.AddSingleton<AzureBlobPublishedDatasetVerifier>();
         builder.Services.AddSingleton<IAzureBlobDatasetMetadataReader, AzureBlobDatasetMetadataReader>();
         builder.Services.AddSingleton<IAzureBlobDatasetPublishPlanner, AzureBlobDatasetPublishPlanner>();
+        builder.Services.AddSingleton<IAzureBlobDatasetUploader, AzureBlobDatasetUploader>();
         builder.Services.AddSingleton(sp =>
         {
             var options = sp.GetRequiredService<IOptions<AzureBlobPublisherOptions>>().Value;
@@ -132,14 +150,22 @@ internal class Program
             return options.Target switch
             {
                 DatasetPublisherTarget.Local => sp.GetRequiredService<LocalDatasetPublisher>(),
-                DatasetPublisherTarget.AzureBlob => throw new InvalidOperationException(
-                    "Publisher:Target is AzureBlob, but the Azure Blob dataset publisher is not implemented yet."),
+                DatasetPublisherTarget.AzureBlob => sp.GetRequiredService<AzureBlobDatasetPublisher>(),
                 _ => throw new InvalidOperationException($"Unrecognized publisher target: {options.Target}")
             };
         });
         builder.Services.AddSingleton<IDatasetVersionCalculator, FileHashDatasetVersionCalculator>();
         builder.Services.AddSingleton<IDatasetArtifactMetadataFactory, FileDatasetArtifactMetadataFactory>();
-        builder.Services.AddSingleton<IPublishedDatasetVerifier, FilePublishedDatasetVerifier>();
+        builder.Services.AddSingleton<IPublishedDatasetVerifier>(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<PublisherOptions>>().Value;
+            return options.Target switch
+            {
+                DatasetPublisherTarget.Local => sp.GetRequiredService<FilePublishedDatasetVerifier>(),
+                DatasetPublisherTarget.AzureBlob => sp.GetRequiredService<AzureBlobPublishedDatasetVerifier>(),
+                _ => throw new InvalidOperationException($"Unrecognized publisher target: {options.Target}")
+            };
+        });
         builder.Services.AddSingleton<ISingleInstanceLockFactory, FileSingleInstanceLockFactory>();
         builder.Services.AddSingleton<IRegionRenderStateStore, FileRegionRenderStateStore>();
         builder.Services.AddSingleton<IRegionUpdateChecker, RegionUpdateChecker>();
@@ -166,6 +192,12 @@ internal class Program
         throw new InvalidOperationException(
             "AzureBlobPublisher:AccountName or AzureBlobPublisher:BlobEndpoint must be set.");
     }
+
+    private static bool IsLocalPublisherTarget(IConfiguration configuration)
+        => configuration
+            .GetSection("Publisher")
+            .Get<PublisherOptions>()?
+            .Target != DatasetPublisherTarget.AzureBlob;
 
     private static string ResolveContentRoot()
     {

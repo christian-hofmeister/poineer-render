@@ -43,26 +43,4 @@ public sealed class PublisherOptionsValidationTests
         PublisherOptionsValidation.HasRequiredDestinationDir(options).Should().BeTrue();
     }
 
-    [Fact]
-    public void HasImplementedTarget_ReturnsTrue_WhenTargetIsLocal()
-    {
-        var options = new PublisherOptions
-        {
-            Target = DatasetPublisherTarget.Local,
-            DestinationDir = "publish-dir"
-        };
-
-        PublisherOptionsValidation.HasImplementedTarget(options).Should().BeTrue();
-    }
-
-    [Fact]
-    public void HasImplementedTarget_ReturnsFalse_WhenTargetIsAzureBlob()
-    {
-        var options = new PublisherOptions
-        {
-            Target = DatasetPublisherTarget.AzureBlob
-        };
-
-        PublisherOptionsValidation.HasImplementedTarget(options).Should().BeFalse();
-    }
 }

@@ -227,17 +227,32 @@ The expected container public access value is `None`.
 
 ## Future Publisher Use
 
-A future Azure Blob publisher can use this storage account as its target behind the existing
-`IDatasetPublisher` abstraction. It should upload only validated dataset artifacts and should
-pair with a blob-specific `IPublishedDatasetVerifier` implementation so a dataset is not
-considered successfully published until the destination has been verified.
+The Azure Blob publisher can use this storage account as its target behind the existing
+`IDatasetPublisher` abstraction. It uploads only validated dataset artifacts and pairs with
+a blob-specific `IPublishedDatasetVerifier` implementation so a dataset is not considered
+successfully published until the destination metadata has been verified.
 
-The Azure publisher should use deterministic blob names such as
-`{regionId}/{regionId}.{version}.sqlite` and read existing blob metadata before uploading.
-When the destination metadata already matches the source artifact metadata, the upload can be
+The Azure publisher uses deterministic blob names such as
+`{regionId}/{regionId}.{version}.sqlite` and reads existing blob metadata before uploading.
+When the destination metadata already matches the source artifact metadata, the upload is
 skipped without creating duplicate timestamp-based blobs. Safety limits such as
 `AzureBlobPublisher:MaxUploadsPerRun` and `AzureBlobPublisher:MaxUploadBytesPerRun` guard
 against runaway publishing behavior.
+
+Keep checked-in environment configuration on `Publisher:Target = Local` until the deployment
+is intentionally switched over. For a local development smoke test against the dev storage
+account, prefer temporary environment or command-line overrides instead of committing the
+target change:
+
+```powershell
+dotnet run --project src/POIneer.Render `
+  --Publisher:Target=AzureBlob `
+  --AzureBlobPublisher:AccountName=poineerstoragedev `
+  --AzureBlobPublisher:ContainerName=regions
+```
+
+Authentication uses Azure-supported identity mechanisms. Do not commit account keys,
+connection strings, SAS tokens, client secrets, or tenant-specific credentials.
 
 The renderer compute environment remains independent. The same storage target can receive
 artifacts from the VPS renderer now and from an Azure-based renderer later.

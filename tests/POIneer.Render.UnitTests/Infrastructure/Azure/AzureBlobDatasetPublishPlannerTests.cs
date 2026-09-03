@@ -25,11 +25,12 @@ public sealed class AzureBlobDatasetPublishPlannerTests
 
         _metadataReader
             .ReadAsync("berlin/berlin.2-abc123.sqlite", Arg.Any<CancellationToken>())
-            .Returns((AzureBlobDatasetMetadata?)null);
+            .Returns(new AzureBlobDatasetMetadataReadResult(BlobExists: false, Metadata: null));
 
         var decision = await sut.PlanAsync(request);
 
         decision.BlobName.Should().Be("berlin/berlin.2-abc123.sqlite");
+        decision.DestinationExists.Should().BeFalse();
         decision.ShouldUpload.Should().BeTrue();
         decision.Reason.Should().Contain("missing");
     }
@@ -47,11 +48,14 @@ public sealed class AzureBlobDatasetPublishPlannerTests
 
         _metadataReader
             .ReadAsync("berlin/berlin.2-abc123.sqlite", Arg.Any<CancellationToken>())
-            .Returns(AzureBlobDatasetMetadata.FromArtifact(expectedMetadata));
+            .Returns(new AzureBlobDatasetMetadataReadResult(
+                BlobExists: true,
+                AzureBlobDatasetMetadata.FromArtifact(expectedMetadata)));
 
         var decision = await sut.PlanAsync(request);
 
         decision.BlobName.Should().Be("berlin/berlin.2-abc123.sqlite");
+        decision.DestinationExists.Should().BeTrue();
         decision.ShouldUpload.Should().BeFalse();
         decision.Reason.Should().Contain("matches");
     }
@@ -69,15 +73,18 @@ public sealed class AzureBlobDatasetPublishPlannerTests
 
         _metadataReader
             .ReadAsync("berlin/berlin.2-abc123.sqlite", Arg.Any<CancellationToken>())
-            .Returns(new AzureBlobDatasetMetadata(
-                expectedMetadata.RegionId,
-                expectedMetadata.Version,
-                expectedMetadata.FileSizeBytes,
-                "different-checksum"));
+            .Returns(new AzureBlobDatasetMetadataReadResult(
+                BlobExists: true,
+                new AzureBlobDatasetMetadata(
+                    expectedMetadata.RegionId,
+                    expectedMetadata.Version,
+                    expectedMetadata.FileSizeBytes,
+                    "different-checksum")));
 
         var decision = await sut.PlanAsync(request);
 
         decision.BlobName.Should().Be("berlin/berlin.2-abc123.sqlite");
+        decision.DestinationExists.Should().BeTrue();
         decision.ShouldUpload.Should().BeTrue();
         decision.Reason.Should().Contain("differs");
     }
@@ -96,7 +103,7 @@ public sealed class AzureBlobDatasetPublishPlannerTests
 
         _metadataReader
             .ReadAsync("berlin/berlin.2-abc123.sqlite", cts.Token)
-            .Returns((AzureBlobDatasetMetadata?)null);
+            .Returns(new AzureBlobDatasetMetadataReadResult(BlobExists: false, Metadata: null));
 
         await sut.PlanAsync(request, cts.Token);
 

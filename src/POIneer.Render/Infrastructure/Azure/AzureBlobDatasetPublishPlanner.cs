@@ -35,26 +35,38 @@ public sealed class AzureBlobDatasetPublishPlanner : IAzureBlobDatasetPublishPla
             request.SourcePath,
             cancellationToken);
 
-        var existingMetadata = await _metadataReader.ReadAsync(blobName, cancellationToken);
+        var readResult = await _metadataReader.ReadAsync(blobName, cancellationToken);
 
-        if (existingMetadata is null)
+        if (!readResult.BlobExists)
         {
             return new AzureBlobDatasetPublishDecision(
                 blobName,
+                DestinationExists: false,
                 ShouldUpload: true,
-                "Destination blob is missing or does not contain comparable POIneer dataset metadata.");
+                "Destination blob is missing.");
         }
 
-        if (existingMetadata.Matches(expectedMetadata))
+        if (readResult.Metadata is null)
         {
             return new AzureBlobDatasetPublishDecision(
                 blobName,
+                DestinationExists: true,
+                ShouldUpload: true,
+                "Destination blob exists but does not contain comparable POIneer dataset metadata.");
+        }
+
+        if (readResult.Metadata.Matches(expectedMetadata))
+        {
+            return new AzureBlobDatasetPublishDecision(
+                blobName,
+                DestinationExists: true,
                 ShouldUpload: false,
                 "Destination blob already matches the source artifact metadata.");
         }
 
         return new AzureBlobDatasetPublishDecision(
             blobName,
+            DestinationExists: true,
             ShouldUpload: true,
             "Destination blob metadata differs from the source artifact metadata.");
     }

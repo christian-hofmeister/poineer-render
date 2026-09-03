@@ -12,7 +12,7 @@ public sealed class AzureBlobDatasetMetadataReader : IAzureBlobDatasetMetadataRe
         _containerClient = containerClient;
     }
 
-    public async Task<AzureBlobDatasetMetadata?> ReadAsync(
+    public async Task<AzureBlobDatasetMetadataReadResult> ReadAsync(
         string blobName,
         CancellationToken cancellationToken = default)
     {
@@ -23,11 +23,15 @@ public sealed class AzureBlobDatasetMetadataReader : IAzureBlobDatasetMetadataRe
         try
         {
             var properties = await blobClient.GetPropertiesAsync(cancellationToken: cancellationToken);
-            return TryReadMetadata(properties.Value.Metadata);
+            return new AzureBlobDatasetMetadataReadResult(
+                BlobExists: true,
+                TryReadMetadata(properties.Value.Metadata));
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
-            return null;
+            return new AzureBlobDatasetMetadataReadResult(
+                BlobExists: false,
+                Metadata: null);
         }
     }
 

@@ -85,8 +85,7 @@ its first implementation:
   `LockFilePath`.
 - `PublisherOptions.Target` selects the configured publisher implementation.
   Existing development, CI, and VPS configurations explicitly use `Local`.
-  `AzureBlob` is reserved for the Azure Blob Storage publisher in #134 and
-  currently fails startup validation until that implementation is introduced.
+  `AzureBlob` selects the Azure Blob Storage publisher introduced by #134.
 
 Naming note: `RenderRegion` already used the word "publish" informally for
 promoting a validated staging file to its canonical `outDir` location (a
