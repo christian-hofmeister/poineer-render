@@ -49,7 +49,8 @@ its first implementation:
   `Overwrite`, or `Fail`), rather than an implicit, undocumented behavior.
   `Skip` preserves the existing file unconditionally. `SkipIfIdentical`
   preserves it only when it already matches the source bytes; otherwise it
-  replaces the destination with the current validated artifact.
+  fails so the same-version mismatch can be investigated. `Overwrite` is the
+  only policy that replaces an existing destination.
 - `RenderRegion` calls `IDatasetPublisher.PublishAsync` right after
   promoting a validated dataset to its canonical `outDir` location. The
   version is computed by `IDatasetVersionCalculator`
@@ -71,10 +72,10 @@ its first implementation:
   generated SQLite dataset artifact while the source PBF can remain unchanged. This includes
   SQLite schema changes, POI tag mapping changes, export logic changes, and dataset semantics
   changes. Without the bump, the same `{SchemaVersion}-{PbfHash}` version can be reused for
-  byte-different SQLite output. Dev and production configuration use `SkipIfIdentical` so the
-  local publisher repairs that mismatch by replacing the destination; deployments that choose
-  `Skip` instead keep the older artifact and should expect post-publish verification to fail
-  if the newly rendered canonical SQLite no longer matches it.
+  byte-different SQLite output. Dev and production configuration use `SkipIfIdentical` so this
+  mismatch is surfaced instead of silently replacing an already published artifact. Operators can
+  investigate the mismatch, bump `SchemaVersion` when the rendered dataset intentionally changed,
+  or temporarily choose `Overwrite` when replacing the existing destination is deliberate.
 - `PublisherOptions.DestinationDir` is required and validated on startup
   (`ValidateOnStart`) when `PublisherOptions.Target` is `Local`, matching
   `RendererOptions`. The value itself is never hardcoded to a specific

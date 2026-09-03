@@ -236,7 +236,7 @@ Important publisher options:
 | --- | --- | --- |
 | `Publisher:Target` | Publishing implementation to use (`Local` or `AzureBlob`) | `Local` |
 | `Publisher:DestinationDir` | Directory validated datasets are published to when `Publisher:Target` is `Local` | `data/dev/renderer-publish-dir` |
-| `Publisher:OverwritePolicy` | What happens when a file for the same region/version already exists at the destination (`Skip`, `SkipIfIdentical`, `Overwrite`, `Fail`) | `SkipIfIdentical` |
+| `Publisher:OverwritePolicy` | What happens when a file for the same region/version already exists at the destination (`Skip`, `SkipIfIdentical`, `Overwrite`, `Fail`); `SkipIfIdentical` skips matching artifacts and fails on mismatches, while only `Overwrite` replaces existing files | `SkipIfIdentical` |
 | `Publisher:SchemaVersion` | Bumped deliberately when a POIneer.Render release changes the exported schema, mapping, export logic, or dataset semantics; combined with a hash of the source PBF to form the dataset version, so unchanged input can be republished under a new version only when the rendered dataset intentionally changes | `2` |
 
 Important Azure Blob publisher options:

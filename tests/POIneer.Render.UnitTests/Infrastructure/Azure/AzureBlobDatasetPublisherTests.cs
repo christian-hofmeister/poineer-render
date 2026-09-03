@@ -116,6 +116,52 @@ public sealed class AzureBlobDatasetPublisherTests
     }
 
     [Fact]
+    public async Task PublishAsync_Throws_WhenOverwritePolicyIsSkipIfIdenticalAndDestinationDiffers()
+    {
+        await using var source = TestSourceFile.Create();
+        var request = CreateRequest(source.Path);
+        var sut = CreateSut(overwritePolicy: DatasetPublishOverwritePolicy.SkipIfIdentical);
+
+        _planner.PlanAsync(request, Arg.Any<CancellationToken>())
+            .Returns(new AzureBlobDatasetPublishDecision(
+                "berlin/berlin.2-abc123.sqlite",
+                DestinationExists: true,
+                ShouldUpload: true,
+                "differs"));
+
+        var act = async () => await sut.PublishAsync(request);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*does not match the source artifact metadata*Overwrite*");
+        await _uploader.DidNotReceiveWithAnyArgs()
+            .UploadAsync(default!, default!, default!, default);
+    }
+
+    [Fact]
+    public async Task PublishAsync_OverwritesExistingDestination_WhenOverwritePolicyIsOverwrite()
+    {
+        await using var source = TestSourceFile.Create();
+        var request = CreateRequest(source.Path);
+        var metadata = CreateMetadata(fileSizeBytes: source.Length);
+        var sut = CreateSut(overwritePolicy: DatasetPublishOverwritePolicy.Overwrite);
+
+        _planner.PlanAsync(request, Arg.Any<CancellationToken>())
+            .Returns(new AzureBlobDatasetPublishDecision(
+                "berlin/berlin.2-abc123.sqlite",
+                DestinationExists: true,
+                ShouldUpload: true,
+                "differs"));
+        _metadataFactory.CreateAsync(request.RegionId, request.Version, request.SourcePath, Arg.Any<CancellationToken>())
+            .Returns(metadata);
+
+        var result = await sut.PublishAsync(request);
+
+        result.WasSkipped.Should().BeFalse();
+        await _uploader.Received(1)
+            .UploadAsync("berlin/berlin.2-abc123.sqlite", request.SourcePath, Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task PublishAsync_Throws_WhenMaxUploadsPerRunWouldBeExceeded()
     {
         await using var source = TestSourceFile.Create();

@@ -72,6 +72,9 @@ public sealed class AzureBlobDatasetPublisher : IDatasetPublisher
                         $"Azure Blob publish target already exists at {decision.BlobName} and the overwrite policy is Fail.");
 
                 case DatasetPublishOverwritePolicy.SkipIfIdentical:
+                    throw new InvalidOperationException(
+                        $"Azure Blob publish target already exists at {decision.BlobName}, but does not match the source artifact metadata. Use overwrite policy Overwrite to replace it.");
+
                 case DatasetPublishOverwritePolicy.Overwrite:
                     break;
 

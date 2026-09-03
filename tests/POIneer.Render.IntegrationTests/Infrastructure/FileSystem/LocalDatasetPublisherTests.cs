@@ -162,7 +162,7 @@ public sealed class LocalDatasetPublisherTests
     }
 
     [Fact]
-    public async Task PublishAsync_ReplacesExistingDestination_WhenOverwritePolicyIsSkipIfIdentical_ButDestinationDiffersFromSource()
+    public async Task PublishAsync_ThrowsIOException_WhenOverwritePolicyIsSkipIfIdentical_ButDestinationDiffersFromSource()
     {
         // Arrange
         await using var tempDir = TestTemporaryDirectories.Create("publish-skip-if-identical-replaces-mismatched-target", false);
@@ -179,12 +179,12 @@ public sealed class LocalDatasetPublisherTests
         TestFiles.WriteAllText(sourcePath, "changed dataset bytes");
 
         // Act
-        var second = await sut.PublishAsync(request, CancellationToken.None);
+        var act = () => sut.PublishAsync(request, CancellationToken.None);
 
         // Assert
-        second.WasSkipped.Should().BeFalse();
-        second.DestinationPath.Should().Be(first.DestinationPath);
-        (await File.ReadAllTextAsync(second.DestinationPath)).Should().Be("changed dataset bytes");
+        await act.Should().ThrowAsync<IOException>()
+            .WithMessage("*differs from the source artifact*Overwrite*");
+        (await File.ReadAllTextAsync(first.DestinationPath)).Should().Be("new dataset bytes");
     }
 
     [Fact]

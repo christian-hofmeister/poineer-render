@@ -81,10 +81,8 @@ public sealed class LocalDatasetPublisher : IDatasetPublisher
                         return new DatasetPublishResult(destinationPath, WasSkipped: true);
                     }
 
-                    _logger.LogInformation(
-                        "Publish target already exists at {DestinationPath}, but differs from the source artifact. Replacing it (overwrite policy: SkipIfIdentical).",
-                        destinationPath);
-                    break;
+                    throw new IOException(
+                        $"Publish target already exists at {destinationPath}, but differs from the source artifact. Use overwrite policy Overwrite to replace it.");
 
                 case DatasetPublishOverwritePolicy.Fail:
                     throw new IOException(
