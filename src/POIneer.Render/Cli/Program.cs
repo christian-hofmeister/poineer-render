@@ -1,3 +1,5 @@
+using Azure.Identity;
+using Azure.Storage.Blobs;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -11,6 +13,7 @@ using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
 using POIneer.Render.Application.UseCases;
 using POIneer.Render.Infrastructure.Adapters.Osm;
+using POIneer.Render.Infrastructure.Azure;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
 using POIneer.Render.Infrastructure.Process;
@@ -59,6 +62,10 @@ internal class Program
             .ValidateOnStart();
 
         builder.Services
+            .AddOptions<AzureBlobPublisherOptions>()
+            .Bind(builder.Configuration.GetSection(AzureBlobPublisherOptions.SectionName));
+
+        builder.Services
             .AddOptions<FlywayOptions>()
             .Bind(builder.Configuration.GetSection(FlywayOptions.SectionName));
 
@@ -104,6 +111,21 @@ internal class Program
         builder.Services.AddSingleton<IRawPoiMapper, RawPoiMapper>();
         builder.Services.AddSingleton<IDatasetValidator, SqliteDatasetValidator>();
         builder.Services.AddSingleton<LocalDatasetPublisher>();
+        builder.Services.AddSingleton<IAzureBlobDatasetMetadataReader, AzureBlobDatasetMetadataReader>();
+        builder.Services.AddSingleton<IAzureBlobDatasetPublishPlanner, AzureBlobDatasetPublishPlanner>();
+        builder.Services.AddSingleton(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<AzureBlobPublisherOptions>>().Value;
+            var serviceClient = new BlobServiceClient(ResolveBlobServiceEndpoint(options), new DefaultAzureCredential());
+
+            if (string.IsNullOrWhiteSpace(options.ContainerName))
+            {
+                throw new InvalidOperationException(
+                    "AzureBlobPublisher:ContainerName must be set.");
+            }
+
+            return serviceClient.GetBlobContainerClient(options.ContainerName);
+        });
         builder.Services.AddSingleton<IDatasetPublisher>(sp =>
         {
             var options = sp.GetRequiredService<IOptions<PublisherOptions>>().Value;
@@ -131,6 +153,18 @@ internal class Program
         return await runner.RunAsync(
             app.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping
         );
+    }
+
+    private static Uri ResolveBlobServiceEndpoint(AzureBlobPublisherOptions options)
+    {
+        if (!string.IsNullOrWhiteSpace(options.BlobEndpoint))
+            return new Uri(options.BlobEndpoint);
+
+        if (!string.IsNullOrWhiteSpace(options.AccountName))
+            return new Uri($"https://{options.AccountName}.blob.core.windows.net");
+
+        throw new InvalidOperationException(
+            "AzureBlobPublisher:AccountName or AzureBlobPublisher:BlobEndpoint must be set.");
     }
 
     private static string ResolveContentRoot()

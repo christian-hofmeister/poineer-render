@@ -232,5 +232,12 @@ A future Azure Blob publisher can use this storage account as its target behind 
 pair with a blob-specific `IPublishedDatasetVerifier` implementation so a dataset is not
 considered successfully published until the destination has been verified.
 
+The Azure publisher should use deterministic blob names such as
+`{regionId}/{regionId}.{version}.sqlite` and read existing blob metadata before uploading.
+When the destination metadata already matches the source artifact metadata, the upload can be
+skipped without creating duplicate timestamp-based blobs. Safety limits such as
+`AzureBlobPublisher:MaxUploadsPerRun` and `AzureBlobPublisher:MaxUploadBytesPerRun` guard
+against runaway publishing behavior.
+
 The renderer compute environment remains independent. The same storage target can receive
 artifacts from the VPS renderer now and from an Azure-based renderer later.
