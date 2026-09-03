@@ -127,6 +127,28 @@ public sealed class RendererConfigurationFilesTests
     [InlineData("appsettings.json")]
     [InlineData("appsettings.Development.json")]
     [InlineData("appsettings.Production.json")]
+    public void PublisherConfiguration_SetsPublisherTargetExplicitly(string settingsFileName)
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var settingsPath = Path.Combine(repositoryRoot, "src", "POIneer.Render", settingsFileName);
+
+        using var document = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        var publisher = document.RootElement.GetProperty("Publisher");
+
+        publisher.TryGetProperty("Target", out var targetElement)
+            .Should().BeTrue($"{settingsFileName} should choose its publisher target explicitly");
+
+        var target = targetElement.GetString();
+
+        target.Should().NotBeNullOrWhiteSpace();
+        Enum.TryParse<DatasetPublisherTarget>(target, ignoreCase: false, out _)
+            .Should().BeTrue($"{settingsFileName} should use a known publisher target");
+    }
+
+    [Theory]
+    [InlineData("appsettings.json")]
+    [InlineData("appsettings.Development.json")]
+    [InlineData("appsettings.Production.json")]
     public void PublisherConfiguration_UsesSkipIfIdenticalOverwritePolicy(string settingsFileName)
     {
         var repositoryRoot = FindRepositoryRoot();

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Adapters.Input;
 using POIneer.Render.Adapters.Output;
+using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Mapping;
 using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
@@ -54,6 +55,7 @@ internal class Program
             .AddOptions<PublisherOptions>()
             .Bind(builder.Configuration.GetSection("Publisher"))
             .Validate(PublisherOptionsValidation.HasRequiredDestinationDir, PublisherOptionsValidation.RequiredDestinationDirMessage)
+            .Validate(PublisherOptionsValidation.HasImplementedTarget, PublisherOptionsValidation.ImplementedTargetMessage)
             .ValidateOnStart();
 
         builder.Services
@@ -101,7 +103,18 @@ internal class Program
         builder.Services.AddSingleton<IRenderRegion, RenderRegion>();
         builder.Services.AddSingleton<IRawPoiMapper, RawPoiMapper>();
         builder.Services.AddSingleton<IDatasetValidator, SqliteDatasetValidator>();
-        builder.Services.AddSingleton<IDatasetPublisher, LocalDatasetPublisher>();
+        builder.Services.AddSingleton<LocalDatasetPublisher>();
+        builder.Services.AddSingleton<IDatasetPublisher>(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<PublisherOptions>>().Value;
+            return options.Target switch
+            {
+                DatasetPublisherTarget.Local => sp.GetRequiredService<LocalDatasetPublisher>(),
+                DatasetPublisherTarget.AzureBlob => throw new InvalidOperationException(
+                    "Publisher:Target is AzureBlob, but the Azure Blob dataset publisher is not implemented yet."),
+                _ => throw new InvalidOperationException($"Unrecognized publisher target: {options.Target}")
+            };
+        });
         builder.Services.AddSingleton<IDatasetVersionCalculator, FileHashDatasetVersionCalculator>();
         builder.Services.AddSingleton<IDatasetArtifactMetadataFactory, FileDatasetArtifactMetadataFactory>();
         builder.Services.AddSingleton<IPublishedDatasetVerifier, FilePublishedDatasetVerifier>();

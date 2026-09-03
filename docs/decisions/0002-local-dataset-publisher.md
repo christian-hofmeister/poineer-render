@@ -76,12 +76,17 @@ its first implementation:
   `Skip` instead keep the older artifact and should expect post-publish verification to fail
   if the newly rendered canonical SQLite no longer matches it.
 - `PublisherOptions.DestinationDir` is required and validated on startup
-  (`ValidateOnStart`), matching `RendererOptions`. The value itself is never
-  hardcoded to a specific machine: `appsettings.Development.json` points at
-  a relative `data/dev/renderer-publish-dir`, `appsettings.Production.json`
-  at an absolute VPS path
-  (`/opt/poineer-render/data/prod/renderer-publish-dir`), the same pattern
-  already used for `Renderer:WorkDir`/`OutDir`/`LockFilePath`.
+  (`ValidateOnStart`) when `PublisherOptions.Target` is `Local`, matching
+  `RendererOptions`. The value itself is never hardcoded to a specific
+  machine: `appsettings.Development.json` points at a relative
+  `data/dev/renderer-publish-dir`, `appsettings.Production.json` at an
+  absolute VPS path (`/opt/poineer-render/data/prod/renderer-publish-dir`),
+  the same pattern already used for `Renderer:WorkDir`/`OutDir`/
+  `LockFilePath`.
+- `PublisherOptions.Target` selects the configured publisher implementation.
+  Existing development, CI, and VPS configurations explicitly use `Local`.
+  `AzureBlob` is reserved for the Azure Blob Storage publisher in #134 and
+  currently fails startup validation until that implementation is introduced.
 
 Naming note: `RenderRegion` already used the word "publish" informally for
 promoting a validated staging file to its canonical `outDir` location (a
@@ -101,11 +106,13 @@ synchronization between VPS and Azure, and public download URLs.
   region from now on: a publish failure fails that region's render (surfaced
   the same way a validation failure already is, via `RenderRegion` throwing
   and `Runner` recording the region as failed).
-- `Publisher:DestinationDir` is a new required setting. Existing
-  `appsettings.json`/`appsettings.Development.json`/
-  `appsettings.Production.json` already define it, so no action is needed
-  for the default dev/CI/VPS setups; a fully custom deployment overriding
-  every renderer setting via environment variables will also need to set
+- `Publisher:Target` is now explicit in configuration and defaults to `Local`
+  in code. `Publisher:DestinationDir` remains required for the local target.
+  Existing `appsettings.json`/`appsettings.Development.json`/
+  `appsettings.Production.json` already define both values, so no action is
+  needed for the default dev/CI/VPS setups; a fully custom local deployment
+  overriding every renderer setting via environment variables will also need
+  to set `POINEER_RENDER__PUBLISHER__TARGET=Local` and
   `POINEER_RENDER__PUBLISHER__DESTINATIONDIR`.
 - Testable: `LocalDatasetPublisher` is covered by integration tests against
   the real filesystem (copy, directory creation, all three overwrite

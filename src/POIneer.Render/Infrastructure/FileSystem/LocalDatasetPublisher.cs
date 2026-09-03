@@ -52,6 +52,9 @@ public sealed class LocalDatasetPublisher : IDatasetPublisher
         if (!File.Exists(request.SourcePath))
             throw new FileNotFoundException($"Dataset artifact not found: {request.SourcePath}", request.SourcePath);
 
+        if (string.IsNullOrWhiteSpace(_options.DestinationDir))
+            throw new InvalidOperationException("Publisher:DestinationDir must be set when using the local dataset publisher.");
+
         var destinationDir = Path.Combine(_options.DestinationDir, request.RegionId);
         Directory.CreateDirectory(destinationDir);
 

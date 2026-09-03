@@ -234,7 +234,8 @@ Important publisher options:
 
 | Option | Purpose | Development default |
 | --- | --- | --- |
-| `Publisher:DestinationDir` | Directory validated datasets are published to (local filesystem; also used for the VPS deployment) | `data/dev/renderer-publish-dir` |
+| `Publisher:Target` | Publishing implementation to use; currently `Local`, with `AzureBlob` reserved for the Azure Blob publisher | `Local` |
+| `Publisher:DestinationDir` | Directory validated datasets are published to when `Publisher:Target` is `Local` | `data/dev/renderer-publish-dir` |
 | `Publisher:OverwritePolicy` | What happens when a file for the same region/version already exists at the destination (`Skip`, `SkipIfIdentical`, `Overwrite`, `Fail`) | `SkipIfIdentical` |
 | `Publisher:SchemaVersion` | Bumped deliberately when a POIneer.Render release changes the exported schema, mapping, export logic, or dataset semantics; combined with a hash of the source PBF to form the dataset version, so unchanged input can be republished under a new version only when the rendered dataset intentionally changes | `2` |
 
