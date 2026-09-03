@@ -41,7 +41,7 @@ public sealed class AzureBlobDatasetMetadataReader : IAzureBlobDatasetMetadataRe
             || !TryGet(metadata, AzureBlobDatasetMetadataKeys.Version, out var version)
             || !TryGet(metadata, AzureBlobDatasetMetadataKeys.FileSizeBytes, out var fileSizeBytesText)
             || !TryGet(metadata, AzureBlobDatasetMetadataKeys.Sha256Checksum, out var sha256Checksum)
-            || !long.TryParse(fileSizeBytesText, out var fileSizeBytes))
+            || !long.TryParse(fileSizeBytesText, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var fileSizeBytes))
         {
             return null;
         }
