@@ -64,7 +64,7 @@ The dataset container name is also parameterized. The current dev container is `
 ## Region
 
 The current dev storage account is in `westeurope`. The production parameter file currently
-uses `germanywestcentral` as an initial placeholder. Both values are parameters and can be
+uses `westeurope` as an initial placeholder. Both values are parameters and can be
 changed before deployment if the target subscription or organization prefers another Azure
 region.
 
