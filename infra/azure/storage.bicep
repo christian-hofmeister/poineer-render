@@ -15,7 +15,7 @@ param environmentName string = 'prod'
 param location string = resourceGroup().location
 
 @maxLength(24)
-@description('Optional explicit storage account name. Leave empty to derive a deterministic globally unique name.')
+@description('Optional explicit storage account name (3-24 chars, lowercase letters and numbers only). Leave empty to derive a deterministic globally unique name.')
 param storageAccountName string = ''
 
 @description('Blob container that stores published POIneer dataset artifacts.')
