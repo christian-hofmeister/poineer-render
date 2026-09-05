@@ -161,6 +161,28 @@ public sealed class RendererConfigurationFilesTests
             .Should().Be(nameof(DatasetPublishOverwritePolicy.SkipIfIdentical));
     }
 
+    [Fact]
+    public void LaunchSettings_UsesDevelopmentEnvironment_ForLocalDotnetRun()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var launchSettingsPath = Path.Combine(
+            repositoryRoot,
+            "src",
+            "POIneer.Render",
+            "Properties",
+            "launchSettings.json");
+
+        using var document = JsonDocument.Parse(File.ReadAllText(launchSettingsPath));
+
+        document.RootElement
+            .GetProperty("profiles")
+            .GetProperty("POIneer.Render")
+            .GetProperty("environmentVariables")
+            .GetProperty("DOTNET_ENVIRONMENT")
+            .GetString()
+            .Should().Be("Development");
+    }
+
     private static string FindRepositoryRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

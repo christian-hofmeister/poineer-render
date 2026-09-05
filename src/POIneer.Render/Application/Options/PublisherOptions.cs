@@ -12,7 +12,7 @@ public sealed class PublisherOptions
     // Directory validated datasets are published to. Configurable per environment so the
     // same LocalDatasetPublisher works for a local development folder or a filesystem
     // location available on the VPS - never hardcode a machine-specific path in code.
-    public string? DestinationDir { get; init; }
+    public string? DestinationDir { get; set; }
 
     public DatasetPublishOverwritePolicy OverwritePolicy { get; init; } = DatasetPublishOverwritePolicy.Skip;
 
