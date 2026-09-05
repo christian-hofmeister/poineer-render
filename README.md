@@ -206,7 +206,7 @@ Windows PowerShell:
 ./scripts/run-dev.ps1
 ```
 
-Development mode reads `src/POIneer.Render/appsettings.Development.json`, renders only the `berlin` region, writes work files below `data/dev/renderer-work-dir`, writes output artifacts below `data/dev/renderer-out-dir`, and publishes local artifacts below `data/dev/renderer-publish-dir`. `dotnet run --project src/POIneer.Render` uses the checked-in launch profile to select `DOTNET_ENVIRONMENT=Development`; production scripts and published artifacts set the environment explicitly.
+Development mode reads `src/POIneer.Render/appsettings.Development.json`, renders only the `geofabrik/europe/germany/berlin` region, writes work files below `data/dev/renderer-work-dir`, writes output artifacts below `data/dev/renderer-out-dir`, and publishes local artifacts below `data/dev/renderer-publish-dir`. `dotnet run --project src/POIneer.Render` uses the checked-in launch profile to select `DOTNET_ENVIRONMENT=Development`; production scripts and published artifacts set the environment explicitly.
 
 ---
 
@@ -241,9 +241,15 @@ Important renderer options:
 | `Renderer:WorkDir` | Temporary and downloaded source data | `data/dev/renderer-work-dir` |
 | `Renderer:OutDir` | Final SQLite output files | `data/dev/renderer-out-dir` |
 | `Renderer:RegionsJson` | Region configuration file | `Cli/config/regions.local.json` |
-| `Renderer:OnlyRegionId` | Optional filter for one region | `berlin` |
+| `Renderer:OnlyRegionId` | Optional filter for one region | `geofabrik/europe/germany/berlin` |
 | `Renderer:DryRun` | Exit after configuration/logging without rendering | `false` |
 | `Renderer:LockFilePath` | Lock file preventing overlapping runs (e.g. concurrent cron executions) | `<WorkDir>/poineer-render.lock` (auto) |
+
+Region ids in `Renderer:RegionsJson` are globally unique, hierarchical technical
+identifiers such as `geofabrik/europe/germany/berlin` - see
+[ADR 0007](docs/decisions/0007-hierarchical-region-identifiers.md) for the naming
+convention, how a region id maps to a filesystem path / Azure Blob name, and the
+separate human-readable `Name`/`Country`/`Category` display fields.
 
 Important publisher options:
 
@@ -276,7 +282,7 @@ Example environment override:
 
 ```bash
 POINEER_RENDER__RENDERER__DRYRUN=true \
-POINEER_RENDER__RENDERER__ONLYREGIONID=berlin \
+POINEER_RENDER__RENDERER__ONLYREGIONID=geofabrik/europe/germany/berlin \
 dotnet run --project src/POIneer.Render/POIneer.Render.csproj
 ```
 
@@ -396,7 +402,7 @@ Example:
 ```json
 {
   "Renderer": {
-    "OnlyRegionId": "berlin"
+    "OnlyRegionId": "geofabrik/europe/germany/berlin"
   }
 }
 ```
@@ -404,7 +410,7 @@ Example:
 Environment variables can override configuration values:
 
 ```bash
-POINEER_RENDER__RENDERER__ONLYREGIONID=berlin
+POINEER_RENDER__RENDERER__ONLYREGIONID=geofabrik/europe/germany/berlin
 ```
 
 ---
@@ -428,7 +434,7 @@ data/
 Example generated database:
 
 ```text
-data/prod/out/berlin/poi.sqlite
+data/prod/out/geofabrik/europe/germany/berlin/poi.sqlite
 ```
 
 Temporary and intermediate files are written to the corresponding `work` directory.

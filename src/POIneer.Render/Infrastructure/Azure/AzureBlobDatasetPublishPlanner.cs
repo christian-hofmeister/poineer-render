@@ -1,5 +1,6 @@
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Ports;
+using POIneer.Render.Domain.Models;
 
 namespace POIneer.Render.Infrastructure.Azure;
 
@@ -25,10 +26,14 @@ public sealed class AzureBlobDatasetPublishPlanner : IAzureBlobDatasetPublishPla
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Version);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.SourcePath);
 
-        ValidateBlobNameSegment(request.RegionId, nameof(request.RegionId));
-        ValidateBlobNameSegment(request.Version, nameof(request.Version));
+        // RegionId may be a globally unique, hierarchical identifier (ADR 0007), e.g.
+        // "geofabrik/europe/germany/berlin" - each '/'-separated segment is validated
+        // individually and the full id becomes the blob name's virtual-folder prefix.
+        // Version is not hierarchical and may not contain the '/' segment separator.
+        var regionIdSegments = RegionIdentifier.ValidateHierarchicalId(request.RegionId, nameof(request.RegionId));
+        RegionIdentifier.ValidateSingleSegment(request.Version, nameof(request.Version));
 
-        var blobName = BuildBlobName(request);
+        var blobName = BuildBlobName(request, regionIdSegments[^1]);
         var expectedMetadata = await _metadataFactory.CreateAsync(
             request.RegionId,
             request.Version,
@@ -71,29 +76,14 @@ public sealed class AzureBlobDatasetPublishPlanner : IAzureBlobDatasetPublishPla
             "Destination blob metadata differs from the source artifact metadata.");
     }
 
-    private static string BuildBlobName(DatasetPublishRequest request)
+    // The blob name's prefix is the full hierarchical RegionId (Azure Blob Storage has no
+    // real directories, but '/' in a blob name is treated as a virtual folder separator
+    // by tooling and the portal); the file part is named after only the leaf segment
+    // (e.g. "berlin", not "geofabrik/europe/germany/berlin") so it stays short instead of
+    // repeating the prefix the blob name already carries.
+    private static string BuildBlobName(DatasetPublishRequest request, string leafRegionId)
     {
         var extension = Path.GetExtension(request.SourcePath);
-        return $"{request.RegionId}/{request.RegionId}.{request.Version}{extension}";
-    }
-
-    private static void ValidateBlobNameSegment(string value, string parameterName)
-    {
-        if (value is "." or "..")
-        {
-            throw new ArgumentException(
-                $"'{value}' is not a valid {parameterName}: '.' and '..' are not allowed.",
-                parameterName);
-        }
-
-        foreach (var c in value)
-        {
-            if (!char.IsAsciiLetterOrDigit(c) && c is not ('.' or '-' or '_'))
-            {
-                throw new ArgumentException(
-                    $"'{value}' is not a valid {parameterName}: only ASCII letters, digits, '.', '-', and '_' are allowed, but found '{c}'.",
-                    parameterName);
-            }
-        }
+        return $"{request.RegionId}/{leafRegionId}.{request.Version}{extension}";
     }
 }

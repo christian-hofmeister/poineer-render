@@ -96,7 +96,7 @@ the `POINEER_RENDER__` prefix, and command-line arguments. For example:
 docker run --rm \
   -v /opt/poineer-render/data:/opt/poineer-render/data \
   poineer-render:production \
-  --Renderer:OnlyRegionId=berlin \
+  --Renderer:OnlyRegionId=geofabrik/europe/germany/berlin \
   --VectorTiles:Enabled=true
 ```
 

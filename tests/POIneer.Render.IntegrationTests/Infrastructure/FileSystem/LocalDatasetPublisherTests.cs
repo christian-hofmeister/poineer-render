@@ -43,6 +43,37 @@ public sealed class LocalDatasetPublisherTests
         (await File.ReadAllTextAsync(expectedDestinationPath)).Should().Be("dataset bytes");
     }
 
+    // A globally unique, hierarchical RegionId (ADR 0007) such as
+    // "geofabrik/europe/germany/berlin" must produce one nested directory per segment,
+    // with the published file named after only the leaf ("berlin") segment - not the
+    // whole hierarchy, which the directory structure already encodes.
+    [Fact]
+    public async Task PublishAsync_CopiesArtifact_ToNestedDestination_ForHierarchicalRegionId()
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("publish-copies-artifact-hierarchical", false);
+        var sourcePath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
+        TestFiles.WriteAllText(sourcePath, "dataset bytes");
+
+        var destinationDir = Path.Combine(tempDir.DirectoryPath, "publish");
+        var sut = new LocalDatasetPublisher(Logger, TestOptionsFactory.CreatePublisherOptions(destinationDir));
+
+        var request = new DatasetPublishRequest(
+            "geofabrik/europe/germany/berlin", "2-abc123", sourcePath);
+
+        // Act
+        var result = await sut.PublishAsync(request, CancellationToken.None);
+
+        // Assert
+        var expectedDestinationPath = Path.GetFullPath(
+            Path.Combine(destinationDir, "geofabrik", "europe", "germany", "berlin", "berlin.2-abc123.sqlite"));
+
+        result.DestinationPath.Should().Be(expectedDestinationPath);
+        result.WasSkipped.Should().BeFalse();
+        File.Exists(expectedDestinationPath).Should().BeTrue();
+        (await File.ReadAllTextAsync(expectedDestinationPath)).Should().Be("dataset bytes");
+    }
+
     [Fact]
     public async Task PublishAsync_CreatesMissingDestinationDirectory()
     {
@@ -312,7 +343,11 @@ public sealed class LocalDatasetPublisherTests
     [InlineData(".")]
     [InlineData("../escape")]
     [InlineData("berlin/../../etc")]
-    [InlineData("berlin/sub")]
+    [InlineData("berlin/..")]
+    [InlineData("berlin/.")]
+    [InlineData("/berlin")]
+    [InlineData("berlin/")]
+    [InlineData("berlin//sub")]
     [InlineData("berlin\\sub")]
     [InlineData("berlin:sub")]
     [InlineData("berlin sub")]
@@ -320,7 +355,11 @@ public sealed class LocalDatasetPublisherTests
     {
         // Arrange: RegionId is interpolated directly into the destination directory name
         // and filename - it must never be able to escape DestinationDir or produce an
-        // invalid filename, regardless of how it was ultimately produced.
+        // invalid filename, regardless of how it was ultimately produced. Note that
+        // "berlin/sub" itself is now a *valid* hierarchical RegionId (ADR 0007) - see
+        // PublishAsync_CopiesArtifact_ToNestedDestination_ForHierarchicalRegionId - only
+        // a "." or ".." segment, an empty segment (leading/trailing/doubled '/'), or a
+        // disallowed character within a segment is rejected.
         await using var tempDir = TestTemporaryDirectories.Create("publish-rejects-unsafe-region-id", false);
         var sourcePath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
         TestFiles.WriteAllText(sourcePath, "dataset bytes");
