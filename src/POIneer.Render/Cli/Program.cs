@@ -16,6 +16,7 @@ using POIneer.Render.Infrastructure.Adapters.Osm;
 using POIneer.Render.Infrastructure.Azure;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Flyway;
+using POIneer.Render.Infrastructure.Pathing;
 using POIneer.Render.Infrastructure.Process;
 using POIneer.Render.Infrastructure.Sqlite;
 using POIneer.Render.Infrastructure.VectorTiles;
@@ -24,14 +25,12 @@ using POIneer.Render.Ports;
 
 internal class Program
 {
-    private static readonly string ProjectDirectoryRelativeToBuildOutput = Path.Combine("..", "..", "..");
-
     private static async Task<int> Main(string[] args)
     {
         var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
         {
             Args = args,
-            ContentRootPath = ResolveContentRoot()
+            ContentRootPath = ContentRootResolver.Resolve()
         });
 
         builder.Configuration
@@ -57,6 +56,12 @@ internal class Program
         builder.Services
             .AddOptions<PublisherOptions>()
             .Bind(builder.Configuration.GetSection("Publisher"))
+            .PostConfigure(options =>
+            {
+                options.DestinationDir = ConfiguredPathResolver.ResolveOptional(
+                    builder.Environment.ContentRootPath,
+                    options.DestinationDir);
+            })
             .Validate(
                 _ => PublisherOptionsValidation.IsDefinedTargetName(builder.Configuration["Publisher:Target"]),
                 PublisherOptionsValidation.DefinedTargetMessage)
@@ -203,20 +208,4 @@ internal class Program
             .Get<PublisherOptions>()?
             .Target != DatasetPublisherTarget.AzureBlob;
 
-    private static string ResolveContentRoot()
-    {
-        var currentDirectory = Directory.GetCurrentDirectory();
-        if (File.Exists(Path.Combine(currentDirectory, "appsettings.json")))
-            return currentDirectory;
-
-        var baseDirectory = Path.GetDirectoryName(typeof(Program).Assembly.Location)!;
-        if (File.Exists(Path.Combine(baseDirectory, "appsettings.json")))
-            return baseDirectory;
-
-        var projectDirectory = Path.GetFullPath(Path.Combine(baseDirectory, ProjectDirectoryRelativeToBuildOutput));
-        if (File.Exists(Path.Combine(projectDirectory, "appsettings.json")))
-            return projectDirectory;
-
-        return currentDirectory;
-    }
 }

@@ -206,7 +206,7 @@ Windows PowerShell:
 ./scripts/run-dev.ps1
 ```
 
-Development mode reads `src/POIneer.Render/appsettings.Development.json`, renders only the `berlin` region, writes work files below `data/dev/renderer-work-dir`, and writes output artifacts below `data/dev/renderer-out-dir` relative to the application content root.
+Development mode reads `src/POIneer.Render/appsettings.Development.json`, renders only the `berlin` region, writes work files below `data/dev/renderer-work-dir`, writes output artifacts below `data/dev/renderer-out-dir`, and publishes local artifacts below `data/dev/renderer-publish-dir`. `dotnet run --project src/POIneer.Render` uses the checked-in launch profile to select `DOTNET_ENVIRONMENT=Development`; production scripts and published artifacts set the environment explicitly.
 
 ---
 
@@ -218,6 +218,21 @@ Runtime configuration is loaded in this order:
 2. `appsettings.{Environment}.json`
 3. environment variables with the `POINEER_RENDER__` prefix
 4. command-line arguments
+
+Relative filesystem paths in renderer configuration are resolved against the renderer content
+root, normally `src/POIneer.Render` during local development. For example,
+`data/dev/renderer-out-dir` resolves to `src/POIneer.Render/data/dev/renderer-out-dir`, not to
+`src/POIneer.Render/bin/Debug/net10.0/data/dev/renderer-out-dir`. Absolute production paths,
+such as `/opt/poineer-render/...`, are kept unchanged.
+
+Development path roles:
+
+| Path | Role |
+| --- | --- |
+| `Renderer:WorkDir` | Downloaded PBF input, cut PBF files, and per-region render state |
+| `Renderer:OutDir` | Canonical generated SQLite and optional vector tile artifacts |
+| `Publisher:DestinationDir` | Local publish destination when `Publisher:Target` is `Local` |
+| `Temp:RootFolderName` | Folder name below the operating-system temp directory for temporary working directories |
 
 Important renderer options:
 

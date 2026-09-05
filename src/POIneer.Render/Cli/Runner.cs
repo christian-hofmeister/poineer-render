@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
+using POIneer.Render.Infrastructure.Pathing;
 using POIneer.Render.Ports;
 
 public sealed class Runner
@@ -42,14 +43,12 @@ public sealed class Runner
         var contentRoot = _hostEnvironment.ContentRootPath;
         var redownloadPbf = _rendererOptions.OverwritePbf;
 
-        string Resolve(string p) => Path.IsPathRooted(p) ? p : Path.GetFullPath(Path.Combine(contentRoot, p));
-
-        var regionsPath = Resolve(_rendererOptions.RegionsJson);
-        var workDir = Resolve(_rendererOptions.WorkDir);
-        var outDir = Resolve(_rendererOptions.OutDir);
+        var regionsPath = ConfiguredPathResolver.Resolve(contentRoot, _rendererOptions.RegionsJson);
+        var workDir = ConfiguredPathResolver.Resolve(contentRoot, _rendererOptions.WorkDir);
+        var outDir = ConfiguredPathResolver.Resolve(contentRoot, _rendererOptions.OutDir);
         var lockFilePath = string.IsNullOrWhiteSpace(_rendererOptions.LockFilePath)
             ? Path.Combine(workDir, "poineer-render.lock")
-            : Resolve(_rendererOptions.LockFilePath);
+            : ConfiguredPathResolver.Resolve(contentRoot, _rendererOptions.LockFilePath);
 
         _logger.LogInformation("POIneer.Render starting (env: {Env})", _hostEnvironment.EnvironmentName);
         _logger.LogInformation("Using content root: {ContentRoot}", contentRoot);
