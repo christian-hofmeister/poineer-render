@@ -14,6 +14,6 @@ public static class ConfiguredPathResolver
 
     public static string? ResolveOptional(string contentRoot, string? path)
         => string.IsNullOrWhiteSpace(path)
-            ? path
+            ? null
             : Resolve(contentRoot, path);
 }
