@@ -6,5 +6,6 @@ public interface IAzureBlobDatasetUploader
         string blobName,
         string sourcePath,
         IReadOnlyDictionary<string, string> metadata,
+        bool overwriteExisting,
         CancellationToken cancellationToken = default);
 }

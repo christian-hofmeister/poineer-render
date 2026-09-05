@@ -97,6 +97,8 @@ public sealed class AzureBlobDatasetPublisher : IDatasetPublisher
                 decision.BlobName,
                 request.SourcePath,
                 ToBlobMetadata(artifactMetadata),
+                overwriteExisting: decision.DestinationExists
+                                   && _publisherOptions.OverwritePolicy == DatasetPublishOverwritePolicy.Overwrite,
                 cancellationToken);
         }
         catch

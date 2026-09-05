@@ -35,7 +35,7 @@ public sealed class AzureBlobDatasetPublisherTests
         result.DestinationPath.Should().Be("berlin/berlin.2-abc123.sqlite");
         result.WasSkipped.Should().BeTrue();
         await _uploader.DidNotReceiveWithAnyArgs()
-            .UploadAsync(default!, default!, default!, default);
+            .UploadAsync(default!, default!, default!, default, default);
     }
 
     [Fact]
@@ -69,6 +69,7 @@ public sealed class AzureBlobDatasetPublisherTests
                 && actual[AzureBlobDatasetMetadataKeys.FileSizeBytes] == source.Length.ToString()
                 && actual[AzureBlobDatasetMetadataKeys.CreatedUtc] == "2026-09-03T10:00:00.0000000+00:00"
                 && actual[AzureBlobDatasetMetadataKeys.Sha256Checksum] == "sha256"),
+            overwriteExisting: false,
             Arg.Any<CancellationToken>());
     }
 
@@ -90,7 +91,7 @@ public sealed class AzureBlobDatasetPublisherTests
 
         result.WasSkipped.Should().BeTrue();
         await _uploader.DidNotReceiveWithAnyArgs()
-            .UploadAsync(default!, default!, default!, default);
+            .UploadAsync(default!, default!, default!, default, default);
     }
 
     [Fact]
@@ -112,7 +113,7 @@ public sealed class AzureBlobDatasetPublisherTests
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*overwrite policy is Fail*");
         await _uploader.DidNotReceiveWithAnyArgs()
-            .UploadAsync(default!, default!, default!, default);
+            .UploadAsync(default!, default!, default!, default, default);
     }
 
     [Fact]
@@ -134,7 +135,7 @@ public sealed class AzureBlobDatasetPublisherTests
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*does not match the source artifact metadata*Overwrite*");
         await _uploader.DidNotReceiveWithAnyArgs()
-            .UploadAsync(default!, default!, default!, default);
+            .UploadAsync(default!, default!, default!, default, default);
     }
 
     [Fact]
@@ -158,7 +159,12 @@ public sealed class AzureBlobDatasetPublisherTests
 
         result.WasSkipped.Should().BeFalse();
         await _uploader.Received(1)
-            .UploadAsync("berlin/berlin.2-abc123.sqlite", request.SourcePath, Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<CancellationToken>());
+            .UploadAsync(
+                "berlin/berlin.2-abc123.sqlite",
+                request.SourcePath,
+                Arg.Any<IReadOnlyDictionary<string, string>>(),
+                overwriteExisting: true,
+                Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -198,7 +204,7 @@ public sealed class AzureBlobDatasetPublisherTests
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*MaxUploadBytesPerRun*");
         await _uploader.DidNotReceiveWithAnyArgs()
-            .UploadAsync(default!, default!, default!, default);
+            .UploadAsync(default!, default!, default!, default, default);
     }
 
     [Fact]
@@ -219,6 +225,7 @@ public sealed class AzureBlobDatasetPublisherTests
                 "berlin/berlin.2-abc123.sqlite",
                 request.SourcePath,
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                overwriteExisting: false,
                 Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
@@ -244,6 +251,7 @@ public sealed class AzureBlobDatasetPublisherTests
                 "berlin/berlin.2-abc123.sqlite",
                 request.SourcePath,
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
+                overwriteExisting: false,
                 Arg.Any<CancellationToken>());
     }
 

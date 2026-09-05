@@ -1,3 +1,4 @@
+using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 
@@ -18,6 +19,7 @@ public sealed class AzureBlobDatasetUploader : IAzureBlobDatasetUploader
         string blobName,
         string sourcePath,
         IReadOnlyDictionary<string, string> metadata,
+        bool overwriteExisting,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(blobName);
@@ -31,7 +33,10 @@ public sealed class AzureBlobDatasetUploader : IAzureBlobDatasetUploader
             {
                 ContentType = "application/vnd.sqlite3"
             },
-            Metadata = new Dictionary<string, string>(metadata, StringComparer.OrdinalIgnoreCase)
+            Metadata = new Dictionary<string, string>(metadata, StringComparer.OrdinalIgnoreCase),
+            Conditions = overwriteExisting
+                ? null
+                : new BlobRequestConditions { IfNoneMatch = ETag.All }
         };
 
         await using var source = new FileStream(
