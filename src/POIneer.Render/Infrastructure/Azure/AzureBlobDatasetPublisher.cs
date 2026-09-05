@@ -91,11 +91,20 @@ public sealed class AzureBlobDatasetPublisher : IDatasetPublisher
 
         ReserveUploadCapacity(artifactMetadata.FileSizeBytes);
 
-        await _uploader.UploadAsync(
-            decision.BlobName,
-            request.SourcePath,
-            ToBlobMetadata(artifactMetadata),
-            cancellationToken);
+        try
+        {
+            await _uploader.UploadAsync(
+                decision.BlobName,
+                request.SourcePath,
+                ToBlobMetadata(artifactMetadata),
+                cancellationToken);
+        }
+        catch
+        {
+            // Release the reserved upload capacity if the upload fails.
+            ReleaseUploadCapacity(artifactMetadata.FileSizeBytes);
+            throw;
+        }
 
         _logger.LogInformation(
             "Published dataset for region {RegionId} (version {Version}) to Azure Blob {BlobName}.",
@@ -122,6 +131,12 @@ public sealed class AzureBlobDatasetPublisher : IDatasetPublisher
 
         _uploadsThisRun++;
         _uploadedBytesThisRun += uploadBytes;
+    }
+
+    private void ReleaseUploadCapacity(long uploadBytes)
+    {
+        _uploadsThisRun--;
+        _uploadedBytesThisRun -= uploadBytes;
     }
 
     private static Dictionary<string, string> ToBlobMetadata(DatasetArtifactMetadata artifactMetadata)

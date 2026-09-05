@@ -201,6 +201,52 @@ public sealed class AzureBlobDatasetPublisherTests
             .UploadAsync(default!, default!, default!, default);
     }
 
+    [Fact]
+    public async Task PublishAsync_ReleasesUploadCapacity_WhenUploadFails()
+    {
+        await using var source = TestSourceFile.Create();
+        var request = CreateRequest(source.Path);
+        var metadata = CreateMetadata(fileSizeBytes: source.Length);
+        var sut = CreateSut(maxUploadsPerRun: 1);
+        var uploadAttempts = 0;
+
+        _planner.PlanAsync(request, Arg.Any<CancellationToken>())
+            .Returns(new AzureBlobDatasetPublishDecision("berlin/berlin.2-abc123.sqlite", false, true, "missing"));
+        _metadataFactory.CreateAsync(request.RegionId, request.Version, request.SourcePath, Arg.Any<CancellationToken>())
+            .Returns(metadata);
+        _uploader
+            .UploadAsync(
+                "berlin/berlin.2-abc123.sqlite",
+                request.SourcePath,
+                Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                uploadAttempts++;
+                if (uploadAttempts == 1)
+                {
+                    throw new InvalidOperationException("Transient upload failure.");
+                }
+
+                return Task.CompletedTask;
+            });
+
+        var firstAct = async () => await sut.PublishAsync(request);
+        await firstAct.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Transient upload failure.");
+
+        var result = await sut.PublishAsync(request);
+
+        result.WasSkipped.Should().BeFalse();
+        uploadAttempts.Should().Be(2);
+        await _uploader.Received(2)
+            .UploadAsync(
+                "berlin/berlin.2-abc123.sqlite",
+                request.SourcePath,
+                Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<CancellationToken>());
+    }
+
     private AzureBlobDatasetPublisher CreateSut(
         DatasetPublishOverwritePolicy overwritePolicy = DatasetPublishOverwritePolicy.SkipIfIdentical,
         int maxUploadsPerRun = 1,
