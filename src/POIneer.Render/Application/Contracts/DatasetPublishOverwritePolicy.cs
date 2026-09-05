@@ -8,7 +8,7 @@ public enum DatasetPublishOverwritePolicy
     Skip,
 
     // Leave the existing file in place only when it already matches the source bytes;
-    // otherwise replace it with the current source artifact.
+    // otherwise fail so an operator can investigate the same-version mismatch.
     SkipIfIdentical,
 
     // Replace the existing file with the new one.

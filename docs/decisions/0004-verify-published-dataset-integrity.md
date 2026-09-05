@@ -69,16 +69,15 @@ with `FilePublishedDatasetVerifier` (`Infrastructure/FileSystem`) as its first i
   "confirmed correct right now," not "was correct as of some earlier, unverified run."
 
 Out of scope for this issue (see issue #135 and the surrounding epic): re-validating POI
-content post-upload, mobile download verification, automatic corruption repair, cross-region
-replication verification, and a verifier implementation for a non-filesystem destination
-(Azure Blob Storage, #133/#134) - that will need its own `IPublishedDatasetVerifier`
-implementation behind the same abstraction once such a destination exists.
+content post-upload, mobile download verification, automatic corruption repair, and
+cross-region replication verification. Azure Blob Storage gets its own
+`IPublishedDatasetVerifier` implementation in #134 behind the same abstraction.
 
 ## Consequences
 
-- `IPublishedDatasetVerifier` is a clean seam for #134: an Azure-backed implementation (e.g.
-  comparing against blob properties/ETag instead of re-downloading and re-hashing) can be
-  introduced without changing `RenderRegion` or the verification contract.
+- `IPublishedDatasetVerifier` is a clean seam for #134: an Azure-backed implementation can
+  compare stored blob metadata with source artifact metadata without changing `RenderRegion`
+  or the verification contract.
 - Publishing now costs one additional full read-and-hash pass over the published artifact on
   every render run that reaches the publish step, on top of the hash already computed for the
   source artifact by `IDatasetArtifactMetadataFactory`. This is accepted as the price of

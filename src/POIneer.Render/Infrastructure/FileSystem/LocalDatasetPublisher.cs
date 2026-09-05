@@ -52,6 +52,9 @@ public sealed class LocalDatasetPublisher : IDatasetPublisher
         if (!File.Exists(request.SourcePath))
             throw new FileNotFoundException($"Dataset artifact not found: {request.SourcePath}", request.SourcePath);
 
+        if (string.IsNullOrWhiteSpace(_options.DestinationDir))
+            throw new InvalidOperationException("Publisher:DestinationDir must be set when using the local dataset publisher.");
+
         var destinationDir = Path.Combine(_options.DestinationDir, request.RegionId);
         Directory.CreateDirectory(destinationDir);
 
@@ -78,10 +81,8 @@ public sealed class LocalDatasetPublisher : IDatasetPublisher
                         return new DatasetPublishResult(destinationPath, WasSkipped: true);
                     }
 
-                    _logger.LogInformation(
-                        "Publish target already exists at {DestinationPath}, but differs from the source artifact. Replacing it (overwrite policy: SkipIfIdentical).",
-                        destinationPath);
-                    break;
+                    throw new IOException(
+                        $"Publish target already exists at {destinationPath}, but differs from the source artifact. Use overwrite policy Overwrite to replace it.");
 
                 case DatasetPublishOverwritePolicy.Fail:
                     throw new IOException(
