@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Application.Contracts;
@@ -147,7 +148,7 @@ public sealed class AzureBlobDatasetPublisher : IDatasetPublisher
             [AzureBlobDatasetMetadataKeys.RegionId] = artifactMetadata.RegionId,
             [AzureBlobDatasetMetadataKeys.Version] = artifactMetadata.Version,
             [AzureBlobDatasetMetadataKeys.FileName] = artifactMetadata.FileName,
-            [AzureBlobDatasetMetadataKeys.FileSizeBytes] = artifactMetadata.FileSizeBytes.ToString(),
+            [AzureBlobDatasetMetadataKeys.FileSizeBytes] = artifactMetadata.FileSizeBytes.ToString(CultureInfo.InvariantCulture),
             [AzureBlobDatasetMetadataKeys.CreatedUtc] = artifactMetadata.CreatedUtc.ToString("O"),
             [AzureBlobDatasetMetadataKeys.Sha256Checksum] = artifactMetadata.Sha256Checksum
         };

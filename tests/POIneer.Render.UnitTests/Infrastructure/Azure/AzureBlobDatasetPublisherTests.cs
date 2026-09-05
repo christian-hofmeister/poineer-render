@@ -1,3 +1,4 @@
+using System.Globalization;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -66,7 +67,7 @@ public sealed class AzureBlobDatasetPublisherTests
                 actual[AzureBlobDatasetMetadataKeys.RegionId] == "berlin"
                 && actual[AzureBlobDatasetMetadataKeys.Version] == "2-abc123"
                 && actual[AzureBlobDatasetMetadataKeys.FileName] == "poi.sqlite"
-                && actual[AzureBlobDatasetMetadataKeys.FileSizeBytes] == source.Length.ToString()
+                && actual[AzureBlobDatasetMetadataKeys.FileSizeBytes] == source.Length.ToString(CultureInfo.InvariantCulture)
                 && actual[AzureBlobDatasetMetadataKeys.CreatedUtc] == "2026-09-03T10:00:00.0000000+00:00"
                 && actual[AzureBlobDatasetMetadataKeys.Sha256Checksum] == "sha256"),
             overwriteExisting: false,

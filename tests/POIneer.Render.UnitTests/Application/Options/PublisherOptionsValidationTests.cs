@@ -43,4 +43,37 @@ public sealed class PublisherOptionsValidationTests
         PublisherOptionsValidation.HasRequiredDestinationDir(options).Should().BeTrue();
     }
 
+    [Fact]
+    public void HasDefinedTarget_ReturnsTrue_WhenTargetIsKnown()
+    {
+        var options = new PublisherOptions
+        {
+            Target = DatasetPublisherTarget.AzureBlob
+        };
+
+        PublisherOptionsValidation.HasDefinedTarget(options).Should().BeTrue();
+    }
+
+    [Fact]
+    public void HasDefinedTarget_ReturnsFalse_WhenTargetIsUnknownNumericValue()
+    {
+        var options = new PublisherOptions
+        {
+            Target = (DatasetPublisherTarget)999
+        };
+
+        PublisherOptionsValidation.HasDefinedTarget(options).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("Local", true)]
+    [InlineData("AzureBlob", true)]
+    [InlineData("local", false)]
+    [InlineData("AzureBlobb", false)]
+    public void IsDefinedTargetName_ReturnsExpectedResult(string? target, bool expected)
+    {
+        PublisherOptionsValidation.IsDefinedTargetName(target).Should().Be(expected);
+    }
 }

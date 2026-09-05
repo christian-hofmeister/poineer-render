@@ -57,6 +57,10 @@ internal class Program
         builder.Services
             .AddOptions<PublisherOptions>()
             .Bind(builder.Configuration.GetSection("Publisher"))
+            .Validate(
+                _ => PublisherOptionsValidation.IsDefinedTargetName(builder.Configuration["Publisher:Target"]),
+                PublisherOptionsValidation.DefinedTargetMessage)
+            .Validate(PublisherOptionsValidation.HasDefinedTarget, PublisherOptionsValidation.DefinedTargetMessage)
             .Validate(PublisherOptionsValidation.HasRequiredDestinationDir, PublisherOptionsValidation.RequiredDestinationDirMessage)
             .ValidateOnStart();
 
