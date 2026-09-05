@@ -51,4 +51,22 @@ public sealed class ContentRootResolverTests
 
         result.Should().Be(buildOutputDirectory);
     }
+
+    [Fact]
+    public async Task Resolve_FallsBackToCurrentDirectory_WhenNoCandidateContainsAppsettings()
+    {
+        // appsettings.json is optional (Program.cs loads it with optional: true) and the
+        // host can be fully configured via environment variables/CLI args instead, so a
+        // deployment that intentionally omits or renames appsettings.json must still be
+        // able to start rather than crashing at startup.
+        await using var tempDir = TestTemporaryDirectories.Create("content-root-no-appsettings", false);
+        var buildOutputDirectory = Path.Combine(tempDir.DirectoryPath, "bin", "Debug", "net10.0");
+        Directory.CreateDirectory(buildOutputDirectory);
+
+        var result = ContentRootResolver.Resolve(
+            currentDirectory: tempDir.DirectoryPath,
+            baseDirectory: buildOutputDirectory);
+
+        result.Should().Be(tempDir.DirectoryPath);
+    }
 }

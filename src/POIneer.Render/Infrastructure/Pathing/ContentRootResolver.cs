@@ -28,8 +28,11 @@ public static class ContentRootResolver
                 return candidate;
         }
 
-        throw new FileNotFoundException(
-            $"Could not find 'appsettings.json' in any of the candidate directories: "
-            + string.Join(", ", candidates.Select(c => $"'{c}'")));
+        // appsettings.json is loaded as optional (Program.cs) and the host is fully
+        // configurable via environment variables and command-line arguments, so a
+        // missing/renamed appsettings.json is a supported deployment shape, not an
+        // error. Fall back to the current directory - the same default the generic
+        // host itself would use - rather than failing startup.
+        return currentDirectory;
     }
 }
