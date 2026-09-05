@@ -10,8 +10,8 @@ namespace POIneer.Render.UnitTests.Cli;
 public sealed class RendererConfigurationFilesTests
 {
     [Theory]
-    [InlineData("appsettings.json", "Cli/config/regions.production.json", "berlin")]
-    [InlineData("appsettings.Development.json", "Cli/config/regions.local.json", "berlin")]
+    [InlineData("appsettings.json", "Cli/config/regions.production.json", "geofabrik/europe/germany/berlin")]
+    [InlineData("appsettings.Development.json", "Cli/config/regions.local.json", "geofabrik/europe/germany/berlin")]
     [InlineData("appsettings.Production.json", "Cli/config/regions.production.json", null)]
     public void RendererConfiguration_HasExpectedOnlyRegionIdAndExistingRegionsFile(
         string settingsFileName,
@@ -69,7 +69,7 @@ public sealed class RendererConfigurationFilesTests
     // variables and command-line args are intentionally not layered in here - they are
     // not part of what this regression is about.
     [Theory]
-    [InlineData("Development", "berlin")]
+    [InlineData("Development", "geofabrik/europe/germany/berlin")]
     [InlineData("Production", null)]
     public void RendererConfiguration_MergedEnvironmentConfig_ResolvesExpectedOnlyRegionId(
         string environmentName,

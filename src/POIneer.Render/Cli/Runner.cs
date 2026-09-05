@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
+using POIneer.Render.Domain.Models;
 using POIneer.Render.Infrastructure.Pathing;
 using POIneer.Render.Ports;
 
@@ -96,7 +97,9 @@ public sealed class Runner
             {
                 try
                 {
-                    var regionWorkDir = Path.Combine(workDir, r.Id);
+                    // r.Id may be a globally unique, hierarchical region identifier
+                    // (ADR 0007), e.g. "geofabrik/europe/germany/berlin".
+                    var regionWorkDir = RegionIdentifier.CombinePath(workDir, r.Id);
                     Directory.CreateDirectory(regionWorkDir);
                     var pbfPath = Path.Combine(regionWorkDir, "osm.pbf");
                     var renderStatePath = Path.Combine(regionWorkDir, "render-state.json");

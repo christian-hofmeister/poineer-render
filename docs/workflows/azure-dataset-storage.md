@@ -233,14 +233,20 @@ a blob-specific `IPublishedDatasetVerifier` implementation so a dataset is not c
 successfully published until the destination metadata has been verified.
 
 The Azure publisher uses deterministic blob names such as
-`{regionId}/{regionId}.{version}.sqlite` and reads existing blob metadata before uploading.
-When the destination metadata already matches the source artifact metadata, the upload is
-skipped without creating duplicate timestamp-based blobs. When a blob for the same
-region/version exists but its metadata differs from the source artifact, the default
-`SkipIfIdentical` overwrite policy fails the publish instead of replacing the blob. Replacing
-an existing blob requires the explicit `Overwrite` policy. Safety limits such as
-`AzureBlobPublisher:MaxUploadsPerRun` and `AzureBlobPublisher:MaxUploadBytesPerRun` guard
-against runaway publishing behavior within a single renderer run.
+`{regionId}/{leafRegionId}.{version}.sqlite` and reads existing blob metadata before
+uploading. `regionId` may be a globally unique, hierarchical region identifier (ADR 0007),
+e.g. `geofabrik/europe/germany/berlin`; `leafRegionId` is only its last segment
+(`berlin`), so a hierarchical id becomes a blob "virtual folder" prefix without also
+repeating the full hierarchy inside the file name itself, e.g.
+`geofabrik/europe/germany/berlin/berlin.2-d790344ff0a3cbfe.sqlite`. For a flat,
+non-hierarchical id the leaf segment equals the id, so this produces the same blob name
+as before. When the destination metadata already matches the source artifact metadata,
+the upload is skipped without creating duplicate timestamp-based blobs. When a blob for
+the same region/version exists but its metadata differs from the source artifact, the
+default `SkipIfIdentical` overwrite policy fails the publish instead of replacing the
+blob. Replacing an existing blob requires the explicit `Overwrite` policy. Safety limits
+such as `AzureBlobPublisher:MaxUploadsPerRun` and `AzureBlobPublisher:MaxUploadBytesPerRun`
+guard against runaway publishing behavior within a single renderer run.
 
 Keep checked-in environment configuration on `Publisher:Target = Local` until the deployment
 is intentionally switched over. For a local development smoke test against the dev storage

@@ -418,7 +418,7 @@ public sealed class RenderRegionTests
 
         // Assert
         var expectedCanonicalMapPath = Path.Combine(outDir, region.Id, "map.pmtiles");
-        var expectedStagingMapPath = expectedCanonicalMapPath + ".tmp";
+        var expectedStagingMapPath = Path.Combine(outDir, region.Id, "map.tmp.pmtiles");
 
         await vectorTileGenerator
             .Received(1)
@@ -549,7 +549,7 @@ public sealed class RenderRegionTests
         // Assert
         await vectorTileGenerator
             .Received(1)
-            .GenerateAsync(Arg.Any<string>(), Path.Combine(outDir, region.Id, "map.pmtiles.tmp"), Arg.Any<CancellationToken>());
+            .GenerateAsync(Arg.Any<string>(), Path.Combine(outDir, region.Id, "map.tmp.pmtiles"), Arg.Any<CancellationToken>());
 
         Assert.Equal("new sqlite bytes", File.ReadAllText(existingSqlitePath));
         Assert.True(File.Exists(Path.Combine(outDir, region.Id, "map.pmtiles")));

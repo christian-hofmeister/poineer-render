@@ -35,6 +35,30 @@ public sealed class AzureBlobDatasetPublishPlannerTests
         decision.Reason.Should().Contain("missing");
     }
 
+    // A globally unique, hierarchical RegionId (ADR 0007) such as
+    // "geofabrik/europe/germany/berlin" becomes the blob name's virtual-folder prefix,
+    // while the file part uses only the leaf ("berlin") segment - not the whole
+    // hierarchy, which the prefix already encodes.
+    [Fact]
+    public async Task PlanAsync_BuildsBlobName_FromLeafSegment_ForHierarchicalRegionId()
+    {
+        var request = CreateRequest(regionId: "geofabrik/europe/germany/berlin");
+        var expectedMetadata = CreateArtifactMetadata(regionId: "geofabrik/europe/germany/berlin");
+        var sut = CreateSut();
+
+        _metadataFactory
+            .CreateAsync(request.RegionId, request.Version, request.SourcePath, Arg.Any<CancellationToken>())
+            .Returns(expectedMetadata);
+
+        _metadataReader
+            .ReadAsync("geofabrik/europe/germany/berlin/berlin.2-abc123.sqlite", Arg.Any<CancellationToken>())
+            .Returns(new AzureBlobDatasetMetadataReadResult(BlobExists: false, Metadata: null));
+
+        var decision = await sut.PlanAsync(request);
+
+        decision.BlobName.Should().Be("geofabrik/europe/germany/berlin/berlin.2-abc123.sqlite");
+    }
+
     [Fact]
     public async Task PlanAsync_ReturnsSkipDecision_WhenDestinationBlobMetadataMatchesSourceArtifact()
     {
@@ -131,9 +155,9 @@ public sealed class AzureBlobDatasetPublishPlannerTests
     private static DatasetPublishRequest CreateRequest(string regionId = "berlin")
         => new(regionId, "2-abc123", @"C:\datasets\poi.sqlite");
 
-    private static DatasetArtifactMetadata CreateArtifactMetadata()
+    private static DatasetArtifactMetadata CreateArtifactMetadata(string regionId = "berlin")
         => new(
-            "berlin",
+            regionId,
             "2-abc123",
             "poi.sqlite",
             123456,
