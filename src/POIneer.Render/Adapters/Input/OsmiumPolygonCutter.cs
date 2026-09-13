@@ -17,7 +17,7 @@ public sealed class OsmiumPolygonCutter : IPolygonCutter
         var psi = new ProcessStartInfo
         {
             FileName = "osmium",
-            ArgumentList = { "extract", "-p", polyPath, pbfPath, "-o", output },
+            ArgumentList = { "extract", "--overwrite", "-p", polyPath, pbfPath, "-o", output },
             RedirectStandardError = true,
             RedirectStandardOutput = true
         };
