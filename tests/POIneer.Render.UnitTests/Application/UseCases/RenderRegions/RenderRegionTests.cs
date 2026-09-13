@@ -358,8 +358,11 @@ public sealed class RenderRegionTests
         Assert.False(File.Exists(expectedStagingPath));
     }
 
-    [Fact]
-    public async Task RunAsync_GeneratesVectorTilesFromTheCutPbf_WhenVectorTilesAreEnabled()
+    [Theory]
+    [InlineData("success")]
+    [InlineData("publish-failure")]
+    [InlineData("verification-failure")]
+    public async Task RunAsync_PublishesAndVerifiesBothArtifacts_WhenVectorTilesAreEnabled(string scenario)
     {
         // Arrange
         var vectorTileGenerator = Substitute.For<IVectorTileGenerator>();
@@ -413,12 +416,44 @@ public sealed class RenderRegionTests
                 return Task.CompletedTask;
             });
 
-        // Act
-        await sut.RunAsync(region, workDir, outDir, cts.Token);
-
-        // Assert
         var expectedCanonicalMapPath = Path.Combine(outDir, region.Id, "map.pmtiles");
         var expectedStagingMapPath = Path.Combine(outDir, region.Id, "map.tmp.pmtiles");
+        var tileMetadata = new DatasetArtifactMetadata(region.Id, "test-version", "map.pmtiles",
+            19, DateTimeOffset.UnixEpoch, "tile-checksum", DatasetArtifactType.Pmtiles);
+        _datasetArtifactMetadataFactory.CreateAsync(region.Id, "test-version", expectedCanonicalMapPath, cts.Token)
+            .Returns(tileMetadata);
+
+        if (scenario == "publish-failure")
+            _datasetPublisher.PublishAsync(Arg.Is<DatasetPublishRequest>(r => r.SourcePath == expectedCanonicalMapPath), cts.Token)
+                .Returns<Task<DatasetPublishResult>>(_ => throw new IOException("Tile copy failed"));
+        if (scenario == "verification-failure")
+            _publishedDatasetVerifier.VerifyAsync(tileMetadata, Arg.Any<string>(), cts.Token)
+                .Returns(new DatasetVerificationResult(false, ["Tile checksum mismatch"]));
+
+        // Act / Assert
+        if (scenario == "success")
+            await sut.RunAsync(region, workDir, outDir, cts.Token);
+        else if (scenario == "publish-failure")
+            await Assert.ThrowsAsync<IOException>(() => sut.RunAsync(region, workDir, outDir, cts.Token));
+        else
+            await Assert.ThrowsAsync<InvalidOperationException>(() => sut.RunAsync(region, workDir, outDir, cts.Token));
+
+        await _datasetPublisher.Received(1).PublishAsync(
+            Arg.Is<DatasetPublishRequest>(r => r.RegionId == region.Id && r.Version == "test-version"
+                && r.SourcePath == expectedCanonicalMapPath), cts.Token);
+        await _datasetPublisher.Received(1).PublishAsync(
+            Arg.Is<DatasetPublishRequest>(r => r.SourcePath.EndsWith("poi.sqlite")), cts.Token);
+        await _publishedDatasetVerifier.Received(scenario == "publish-failure" ? 0 : 1)
+            .VerifyAsync(tileMetadata, "test-publish-destination-path", cts.Token);
+
+        var releaseLogs = _logger.ReceivedCalls()
+            .Where(call => call.GetMethodInfo().Name == "Log")
+            .Select(call => call.GetArguments()[2]?.ToString())
+            .Where(message => message?.Contains("Release artifacts verified:") == true).ToList();
+        if (scenario == "success")
+            Assert.Contains("artifactCount=2, totalSizeBytes=19", Assert.Single(releaseLogs));
+        else
+            Assert.Empty(releaseLogs);
 
         await vectorTileGenerator
             .Received(1)

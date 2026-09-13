@@ -10,4 +10,5 @@ public sealed record DatasetArtifactMetadata(
     string FileName,
     long FileSizeBytes,
     DateTimeOffset CreatedUtc,
-    string Sha256Checksum);
+    string Sha256Checksum,
+    DatasetArtifactType ArtifactType = DatasetArtifactType.Sqlite);

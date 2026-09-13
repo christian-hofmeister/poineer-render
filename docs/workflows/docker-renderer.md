@@ -103,6 +103,10 @@ docker run --rm \
 Vector tile generation remains disabled by default in production configuration until a release
 explicitly enables it or passes `--VectorTiles:Enabled=true`.
 
+With the local publisher, enabled tiles are published and verified alongside SQLite.
+See [Filesystem Artifact Publishing](filesystem-artifact-publishing.md) for naming,
+size reporting, overwrite policies, and retry behavior.
+
 ## Release Image Deployment
 
 Jenkins builds every Docker image with a temporary CI tag derived from the branch and build

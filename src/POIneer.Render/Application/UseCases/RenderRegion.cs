@@ -195,31 +195,52 @@ public sealed class RenderRegion : IRenderRegion
         // it can change what actually gets rendered even when the raw PBF download did not.
         var version = await _datasetVersionCalculator.CalculateAsync(cutPbf, ct);
 
+        var artifactPaths = new List<string> { canonicalPath };
+        if (_vectorTileOptions.Enabled)
+            artifactPaths.Add(canonicalVectorTilePath);
+
+        long totalSizeBytes = 0;
+        foreach (var artifactPath in artifactPaths)
+        {
+            var metadata = await PublishAndVerifyArtifactAsync(regionDto.Id, version, artifactPath, ct);
+            totalSizeBytes = checked(totalSizeBytes + metadata.FileSizeBytes);
+        }
+
+        _logger.LogInformation(
+            "({Id}) Release artifacts verified: version={Version}, artifactCount={ArtifactCount}, totalSizeBytes={TotalSizeBytes}.",
+            regionDto.Id, version, artifactPaths.Count, totalSizeBytes);
+        _logger.LogInformation("({Id}) Done.", regionDto.Id);
+    }
+
+    private async Task<DatasetArtifactMetadata> PublishAndVerifyArtifactAsync(
+        string regionId, string version, string artifactPath, CancellationToken ct)
+    {
         // Metadata is generated from the canonical artifact - only after validation and
         // promotion have both succeeded - and stays independent from IDatasetPublisher, so
         // it describes the artifact itself rather than a specific publish destination
         // (issue #130).
         var artifactMetadata = await _datasetArtifactMetadataFactory.CreateAsync(
-            regionDto.Id,
+            regionId,
             version,
-            canonicalPath,
+            artifactPath,
             ct);
 
         _logger.LogInformation(
-            "({Id}) Dataset artifact metadata: fileName={FileName}, sizeBytes={SizeBytes}, sha256={Sha256}, createdUtc={CreatedUtc}.",
-            regionDto.Id,
+            "({Id}) Dataset artifact metadata: type={ArtifactType}, fileName={FileName}, sizeBytes={SizeBytes}, sha256={Sha256}, createdUtc={CreatedUtc}.",
+            regionId,
+            artifactMetadata.ArtifactType.ToString().ToLowerInvariant(),
             artifactMetadata.FileName,
             artifactMetadata.FileSizeBytes,
             artifactMetadata.Sha256Checksum,
             artifactMetadata.CreatedUtc);
 
         var publishResult = await _datasetPublisher.PublishAsync(
-            new DatasetPublishRequest(regionDto.Id, version, canonicalPath),
+            new DatasetPublishRequest(regionId, version, artifactPath),
             ct);
 
         _logger.LogInformation(
             "({Id}) Published dataset version {Version} to {DestinationPath} (skipped: {WasSkipped}).",
-            regionDto.Id,
+            regionId,
             version,
             publishResult.DestinationPath,
             publishResult.WasSkipped);
@@ -237,20 +258,20 @@ public sealed class RenderRegion : IRenderRegion
         {
             _logger.LogError(
                 "({Id}) Published dataset failed integrity verification at {DestinationPath} and will not be marked as successfully published. Errors: {Errors}",
-                regionDto.Id,
+                regionId,
                 publishResult.DestinationPath,
                 string.Join("; ", verificationResult.Errors));
 
             throw new InvalidOperationException(
-                $"Published dataset for region '{regionDto.Id}' failed integrity verification at {publishResult.DestinationPath}: {string.Join(", ", verificationResult.Errors)}");
+                $"Published dataset for region '{regionId}' failed integrity verification at {publishResult.DestinationPath}: {string.Join(", ", verificationResult.Errors)}");
         }
 
         _logger.LogInformation(
             "({Id}) Published dataset verified successfully at {DestinationPath}.",
-            regionDto.Id,
+            regionId,
             publishResult.DestinationPath);
 
-        _logger.LogInformation("({Id}) Done.", regionDto.Id);
+        return artifactMetadata;
     }
 
     /// <summary>

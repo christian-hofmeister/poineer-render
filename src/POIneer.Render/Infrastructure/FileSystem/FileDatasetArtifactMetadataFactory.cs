@@ -42,7 +42,13 @@ public sealed class FileDatasetArtifactMetadataFactory : IDatasetArtifactMetadat
             FileName: fileInfo.Name,
             FileSizeBytes: fileInfo.Length,
             CreatedUtc: fileInfo.LastWriteTimeUtc,
-            Sha256Checksum: checksum);
+            Sha256Checksum: checksum,
+            ArtifactType: Path.GetExtension(artifactPath).ToLowerInvariant() switch
+            {
+                ".sqlite" => DatasetArtifactType.Sqlite,
+                ".pmtiles" => DatasetArtifactType.Pmtiles,
+                _ => throw new NotSupportedException($"Unsupported dataset artifact extension: {artifactPath}")
+            });
     }
 
     // Streams the file rather than reading it fully into memory - datasets can be sizeable

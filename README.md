@@ -492,6 +492,7 @@ remains in #202/#203; see [ADR 0009](docs/decisions/0009-separate-metadata-artif
 
 ## Related Documents
 
+- [Filesystem Artifact Publishing](docs/workflows/filesystem-artifact-publishing.md)
 - [Create a Region Polygon](docs/workflows/region-polygons.md)
 - [Git - Branch Flow Guide](README-GIT-FLOW.md)
 - [Git - Pull Requests Flow Guide](README-GIT-PR.md)
