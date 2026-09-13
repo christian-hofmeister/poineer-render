@@ -57,6 +57,8 @@ nunit-*.xml
 *.sqlite
 
 # Renderer output and working directories
+# Repository-local runtime data: downloads, Planetiler sources, and Docker test data.
+/data/
 renderer-work-dir*/
 renderer-out-dir*/
 renderer-publish-dir*/
