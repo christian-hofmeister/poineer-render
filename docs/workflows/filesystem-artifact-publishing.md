@@ -28,11 +28,17 @@ SHA-256 checksum. Metadata is storage-independent. Logs use lowercase type names
 `sqlite` and `pmtiles`, matching the [manifest contract](../../contracts/region-manifest/README.md).
 The publisher reports the versioned destination path separately.
 
-The existing version calculator supplies the same version for both artifacts,
-based on the cut PBF and `Publisher:SchemaVersion`. A tile profile or generator
-change does not independently change that version: deliberately bump the configured
-schema version and force rendering when artifact semantics change. Independent
-artifact/release versioning and manifest publication remain separate work in #202.
+The version calculator supplies one shared version for all enabled artifacts:
+`{SchemaVersion}-{releaseHashPrefix}`. It hashes each completed artifact with
+SHA-256, sorts by normalized file extension, and hashes newline-delimited records
+of `extension:UPPERCASE_SHA256`. The first 16 lowercase hex characters of that
+combined hash form the suffix. File paths and input order do not affect the version.
+
+Changing SQLite (including Flyway history), PMTiles, the enabled artifact set, or
+SchemaVersion changes the release version. Byte-identical artifact sets retain
+the same version. Versions identify concrete files, not semantic POI equality.
+PBF download checkpoints remain independent. See
+[Artifact-based release versions](../decisions/0009-artifact-based-release-versions.md).
 
 ## Verification and Size Assessment
 
