@@ -6,6 +6,8 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using POIneer.Render.Application.Contracts;
+using POIneer.Render.Application.UseCases;
+using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
 using POIneer.Render.Ports;
@@ -133,7 +135,7 @@ public sealed class RunnerTests
 
         var workDir = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.WorkDir));
         var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
-        var statePath = Path.Combine(workDir, region.Id, "render-state.json");
+        var statePath = Path.Combine(workDir, region.Id, "download-state.json");
         TestFiles.WriteAllText(pbfPath, "existing pbf");
         var metadata = new RegionUpdateMetadata("\"abc\"", DateTimeOffset.Parse("2026-01-01T00:00:00Z"), 42);
         _regionUpdateChecker
@@ -142,7 +144,7 @@ public sealed class RunnerTests
                 ShouldRedownloadPbf: false,
                 Reason: "Remote PBF metadata is unchanged.",
                 RemoteMetadata: metadata,
-                StoredState: new RegionRenderState(region.Id, region.PbfUrl, metadata, DateTimeOffset.UtcNow)));
+                StoredState: new RegionDownloadState(region.Id, region.PbfUrl, metadata, DateTimeOffset.UtcNow)));
 
         // Act
         await sut.RunAsync(CancellationToken.None);
@@ -156,7 +158,7 @@ public sealed class RunnerTests
             Arg.Any<CancellationToken>());
         await _regionUpdateChecker.Received(1).MarkProcessedAsync(
             region,
-            statePath,
+            Path.Combine(workDir, region.Id, "render-state.json"),
             metadata,
             Arg.Any<CancellationToken>());
     }
@@ -445,9 +447,80 @@ public sealed class RunnerTests
         _lockFactory.Received(1).Create(expectedLockFilePath);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task RunAsync_RetriesFailedRun_AndOnlyRedownloadsWhenDownloadDidNotComplete(
+        bool downloadFails,
+        bool existingDownload)
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("runner-download-retry", false);
+        var region = BerlinRegion();
+        var metadata = new RegionUpdateMetadata("etag", DateTimeOffset.Parse("2026-01-01T00:00:00Z"), 3);
+        var metadataReader = Substitute.For<IRemotePbfMetadataReader>();
+        metadataReader.GetMetadataAsync(region.PbfUrl, Arg.Any<CancellationToken>()).Returns(metadata);
+        var downloadStore = new FileRegionDownloadStateStore(NullLogger<FileRegionDownloadStateStore>.Instance);
+        var renderStore = new FileRegionRenderStateStore(NullLogger<FileRegionRenderStateStore>.Instance);
+        var checker = new RegionUpdateChecker(metadataReader, renderStore, downloadStore);
+        var workDir = Path.Combine(tempDir.DirectoryPath, "work");
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        var downloadStatePath = Path.Combine(workDir, region.Id, "download-state.json");
+        var renderStatePath = Path.Combine(workDir, region.Id, "render-state.json");
+        TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, "regions.json"), "[]");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new[] { region });
+        if (existingDownload)
+        {
+            TestFiles.WriteAllText(pbfPath, "old");
+            await checker.MarkDownloadedAsync(region, downloadStatePath, metadata);
+        }
+        var downloadAttempts = 0;
+        _fileDownloader.DownloadAsync(region.PbfUrl, pbfPath, Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                downloadAttempts++;
+                if (downloadFails && downloadAttempts == 1)
+                {
+                    TestFiles.WriteAllText(pbfPath, "partial");
+                    throw new IOException("Download interrupted");
+                }
+                TestFiles.WriteAllText(pbfPath, "pbf");
+                return Task.FromResult(pbfPath);
+            });
+        var renderAttempts = 0;
+        _renderRegion.RunAsync(region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                renderAttempts++;
+                if (!downloadFails && renderAttempts == 1)
+                    throw new InvalidOperationException("Planetiler failed");
+                return Task.CompletedTask;
+            });
+
+        // Act: the first run fails after starting the download or rendering.
+        var first = CreateSut(tempDir.DirectoryPath, CreateOptions(overwritePbf: existingDownload), checker);
+        (await first.RunAsync(CancellationToken.None)).Should().Be(1);
+
+        // Assert: only a completed download has a checkpoint; rendering is never marked successful.
+        File.Exists(downloadStatePath).Should().Be(!downloadFails);
+        File.Exists(renderStatePath).Should().BeFalse();
+
+        // Act: a fresh runner retries with overwrite disabled.
+        var retry = CreateSut(tempDir.DirectoryPath, CreateOptions(), checker);
+        (await retry.RunAsync(CancellationToken.None)).Should().Be(0);
+
+        // Assert
+        downloadAttempts.Should().Be(downloadFails ? 2 : 1);
+        renderAttempts.Should().Be(downloadFails ? 1 : 2);
+        (await downloadStore.ReadAsync(downloadStatePath))!.DownloadedMetadata.Should().Be(metadata);
+        (await renderStore.ReadAsync(renderStatePath))!.LastProcessedMetadata.Should().Be(metadata);
+    }
+
     private Runner CreateSut(
         string contentRoot,
-        RendererOptions options)
+        RendererOptions options,
+        IRegionUpdateChecker? updateChecker = null)
         => new(
             new FakeHostEnvironment
             {
@@ -457,7 +530,7 @@ public sealed class RunnerTests
             _fileDownloader,
             _regionSource,
             _renderRegion,
-            _regionUpdateChecker,
+            updateChecker ?? _regionUpdateChecker,
             _lockFactory,
             Options.Create(options));
 
@@ -497,7 +570,7 @@ public sealed class RunnerTests
             ShouldRedownloadPbf: true,
             Reason: "Remote ETag changed.",
             RemoteMetadata: metadata,
-            StoredState: new RegionRenderState(
+            StoredState: new RegionDownloadState(
                 region.Id,
                 region.PbfUrl,
                 new RegionUpdateMetadata("\"old-etag\"", DateTimeOffset.Parse("2025-01-01T00:00:00Z"), 512),

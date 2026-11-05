@@ -102,18 +102,23 @@ public sealed class Runner
                     var regionWorkDir = RegionIdentifier.CombinePath(workDir, r.Id);
                     Directory.CreateDirectory(regionWorkDir);
                     var pbfPath = Path.Combine(regionWorkDir, "osm.pbf");
+                    var downloadStatePath = Path.Combine(regionWorkDir, "download-state.json");
                     var renderStatePath = Path.Combine(regionWorkDir, "render-state.json");
-                    var updateCheck = await _regionUpdateChecker.CheckAsync(r, renderStatePath, ct);
+                    var updateCheck = await _regionUpdateChecker.CheckAsync(r, downloadStatePath, ct);
 
                     if (!File.Exists(pbfPath))
                     {
                         _logger.LogInformation("Downloading PBF for {Region} ... to {TargetPath}", r.Id, pbfPath);
+                        await _regionUpdateChecker.InvalidateDownloadAsync(downloadStatePath, ct);
                         await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
+                        await _regionUpdateChecker.MarkDownloadedAsync(r, downloadStatePath, updateCheck.RemoteMetadata, ct);
                     }
                     else if (redownloadPbf)
                     {
                         _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, but overwrite is enabled, re-downloading.", r.Id, pbfPath);
+                        await _regionUpdateChecker.InvalidateDownloadAsync(downloadStatePath, ct);
                         await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
+                        await _regionUpdateChecker.MarkDownloadedAsync(r, downloadStatePath, updateCheck.RemoteMetadata, ct);
                     }
                     else if (updateCheck.ShouldRedownloadPbf)
                     {
@@ -125,7 +130,9 @@ public sealed class Runner
                             updateCheck.RemoteMetadata.ETag,
                             updateCheck.RemoteMetadata.LastModified,
                             updateCheck.RemoteMetadata.ContentLength);
+                        await _regionUpdateChecker.InvalidateDownloadAsync(downloadStatePath, ct);
                         await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
+                        await _regionUpdateChecker.MarkDownloadedAsync(r, downloadStatePath, updateCheck.RemoteMetadata, ct);
                     }
                     else
                     {

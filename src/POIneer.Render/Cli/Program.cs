@@ -177,6 +177,7 @@ internal class Program
         });
         builder.Services.AddSingleton<ISingleInstanceLockFactory, FileSingleInstanceLockFactory>();
         builder.Services.AddSingleton<IRegionRenderStateStore, FileRegionRenderStateStore>();
+        builder.Services.AddSingleton<IRegionDownloadStateStore, FileRegionDownloadStateStore>();
         builder.Services.AddSingleton<IRegionUpdateChecker, RegionUpdateChecker>();
 
         // CLI entry point
