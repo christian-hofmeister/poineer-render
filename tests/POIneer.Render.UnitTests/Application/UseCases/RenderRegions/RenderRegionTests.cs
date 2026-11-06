@@ -1390,11 +1390,13 @@ public sealed class RenderRegionTests
         Assert.Equal("freshly rendered data", File.ReadAllText(canonicalPath));
     }
 
-    [Fact]
-    public async Task RunAsync_RecreatesDatabase_WhenOutputExistsAndOverwritePbfIsEnabled()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunAsync_RecreatesDatabase_WhenOverwriteOrPendingProcessingForcesRebuild(bool forceRebuild)
     {
         // Arrange
-        var sut = CreateSut(overwritePbf: true);
+        var sut = CreateSut(overwritePbf: !forceRebuild);
 
         var region = new RegionDto(
             Id: "berlin",
@@ -1435,7 +1437,7 @@ public sealed class RenderRegionTests
         var expectedStagingPath = existingOutputPath + ".tmp";
 
         // Act
-        await sut.RunAsync(region, workDir, outDir, CancellationToken.None);
+        await sut.RunAsync(region, workDir, outDir, CancellationToken.None, forceRebuild);
 
         // Assert: dbInit/export run against the staging file, not the still-existing
         // old canonical file directly

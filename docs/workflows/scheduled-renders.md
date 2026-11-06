@@ -1,21 +1,20 @@
 # Scheduled Renderer Execution
 
 For the configurable default interval and per-region overrides, see
-[Region update interval configuration](region-update-intervals.md). Interval-based
-due-date enforcement is not implemented yet.
+[Region update interval configuration](region-update-intervals.md).
 
 POIneer.Render is intended to run as a scheduled, run-to-completion job on the VPS. The
 application still owns overlap protection through `ISingleInstanceLock`; the scheduler only
 decides when a run starts.
 
-At the start of each region run, the renderer sends a `HEAD` request to the configured PBF
-URL and compares the returned metadata with the last successfully processed state in
-`<WorkDir>/<RegionId>/render-state.json`. `ETag` is preferred when available, with
-`Last-Modified` as the fallback. `Content-Length` is stored and logged as diagnostic metadata.
-When the local PBF exists and the remote metadata is unchanged, the download is skipped.
-`RenderRegion` still runs so output existence, overwrite, vector tile, and local staleness
-checks remain authoritative. If the metadata changed, the PBF is downloaded again and the
-render state is updated only after the region finishes successfully.
+Each region's `schedule-state.json` determines whether it is due before a remote request
+is sent. Due regions send `HEAD` to the configured PBF URL and compare the metadata with
+`download-state.json`. `ETag` is preferred, with `Last-Modified` as fallback;
+`Content-Length` is diagnostic metadata. Unchanged sources with complete outputs and no
+pending processing skip downloading and rendering, but advance the next due time.
+Required processing must finish successfully, including publishing and verification,
+before advancing the schedule. Failed processing remains due and can reuse a previously
+completed download. `render-state.json` records successful processing independently.
 
 Since `v0.2.1`, Jenkins promotes verified release Docker images to `poineer-render:production`.
 The VPS scheduler should run that stable Docker tag instead of invoking the deployed DLL

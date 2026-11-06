@@ -69,14 +69,15 @@ public sealed class RenderRegion : IRenderRegion
         RegionDto regionDto,
         string workDir,
         string outDir,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool forceRebuild = false)
     {
         // regionDto.Id may be a globally unique, hierarchical region identifier (ADR
         // 0007), e.g. "geofabrik/europe/germany/berlin" - RegionIdentifier turns each
         // '/'-separated segment into its own nested directory and validates the id is
         // safe to use as a filesystem path.
         var pbfPath = GetPbfPath(workDir, regionDto.Id);
-        var recreateDatabase = _rendererOptions.OverwriteDatabase || _rendererOptions.OverwritePbf;
+        var recreateDatabase = forceRebuild || _rendererOptions.OverwriteDatabase || _rendererOptions.OverwritePbf;
 
         if (!File.Exists(pbfPath))
             throw new FileNotFoundException($"PBF not found: {pbfPath}");

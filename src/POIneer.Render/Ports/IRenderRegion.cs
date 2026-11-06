@@ -8,5 +8,6 @@ public interface IRenderRegion
         RegionDto regionDto,
         string workDir,
         string outDir,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        bool forceRebuild = false);
 }

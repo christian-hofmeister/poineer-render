@@ -125,6 +125,9 @@ internal class Program
         builder.Services.AddSingleton<ITemporaryDirectoryFactory, TemporaryDirectoryFactory>();
         builder.Services.AddSingleton<IRegionSource, GeofabrikRegionSource>();
         builder.Services.AddSingleton<RegionUpdateIntervalPolicy>();
+        builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddSingleton<IRegionScheduleStateStore, FileRegionScheduleStateStore>();
+        builder.Services.AddSingleton<RegionUpdateSchedule>();
         builder.Services.AddSingleton<IPolygonCutter, OsmiumPolygonCutter>();
         builder.Services.AddSingleton<IOsmReader, OsmPbfReader>();
         builder.Services.AddSingleton<IFlywayInvocationBuilder, FlywayInvocationBuilder>();

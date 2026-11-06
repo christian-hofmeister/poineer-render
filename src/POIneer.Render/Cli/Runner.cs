@@ -18,6 +18,8 @@ public sealed class Runner
     private readonly RendererOptions _rendererOptions;
     private readonly ISingleInstanceLockFactory _lockFactory;
     private readonly RegionUpdateIntervalPolicy _updateIntervalPolicy;
+    private readonly RegionUpdateSchedule _updateSchedule;
+    private readonly VectorTileOptions _vectorTileOptions;
 
     private readonly IFileDownloader _fileDownloader;
 
@@ -30,7 +32,9 @@ public sealed class Runner
         IRegionUpdateChecker regionUpdateChecker,
         ISingleInstanceLockFactory lockFactory,
         RegionUpdateIntervalPolicy updateIntervalPolicy,
-        IOptions<RendererOptions> rendererOptions)
+        IOptions<RendererOptions> rendererOptions,
+        RegionUpdateSchedule updateSchedule,
+        IOptions<VectorTileOptions> vectorTileOptions)
     {
         _hostEnvironment = hostEnvironment;
         _logger = log;
@@ -41,6 +45,8 @@ public sealed class Runner
         _lockFactory = lockFactory;
         _updateIntervalPolicy = updateIntervalPolicy;
         _rendererOptions = rendererOptions.Value;
+        _updateSchedule = updateSchedule;
+        _vectorTileOptions = vectorTileOptions.Value;
     }
 
     public async Task<int> RunAsync(CancellationToken ct)
@@ -107,11 +113,37 @@ public sealed class Runner
                     // r.Id may be a globally unique, hierarchical region identifier
                     // (ADR 0007), e.g. "geofabrik/europe/germany/berlin".
                     var regionWorkDir = RegionIdentifier.CombinePath(workDir, r.Id);
+                    var schedulePath = Path.Combine(regionWorkDir, "schedule-state.json");
+                    var scheduleState = await _updateSchedule.ReadAsync(r, schedulePath, ct);
+                    var overwriteRequested = _rendererOptions.OverwriteDatabase || redownloadPbf;
+                    if (!overwriteRequested && !_updateSchedule.IsDue(scheduleState))
+                    {
+                        _logger.LogInformation("({Region}) Skipping region: next update due at {NextDueUtc}.", r.Id, scheduleState!.NextDueUtc);
+                        continue;
+                    }
+                    _logger.LogInformation("({Region}) Checking region (next due: {NextDueUtc}, processing pending: {Pending}, overwrite: {Overwrite}).",
+                        r.Id, scheduleState?.NextDueUtc, scheduleState?.ProcessingPending ?? false, overwriteRequested);
                     Directory.CreateDirectory(regionWorkDir);
                     var pbfPath = Path.Combine(regionWorkDir, "osm.pbf");
                     var downloadStatePath = Path.Combine(regionWorkDir, "download-state.json");
                     var renderStatePath = Path.Combine(regionWorkDir, "render-state.json");
                     var updateCheck = await _regionUpdateChecker.CheckAsync(r, downloadStatePath, ct);
+
+                    var regionOutDir = RegionIdentifier.CombinePath(outDir, r.Id);
+                    var processingRequired = overwriteRequested || scheduleState is null || scheduleState.ProcessingPending
+                        || updateCheck.ShouldRedownloadPbf || !File.Exists(pbfPath)
+                        || !File.Exists(Path.Combine(regionOutDir, "poi.sqlite"))
+                        || (_vectorTileOptions.Enabled && !File.Exists(Path.Combine(regionOutDir, "map.pmtiles")));
+                    if (!processingRequired)
+                    {
+                        var next = await _updateSchedule.MarkSuccessfulAsync(r, schedulePath, ct);
+                        _logger.LogInformation("({Region}) Source unchanged; skipping download and rendering. Next update due at {NextDueUtc}.", r.Id, next.NextDueUtc);
+                        continue;
+                    }
+
+                    // Persist before downloading/rendering so a failed attempt remains due,
+                    // even if canonical outputs were promoted before publishing failed.
+                    await _updateSchedule.MarkProcessingAsync(r, schedulePath, scheduleState, ct);
 
                     if (!File.Exists(pbfPath))
                     {
@@ -144,14 +176,16 @@ public sealed class Runner
                     else
                     {
                         _logger.LogInformation(
-                            "PBF metadata unchanged for {Region}; skipping download. Render output checks will still run. ETag={ETag}, LastModified={LastModified}, ContentLength={ContentLength}",
+                            "PBF metadata unchanged for {Region}; reusing local PBF for required processing. ETag={ETag}, LastModified={LastModified}, ContentLength={ContentLength}",
                             r.Id,
                             updateCheck.RemoteMetadata.ETag,
                             updateCheck.RemoteMetadata.LastModified,
                             updateCheck.RemoteMetadata.ContentLength);
                     }
-                    await _renderRegionUseCase.RunAsync(r, workDir, outDir, ct);
+                    await _renderRegionUseCase.RunAsync(r, workDir, outDir, ct, forceRebuild: true);
                     await _regionUpdateChecker.MarkProcessedAsync(r, renderStatePath, updateCheck.RemoteMetadata, ct);
+                    var completed = await _updateSchedule.MarkSuccessfulAsync(r, schedulePath, ct);
+                    _logger.LogInformation("({Region}) Processing successful. Next update due at {NextDueUtc}.", r.Id, completed.NextDueUtc);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
