@@ -72,6 +72,11 @@ docker run --rm --entrypoint sh poineer-render:local -c "cd /opt/poineer-render/
 
 ## Run On The VPS
 
+Configured region polygons under `Cli/config/polygons/**/*.poly` are included in
+build and publish output and therefore in the image. Relative polygon paths are
+resolved against the application content root. A configured but missing polygon
+is an error; the renderer must not silently process the entire source extract.
+
 Mount the production data directory:
 
 ```bash
@@ -102,6 +107,48 @@ docker run --rm \
 
 Vector tile generation remains disabled by default in production configuration until a release
 explicitly enables it or passes `--VectorTiles:Enabled=true`.
+
+### Persist Planetiler source downloads
+
+Planetiler's default relative paths are `data/sources` for source datasets and
+`data/tmp` for temporary data. On the VPS, the mounted directory is
+`/opt/poineer-render/data`, while the image's default working directory is
+`/opt/poineer-render/app`. Use `--workdir /opt/poineer-render` so these Planetiler
+paths resolve into the persistent mount. The .NET application still resolves its
+content root from its published app directory, and configured polygon paths are
+resolved from that content root.
+
+Example with tiles enabled and a pinned water-polygon mirror snapshot:
+
+```bash
+docker run --rm \
+  --name poineer-render \
+  --workdir /opt/poineer-render \
+  -v /opt/poineer-render/data:/opt/poineer-render/data \
+  poineer-render:production \
+  --VectorTiles:Enabled=true \
+  --VectorTiles:AdditionalArguments:0=--download \
+  --VectorTiles:AdditionalArguments:1=--water-polygons-url=https://ftp.uni-erlangen.de/pub/openstreetmapdata.com-archive/2026-04-26/water-polygons-split-3857.zip
+```
+
+The cached file is then
+`/opt/poineer-render/data/sources/water-polygons-split-3857.zip` on the VPS,
+shared by all region renders. With Planetiler 0.10.2, `--download` schedules a
+source download only when the file is absent, unless source refreshing is enabled.
+Keep `refresh_sources`/`refresh_water_polygons` and `free_water_polygons_after_read`
+disabled (their defaults) to retain and reuse this snapshot. Removing the cache,
+changing its path, or explicitly refreshing requires another download. Changing
+only the URL does not replace an existing cached file with refreshing disabled.
+Refresh or replace the cached source deliberately when moving to another snapshot.
+
+For systemd, apply the same working-directory option and arguments to the Docker
+command in `ExecStart`, then run `sudo systemctl daemon-reload`. Preserve the
+existing data-directory ownership for uid/gid 10001. Rebuilding the image or
+removing a completed container does not remove files in this bind mount.
+
+On Windows, a bind mount targeting `/opt/poineer-render/app/data` already covers
+the default paths without a working-directory override. The corresponding local
+cache is `<mounted-data-directory>/sources/water-polygons-split-3857.zip`.
 
 With the local publisher, enabled tiles are published and verified alongside SQLite.
 See [Filesystem Artifact Publishing](filesystem-artifact-publishing.md) for naming,
