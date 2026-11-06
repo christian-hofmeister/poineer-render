@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
+using POIneer.Render.Application.UseCases;
 using POIneer.Render.Domain.Models;
 using POIneer.Render.Infrastructure.Pathing;
 using POIneer.Render.Ports;
@@ -16,6 +17,7 @@ public sealed class Runner
     private readonly IRegionUpdateChecker _regionUpdateChecker;
     private readonly RendererOptions _rendererOptions;
     private readonly ISingleInstanceLockFactory _lockFactory;
+    private readonly RegionUpdateIntervalPolicy _updateIntervalPolicy;
 
     private readonly IFileDownloader _fileDownloader;
 
@@ -27,6 +29,7 @@ public sealed class Runner
         IRenderRegion renderRegionUseCase,
         IRegionUpdateChecker regionUpdateChecker,
         ISingleInstanceLockFactory lockFactory,
+        RegionUpdateIntervalPolicy updateIntervalPolicy,
         IOptions<RendererOptions> rendererOptions)
     {
         _hostEnvironment = hostEnvironment;
@@ -36,6 +39,7 @@ public sealed class Runner
         _renderRegionUseCase = renderRegionUseCase;
         _regionUpdateChecker = regionUpdateChecker;
         _lockFactory = lockFactory;
+        _updateIntervalPolicy = updateIntervalPolicy;
         _rendererOptions = rendererOptions.Value;
     }
 
@@ -97,6 +101,9 @@ public sealed class Runner
             {
                 try
                 {
+                    // Validate before creating region work files or making remote requests.
+                    _updateIntervalPolicy.GetIntervalDays(r);
+
                     // r.Id may be a globally unique, hierarchical region identifier
                     // (ADR 0007), e.g. "geofabrik/europe/germany/berlin".
                     var regionWorkDir = RegionIdentifier.CombinePath(workDir, r.Id);

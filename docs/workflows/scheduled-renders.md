@@ -1,5 +1,9 @@
 # Scheduled Renderer Execution
 
+For the configurable default interval and per-region overrides, see
+[Region update interval configuration](region-update-intervals.md). Interval-based
+due-date enforcement is not implemented yet.
+
 POIneer.Render is intended to run as a scheduled, run-to-completion job on the VPS. The
 application still owns overlap protection through `ISingleInstanceLock`; the scheduler only
 decides when a run starts.

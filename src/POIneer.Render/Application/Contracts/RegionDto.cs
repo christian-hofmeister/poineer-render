@@ -14,4 +14,5 @@ public sealed record RegionDto(
     string PbfUrl,
     string? Poly,
     string? Country = null,
-    string? Category = null);
+    string? Category = null,
+    int? UpdateIntervalDays = null);

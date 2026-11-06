@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using POIneer.Render.Application.Contracts;
+using POIneer.Render.Adapters.Input;
 using POIneer.Render.Application.UseCases;
 using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Application.Options;
@@ -517,6 +518,56 @@ public sealed class RunnerTests
         (await renderStore.ReadAsync(renderStatePath))!.LastProcessedMetadata.Should().Be(metadata);
     }
 
+    [Theory]
+    [InlineData(0, null, 1)]
+    [InlineData(-1, null, 1)]
+    [InlineData(0, "before", 0)]
+    [InlineData(0, "invalid", 1)]
+    public async Task RunAsync_IsolatesInvalidRegionIntervals_AndProcessesOtherSelectedRegions(
+        int invalidInterval, string? onlyRegionId, int expectedExitCode)
+    {
+        // Arrange: load actual JSON to verify invalid values reach per-region handling.
+        await using var tempDir = TestTemporaryDirectories.Create("runner-invalid-region-interval", false);
+        var options = CreateOptions(onlyRegionId: onlyRegionId);
+        var regionsPath = Path.Combine(tempDir.DirectoryPath, options.RegionsJson);
+        TestFiles.WriteAllText(regionsPath, $$"""
+            [
+              {"Id":"before","Name":"Before","PbfUrl":"https://example.com/before.pbf"},
+              {"Id":"invalid","Name":"Invalid","PbfUrl":"https://example.com/invalid.pbf","UpdateIntervalDays":{{invalidInterval}}},
+              {"Id":"after","Name":"After","PbfUrl":"https://example.com/after.pbf","UpdateIntervalDays":3}
+            ]
+            """);
+        var source = new GeofabrikRegionSource(NullLogger<GeofabrikRegionSource>.Instance);
+        var regions = await source.GetRegionsAsync(regionsPath);
+        _regionSource.GetRegionsAsync(regionsPath, Arg.Any<CancellationToken>()).Returns(regions);
+        var sut = CreateSut(tempDir.DirectoryPath, options);
+
+        // Act
+        var result = await sut.RunAsync(CancellationToken.None);
+
+        // Assert
+        result.Should().Be(expectedExitCode);
+        var invalidRegion = regions.Single(region => region.Id == "invalid");
+        await _regionUpdateChecker.DidNotReceive().CheckAsync(
+            invalidRegion, Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _fileDownloader.DidNotReceive().DownloadAsync(
+            invalidRegion.PbfUrl, Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _renderRegion.DidNotReceive().RunAsync(
+            invalidRegion, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _regionUpdateChecker.DidNotReceive().MarkProcessedAsync(
+            invalidRegion, Arg.Any<string>(), Arg.Any<RegionUpdateMetadata>(), Arg.Any<CancellationToken>());
+        Directory.Exists(Path.Combine(tempDir.DirectoryPath, options.WorkDir, invalidRegion.Id)).Should().BeFalse();
+
+        foreach (var region in regions.Where(region => region.Id != "invalid"))
+        {
+            var expectedCalls = onlyRegionId is null || onlyRegionId == region.Id ? 1 : 0;
+            await _renderRegion.Received(expectedCalls).RunAsync(
+                region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+            await _regionUpdateChecker.Received(expectedCalls).MarkProcessedAsync(
+                region, Arg.Any<string>(), Arg.Any<RegionUpdateMetadata>(), Arg.Any<CancellationToken>());
+        }
+    }
+
     private Runner CreateSut(
         string contentRoot,
         RendererOptions options,
@@ -532,6 +583,7 @@ public sealed class RunnerTests
             _renderRegion,
             updateChecker ?? _regionUpdateChecker,
             _lockFactory,
+            new RegionUpdateIntervalPolicy(Options.Create(options)),
             Options.Create(options));
 
     private static RendererOptions CreateOptions(

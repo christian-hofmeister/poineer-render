@@ -51,6 +51,7 @@ internal class Program
             .Bind(bindSource)
             .Validate(RendererOptionsValidation.HasRequiredPaths, RendererOptionsValidation.RequiredPathsMessage)
             .Validate(RendererOptionsValidation.HasValidDownloadTimeout, RendererOptionsValidation.DownloadTimeoutMessage)
+            .Validate(RendererOptionsValidation.HasValidUpdateInterval, RendererOptionsValidation.UpdateIntervalMessage)
             .ValidateOnStart();
 
         builder.Services
@@ -123,6 +124,7 @@ internal class Program
             builder.Configuration.GetSection("Temp"));
         builder.Services.AddSingleton<ITemporaryDirectoryFactory, TemporaryDirectoryFactory>();
         builder.Services.AddSingleton<IRegionSource, GeofabrikRegionSource>();
+        builder.Services.AddSingleton<RegionUpdateIntervalPolicy>();
         builder.Services.AddSingleton<IPolygonCutter, OsmiumPolygonCutter>();
         builder.Services.AddSingleton<IOsmReader, OsmPbfReader>();
         builder.Services.AddSingleton<IFlywayInvocationBuilder, FlywayInvocationBuilder>();

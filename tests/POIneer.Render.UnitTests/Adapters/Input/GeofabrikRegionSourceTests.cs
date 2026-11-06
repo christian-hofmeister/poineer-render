@@ -27,7 +27,8 @@ public sealed class GeofabrikRegionSourceTests
                 "Country": "Germany",
                 "Category": "City",
                 "PbfUrl": "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf",
-                "Poly": "berlin.poly"
+                "Poly": "berlin.poly",
+                "UpdateIntervalDays": 14
               },
               {
                 "Id": "geofabrik/europe/germany/bayern/mittelfranken",
@@ -52,6 +53,7 @@ public sealed class GeofabrikRegionSourceTests
         regions[0].Category.Should().Be("City");
         regions[0].PbfUrl.Should().Be("https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf");
         regions[0].Poly.Should().Be("berlin.poly");
+        regions[0].UpdateIntervalDays.Should().Be(14);
 
         regions[1].Id.Should().Be("geofabrik/europe/germany/bayern/mittelfranken");
         regions[1].Name.Should().Be("Mittelfranken");
@@ -59,6 +61,7 @@ public sealed class GeofabrikRegionSourceTests
         regions[1].Category.Should().Be("District");
         regions[1].PbfUrl.Should().Be("https://download.geofabrik.de/europe/germany/bayern/mittelfranken-latest.osm.pbf");
         regions[1].Poly.Should().BeNull();
+        regions[1].UpdateIntervalDays.Should().BeNull();
     }
 
     [Fact]
@@ -129,6 +132,36 @@ public sealed class GeofabrikRegionSourceTests
 
         // Assert
         await act.Should().ThrowAsync<FileNotFoundException>();
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    public async Task GetRegionsAsync_PreservesNonPositiveUpdateInterval_ForPerRegionValidation(string interval)
+    {
+        await using var tempDir = TestTemporaryDirectories.Create("invalid-region-interval", false);
+        var path = Path.Combine(tempDir.DirectoryPath, "regions.json");
+        TestFiles.WriteAllText(path, $$"""
+            [{"Id":"berlin","Name":"Berlin","PbfUrl":"https://example.com/berlin.pbf","UpdateIntervalDays":{{interval}}}]
+            """);
+
+        var regions = await CreateSut().GetRegionsAsync(path);
+
+        regions.Should().ContainSingle().Which.UpdateIntervalDays.Should().Be(int.Parse(interval));
+    }
+
+    [Fact]
+    public async Task GetRegionsAsync_AllowsExplicitNullUpdateInterval()
+    {
+        await using var tempDir = TestTemporaryDirectories.Create("null-region-interval", false);
+        var path = Path.Combine(tempDir.DirectoryPath, "regions.json");
+        TestFiles.WriteAllText(path, """
+            [{"Id":"berlin","Name":"Berlin","PbfUrl":"https://example.com/berlin.pbf","UpdateIntervalDays":null}]
+            """);
+
+        var regions = await CreateSut().GetRegionsAsync(path);
+
+        regions.Should().ContainSingle().Which.UpdateIntervalDays.Should().BeNull();
     }
 
     private static GeofabrikRegionSource CreateSut()
