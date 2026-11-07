@@ -700,6 +700,42 @@ public sealed class RunnerTests
             .IsDue(stored).Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunAsync_RetriesFailedForcedMetadataCheck_BeforeScheduledDueDate(bool overwritePbf)
+    {
+        await using var tempDir = TestTemporaryDirectories.Create("runner-forced-metadata-retry");
+        var region = BerlinRegion();
+        var options = CreateOptions(overwriteDatabase: !overwritePbf, overwritePbf: overwritePbf);
+        var regionWorkDir = Path.Combine(tempDir.DirectoryPath, options.WorkDir, region.Id);
+        var schedulePath = Path.Combine(regionWorkDir, "schedule-state.json");
+        TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, options.RegionsJson), "[]");
+        TestFiles.WriteAllText(Path.Combine(regionWorkDir, "osm.pbf"), "pbf");
+        TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, options.OutDir, region.Id, "poi.sqlite"), "sqlite");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new[] { region });
+        var initial = new RegionScheduleState(region.Id, region.PbfUrl, _clock.UtcNow, _clock.UtcNow.AddDays(7), false);
+        await _scheduleStore.WriteAsync(schedulePath, initial);
+        _regionUpdateChecker.CheckAsync(region, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(
+                _ => Task.FromException<RegionUpdateCheckResult>(new HttpRequestException("HEAD failed")),
+                _ => Task.FromResult(ChangedResult(region) with { ShouldRedownloadPbf = false }));
+
+        (await CreateSut(tempDir.DirectoryPath, options).RunAsync(CancellationToken.None)).Should().Be(1);
+
+        (await _scheduleStore.ReadAsync(schedulePath)).Should().Be(initial with { ProcessingPending = true });
+        await _renderRegion.DidNotReceiveWithAnyArgs().RunAsync(default!, default!, default!, default);
+
+        _clock.UtcNow = _clock.UtcNow.AddDays(1);
+        (await CreateSut(tempDir.DirectoryPath, CreateOptions()).RunAsync(CancellationToken.None)).Should().Be(0);
+
+        await _regionUpdateChecker.Received(2).CheckAsync(region, Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _renderRegion.Received(1).RunAsync(region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), true);
+        var completed = await _scheduleStore.ReadAsync(schedulePath);
+        completed!.ProcessingPending.Should().BeFalse();
+        completed.NextDueUtc.Should().Be(_clock.UtcNow.AddDays(7));
+    }
+
     private Runner CreateSut(
         string contentRoot,
         RendererOptions options,

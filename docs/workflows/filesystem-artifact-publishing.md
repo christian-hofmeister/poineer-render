@@ -68,11 +68,11 @@ have been published: this is not an atomic transaction across artifacts. No rele
 manifest or catalog is written here; #202 owns advertising completed releases.
 No Azure or S3 adapter changes are included in this filesystem workflow.
 
-The existing render shortcut still skips a region when canonical outputs already
-exist and no overwrite/input change requires rendering. Merely enabling tiles
-triggers rendering when `map.pmtiles` is missing, but does not republish outputs
-when both canonical files already exist. For an initial publication of existing
-outputs or a retry after publishing failed, force a run with
-`--Renderer:OverwriteDatabase=true`. It rebuilds the outputs before publishing;
-`SkipIfIdentical` will only skip destinations whose resulting bytes are identical.
-Automatic publication-only recovery remains separate work.
+When publication fails, the schedule records processing as pending. The next
+normal run retries the rebuild, publication, and verification, even when the
+canonical files already exist. A region without a valid schedule checkpoint also
+goes through full processing. `SkipIfIdentical` skips uploads for matching artifacts.
+
+Use `--Renderer:OverwriteDatabase=true` to force an immediate rebuild and
+publication for an otherwise up-to-date region. Recovery that republishes existing
+outputs without rebuilding remains separate work.

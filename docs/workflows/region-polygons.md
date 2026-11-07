@@ -95,16 +95,14 @@ Before using the polygon:
 The region JSON uses `PbfUrl` for that source and `Poly` for the local polygon path.
 The polygon assets alone do not register or enable a region.
 
-Current implementation limitations to account for when wiring a region:
+The renderer handles polygon paths and packaging as follows.
 
-- `Poly` is passed directly to the cutter. Relative paths currently depend on the
-  process working directory, not the region JSON directory. Use a verified absolute
-  runtime path until robust path resolution is implemented.
-- The project currently copies `Cli/config/*.json` during build/publish, but does
-  not automatically include the `polygons/` directory. Add packaging support or
-  explicitly provide the polygon at the configured runtime location.
-- A missing polygon file currently causes the cutter to use the entire source PBF.
-  Verify that the file exists before rendering; fail-fast handling remains pending.
+- Relative `Poly` paths resolve against the application content root. Absolute paths
+  are also supported.
+- Build and publish output includes `.poly` files under `Cli/config/polygons/`,
+  including nested directories.
+- A configured path that points to a missing polygon fails the render. Omit `Poly`
+  to render the full source PBF.
 
 Commit changes to both geometry files together and describe any meaningful coverage
 change, such as adding a mainland arrival area, in the commit or pull request.

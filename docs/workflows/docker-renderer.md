@@ -99,6 +99,7 @@ docker run --rm --name poineer-render-dev `
   --Renderer:WorkDir=data/docker-dev/renderer-work-dir `
   --Renderer:OutDir=data/docker-dev/renderer-out-dir `
   --Publisher:DestinationDir=data/docker-dev/renderer-publish-dir `
+  --VectorTiles:Enabled=true `
   --VectorTiles:AdditionalArguments:0=--download `
   --VectorTiles:AdditionalArguments:1=--water-polygons-url=https://ftp.uni-erlangen.de/pub/openstreetmapdata.com-archive/2026-04-26/water-polygons-split-3857.zip
 ```

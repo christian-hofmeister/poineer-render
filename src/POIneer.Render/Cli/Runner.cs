@@ -127,6 +127,11 @@ public sealed class Runner
                     var pbfPath = Path.Combine(regionWorkDir, "osm.pbf");
                     var downloadStatePath = Path.Combine(regionWorkDir, "download-state.json");
                     var renderStatePath = Path.Combine(regionWorkDir, "render-state.json");
+                    if (overwriteRequested)
+                    {
+                        // A forced attempt must remain due even if the metadata check fails.
+                        await _updateSchedule.MarkProcessingAsync(r, schedulePath, scheduleState, ct);
+                    }
                     var updateCheck = await _regionUpdateChecker.CheckAsync(r, downloadStatePath, ct);
 
                     var regionOutDir = RegionIdentifier.CombinePath(outDir, r.Id);
@@ -145,7 +150,10 @@ public sealed class Runner
 
                     // Persist before downloading/rendering so a failed attempt remains due,
                     // even if canonical outputs were promoted before publishing failed.
-                    await _updateSchedule.MarkProcessingAsync(r, schedulePath, scheduleState, ct);
+                    if (!overwriteRequested)
+                    {
+                        await _updateSchedule.MarkProcessingAsync(r, schedulePath, scheduleState, ct);
+                    }
 
                     if (!File.Exists(pbfPath))
                     {
