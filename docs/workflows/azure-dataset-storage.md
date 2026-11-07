@@ -262,6 +262,11 @@ blob. Replacing an existing blob requires the explicit `Overwrite` policy. Safet
 such as `AzureBlobPublisher:MaxUploadsPerRun` and `AzureBlobPublisher:MaxUploadBytesPerRun`
 guard against runaway publishing behavior within a single renderer run.
 
+For a single region with SQLite and PMTiles enabled, set
+`--AzureBlobPublisher:MaxUploadsPerRun=2` and `--VectorTiles:Enabled=true` on
+the renderer invocation. For multiple regions, budget two uploads per region
+when both artifacts are new. The separate byte limit applies to their combined size.
+
 Keep checked-in environment configuration on `Publisher:Target = Local` until the deployment
 is intentionally switched over. For a local development smoke test against the dev storage
 account, prefer temporary environment or command-line overrides instead of committing the

@@ -1,40 +1,49 @@
 using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
 
 namespace POIneer.Render.Infrastructure.FileSystem;
 
-// Default IDatasetVersionCalculator: hashes the source PBF file's content (SHA-256, first
-// 16 hex chars) and combines it with the configured PublisherOptions.SchemaVersion. Two
-// renders from byte-identical PBF input with the same SchemaVersion always produce the
-// identical version string - so a forced re-render of otherwise-unchanged data publishes
-// to the same destination filename and can be handled idempotently by IDatasetPublisher's
-// configured overwrite policy, instead of accumulating a new file on every run. A genuinely updated
-// OSM extract, or a deliberate SchemaVersion bump after a POIneer.Render release changes
-// the exported schema/mapping, both produce a new version and a new published file.
+// Hashes artifact types and their content hashes in a stable order to identify the whole release.
 public sealed class FileHashDatasetVersionCalculator : IDatasetVersionCalculator
 {
     private const int HashPrefixLength = 16;
     private const int CopyBufferSize = 81920;
-
     private readonly PublisherOptions _options;
 
     public FileHashDatasetVersionCalculator(IOptions<PublisherOptions> options)
+        => _options = options.Value;
+
+    public async Task<string> CalculateAsync(
+        IReadOnlyCollection<string> artifactPaths,
+        CancellationToken cancellationToken = default)
     {
-        _options = options.Value;
-    }
+        ArgumentNullException.ThrowIfNull(artifactPaths);
+        if (artifactPaths.Count == 0)
+            throw new ArgumentException("At least one artifact is required.", nameof(artifactPaths));
 
-    public async Task<string> CalculateAsync(string sourcePath, CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+        var artifacts = artifactPaths.Select(path =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
+            return (Path: path, Type: Path.GetExtension(path).ToLowerInvariant());
+        }).OrderBy(artifact => artifact.Type, StringComparer.Ordinal).ToArray();
 
-        await using var stream = new FileStream(
-            sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, CopyBufferSize, useAsync: true);
+        if (artifacts.Select(artifact => artifact.Type).Distinct(StringComparer.Ordinal).Count() != artifacts.Length)
+            throw new ArgumentException("Only one artifact per file type is supported.", nameof(artifactPaths));
 
-        var hashBytes = await SHA256.HashDataAsync(stream, cancellationToken);
-        var hashPrefix = Convert.ToHexString(hashBytes)[..HashPrefixLength].ToLowerInvariant();
+        using var releaseHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach (var artifact in artifacts)
+        {
+            await using var stream = new FileStream(
+                artifact.Path, FileMode.Open, FileAccess.Read, FileShare.Read, CopyBufferSize, useAsync: true);
+            var contentHash = await SHA256.HashDataAsync(stream, cancellationToken);
+            // Newline-delimited records contain a normalized type and a fixed-size hex hash.
+            releaseHash.AppendData(Encoding.UTF8.GetBytes($"{artifact.Type}:{Convert.ToHexString(contentHash)}\n"));
+        }
 
+        var hashPrefix = Convert.ToHexString(releaseHash.GetHashAndReset())[..HashPrefixLength].ToLowerInvariant();
         return $"{_options.SchemaVersion}-{hashPrefix}";
     }
 }

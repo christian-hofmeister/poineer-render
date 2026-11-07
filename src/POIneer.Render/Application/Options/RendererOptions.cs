@@ -18,6 +18,9 @@ public sealed class RendererOptions
 
     public int DownloadTimeoutSeconds { get; init; } = 600;
 
+    // Regions may override this value with UpdateIntervalDays in their JSON configuration.
+    public int DefaultUpdateIntervalDays { get; init; } = 7;
+
     // Optional. Path to the lock file used to prevent overlapping executions
     // (e.g. concurrent cron-triggered runs). Resolved relative to the content root
     // if not rooted. Defaults to "<WorkDir>/poineer-render.lock" when not set.

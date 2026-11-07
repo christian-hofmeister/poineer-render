@@ -12,5 +12,13 @@
     "Country": "Germany",
     "Category": "District",
     "PbfUrl": "https://download.geofabrik.de/europe/germany/bayern/mittelfranken-latest.osm.pbf"
+  },
+  {
+    "Id": "geofabrik/europe/germany/mecklenburg-vorpommern/ruegen-hiddensee",
+    "Name": "Rügen and Hiddensee",
+    "Country": "Germany",
+    "Category": "IslandRegion",
+    "PbfUrl": "https://download.geofabrik.de/europe/germany/mecklenburg-vorpommern-latest.osm.pbf",
+    "Poly": "Cli/config/polygons/ruegen-hiddensee.poly"
   }
 ]

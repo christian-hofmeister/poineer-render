@@ -6,6 +6,9 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using POIneer.Render.Application.Contracts;
+using POIneer.Render.Adapters.Input;
+using POIneer.Render.Application.UseCases;
+using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
 using POIneer.Render.Ports;
@@ -22,6 +25,9 @@ public sealed class RunnerTests
     private readonly IRegionUpdateChecker _regionUpdateChecker = Substitute.For<IRegionUpdateChecker>();
     private readonly ISingleInstanceLockFactory _lockFactory = Substitute.For<ISingleInstanceLockFactory>();
     private readonly ISingleInstanceLock _instanceLock = Substitute.For<ISingleInstanceLock>();
+
+    private readonly FileRegionScheduleStateStore _scheduleStore = new(NullLogger<FileRegionScheduleStateStore>.Instance);
+    private readonly ManualTimeProvider _clock = new();
 
     public RunnerTests()
     {
@@ -108,7 +114,7 @@ public sealed class RunnerTests
         result.Should().Be(0);
         File.Exists(expectedPbfPath).Should().BeTrue();
         await _fileDownloader.Received(1).DownloadAsync(region.PbfUrl, expectedPbfPath, Arg.Any<CancellationToken>());
-        await _renderRegion.Received(1).RunAsync(region, workDir, outDir, Arg.Any<CancellationToken>());
+        await _renderRegion.Received(1).RunAsync(region, workDir, outDir, Arg.Any<CancellationToken>(), Arg.Any<bool>());
         await _regionUpdateChecker.Received(1).MarkProcessedAsync(
             region,
             Path.Combine(workDir, region.Id, "render-state.json"),
@@ -133,7 +139,7 @@ public sealed class RunnerTests
 
         var workDir = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.WorkDir));
         var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
-        var statePath = Path.Combine(workDir, region.Id, "render-state.json");
+        var statePath = Path.Combine(workDir, region.Id, "download-state.json");
         TestFiles.WriteAllText(pbfPath, "existing pbf");
         var metadata = new RegionUpdateMetadata("\"abc\"", DateTimeOffset.Parse("2026-01-01T00:00:00Z"), 42);
         _regionUpdateChecker
@@ -142,7 +148,7 @@ public sealed class RunnerTests
                 ShouldRedownloadPbf: false,
                 Reason: "Remote PBF metadata is unchanged.",
                 RemoteMetadata: metadata,
-                StoredState: new RegionRenderState(region.Id, region.PbfUrl, metadata, DateTimeOffset.UtcNow)));
+                StoredState: new RegionDownloadState(region.Id, region.PbfUrl, metadata, DateTimeOffset.UtcNow)));
 
         // Act
         await sut.RunAsync(CancellationToken.None);
@@ -153,10 +159,10 @@ public sealed class RunnerTests
             region,
             workDir,
             Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.OutDir)),
-            Arg.Any<CancellationToken>());
+            Arg.Any<CancellationToken>(), Arg.Any<bool>());
         await _regionUpdateChecker.Received(1).MarkProcessedAsync(
             region,
-            statePath,
+            Path.Combine(workDir, region.Id, "render-state.json"),
             metadata,
             Arg.Any<CancellationToken>());
     }
@@ -189,7 +195,7 @@ public sealed class RunnerTests
             region,
             workDir,
             Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.OutDir)),
-            Arg.Any<CancellationToken>());
+            Arg.Any<CancellationToken>(), Arg.Any<bool>());
     }
 
     [Fact]
@@ -225,8 +231,8 @@ public sealed class RunnerTests
             Path.Combine(workDir, berlin.Id, "osm.pbf"),
             Arg.Any<CancellationToken>());
 
-        await _renderRegion.Received(1).RunAsync(berlin, workDir, outDir, Arg.Any<CancellationToken>());
-        await _renderRegion.DidNotReceive().RunAsync(hamburg, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _renderRegion.Received(1).RunAsync(berlin, workDir, outDir, Arg.Any<CancellationToken>(), Arg.Any<bool>());
+        await _renderRegion.DidNotReceive().RunAsync(hamburg, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
     }
 
     [Fact]
@@ -254,7 +260,7 @@ public sealed class RunnerTests
         var outDir = Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.OutDir));
 
         _renderRegion
-            .RunAsync(berlin, workDir, outDir, Arg.Any<CancellationToken>())
+            .RunAsync(berlin, workDir, outDir, Arg.Any<CancellationToken>(), Arg.Any<bool>())
             .ThrowsAsync(new InvalidOperationException("Generated dataset is invalid"));
 
         // Act
@@ -262,8 +268,8 @@ public sealed class RunnerTests
 
         // Assert
         result.Should().Be(1);
-        await _renderRegion.Received(1).RunAsync(berlin, workDir, outDir, Arg.Any<CancellationToken>());
-        await _renderRegion.Received(1).RunAsync(hamburg, workDir, outDir, Arg.Any<CancellationToken>());
+        await _renderRegion.Received(1).RunAsync(berlin, workDir, outDir, Arg.Any<CancellationToken>(), Arg.Any<bool>());
+        await _renderRegion.Received(1).RunAsync(hamburg, workDir, outDir, Arg.Any<CancellationToken>(), Arg.Any<bool>());
         await _regionUpdateChecker.DidNotReceive().MarkProcessedAsync(
             berlin,
             Arg.Any<string>(),
@@ -311,7 +317,7 @@ public sealed class RunnerTests
             region,
             Arg.Any<string>(),
             Arg.Any<string>(),
-            ct);
+            ct, Arg.Any<bool>());
     }
 
     [Fact]
@@ -420,7 +426,7 @@ public sealed class RunnerTests
             region,
             workDir,
             Path.GetFullPath(Path.Combine(tempDir.DirectoryPath, options.OutDir)),
-            Arg.Any<CancellationToken>());
+            Arg.Any<CancellationToken>(), Arg.Any<bool>());
     }
 
     [Fact]
@@ -445,9 +451,295 @@ public sealed class RunnerTests
         _lockFactory.Received(1).Create(expectedLockFilePath);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task RunAsync_RetriesFailedRun_AndOnlyRedownloadsWhenDownloadDidNotComplete(
+        bool downloadFails,
+        bool existingDownload)
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("runner-download-retry", false);
+        var region = BerlinRegion();
+        var metadata = new RegionUpdateMetadata("etag", DateTimeOffset.Parse("2026-01-01T00:00:00Z"), 3);
+        var metadataReader = Substitute.For<IRemotePbfMetadataReader>();
+        metadataReader.GetMetadataAsync(region.PbfUrl, Arg.Any<CancellationToken>()).Returns(metadata);
+        var downloadStore = new FileRegionDownloadStateStore(NullLogger<FileRegionDownloadStateStore>.Instance);
+        var renderStore = new FileRegionRenderStateStore(NullLogger<FileRegionRenderStateStore>.Instance);
+        var checker = new RegionUpdateChecker(metadataReader, renderStore, downloadStore);
+        var workDir = Path.Combine(tempDir.DirectoryPath, "work");
+        var pbfPath = Path.Combine(workDir, region.Id, "osm.pbf");
+        var downloadStatePath = Path.Combine(workDir, region.Id, "download-state.json");
+        var renderStatePath = Path.Combine(workDir, region.Id, "render-state.json");
+        TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, "regions.json"), "[]");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new[] { region });
+        if (existingDownload)
+        {
+            TestFiles.WriteAllText(pbfPath, "old");
+            await checker.MarkDownloadedAsync(region, downloadStatePath, metadata);
+        }
+        var downloadAttempts = 0;
+        _fileDownloader.DownloadAsync(region.PbfUrl, pbfPath, Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                downloadAttempts++;
+                if (downloadFails && downloadAttempts == 1)
+                {
+                    TestFiles.WriteAllText(pbfPath, "partial");
+                    throw new IOException("Download interrupted");
+                }
+                TestFiles.WriteAllText(pbfPath, "pbf");
+                return Task.FromResult(pbfPath);
+            });
+        var renderAttempts = 0;
+        _renderRegion.RunAsync(region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
+            .Returns(_ =>
+            {
+                renderAttempts++;
+                if (!downloadFails && renderAttempts == 1)
+                {
+                    // Publishing can fail after canonical artifacts have already been promoted.
+                    TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, "out", region.Id, "poi.sqlite"), "promoted output");
+                    throw new InvalidOperationException("Planetiler failed");
+                }
+                return Task.CompletedTask;
+            });
+
+        // Act: the first run fails after starting the download or rendering.
+        var first = CreateSut(tempDir.DirectoryPath, CreateOptions(overwritePbf: existingDownload), checker);
+        (await first.RunAsync(CancellationToken.None)).Should().Be(1);
+
+        // Assert: only a completed download has a checkpoint; rendering is never marked successful.
+        File.Exists(downloadStatePath).Should().Be(!downloadFails);
+        File.Exists(renderStatePath).Should().BeFalse();
+        var schedulePath = Path.Combine(workDir, region.Id, "schedule-state.json");
+        var failedSchedule = await _scheduleStore.ReadAsync(schedulePath);
+        failedSchedule!.ProcessingPending.Should().BeTrue();
+        failedSchedule.NextDueUtc.Should().BeNull();
+
+        // Act: a fresh runner retries with overwrite disabled.
+        _clock.UtcNow = _clock.UtcNow.AddDays(1);
+        var retry = CreateSut(tempDir.DirectoryPath, CreateOptions(), checker);
+        (await retry.RunAsync(CancellationToken.None)).Should().Be(0);
+
+        // Assert
+        downloadAttempts.Should().Be(downloadFails ? 2 : 1);
+        renderAttempts.Should().Be(downloadFails ? 1 : 2);
+        (await downloadStore.ReadAsync(downloadStatePath))!.DownloadedMetadata.Should().Be(metadata);
+        (await renderStore.ReadAsync(renderStatePath))!.LastProcessedMetadata.Should().Be(metadata);
+        var completedSchedule = await _scheduleStore.ReadAsync(schedulePath);
+        completedSchedule!.ProcessingPending.Should().BeFalse();
+        completedSchedule.NextDueUtc.Should().Be(_clock.UtcNow.AddDays(7));
+        await _renderRegion.Received(downloadFails ? 1 : 2).RunAsync(
+            region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), true);
+    }
+
+    [Theory]
+    [InlineData(0, null, 1)]
+    [InlineData(-1, null, 1)]
+    [InlineData(0, "before", 0)]
+    [InlineData(0, "invalid", 1)]
+    public async Task RunAsync_IsolatesInvalidRegionIntervals_AndProcessesOtherSelectedRegions(
+        int invalidInterval, string? onlyRegionId, int expectedExitCode)
+    {
+        // Arrange: load actual JSON to verify invalid values reach per-region handling.
+        await using var tempDir = TestTemporaryDirectories.Create("runner-invalid-region-interval", false);
+        var options = CreateOptions(onlyRegionId: onlyRegionId);
+        var regionsPath = Path.Combine(tempDir.DirectoryPath, options.RegionsJson);
+        TestFiles.WriteAllText(regionsPath, $$"""
+            [
+              {"Id":"before","Name":"Before","PbfUrl":"https://example.com/before.pbf"},
+              {"Id":"invalid","Name":"Invalid","PbfUrl":"https://example.com/invalid.pbf","UpdateIntervalDays":{{invalidInterval}}},
+              {"Id":"after","Name":"After","PbfUrl":"https://example.com/after.pbf","UpdateIntervalDays":3}
+            ]
+            """);
+        var source = new GeofabrikRegionSource(NullLogger<GeofabrikRegionSource>.Instance);
+        var regions = await source.GetRegionsAsync(regionsPath);
+        _regionSource.GetRegionsAsync(regionsPath, Arg.Any<CancellationToken>()).Returns(regions);
+        var sut = CreateSut(tempDir.DirectoryPath, options);
+
+        // Act
+        var result = await sut.RunAsync(CancellationToken.None);
+
+        // Assert
+        result.Should().Be(expectedExitCode);
+        var invalidRegion = regions.Single(region => region.Id == "invalid");
+        await _regionUpdateChecker.DidNotReceive().CheckAsync(
+            invalidRegion, Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _fileDownloader.DidNotReceive().DownloadAsync(
+            invalidRegion.PbfUrl, Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _renderRegion.DidNotReceive().RunAsync(
+            invalidRegion, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+        await _regionUpdateChecker.DidNotReceive().MarkProcessedAsync(
+            invalidRegion, Arg.Any<string>(), Arg.Any<RegionUpdateMetadata>(), Arg.Any<CancellationToken>());
+        Directory.Exists(Path.Combine(tempDir.DirectoryPath, options.WorkDir, invalidRegion.Id)).Should().BeFalse();
+
+        foreach (var region in regions.Where(region => region.Id != "invalid"))
+        {
+            var expectedCalls = onlyRegionId is null || onlyRegionId == region.Id ? 1 : 0;
+            await _renderRegion.Received(expectedCalls).RunAsync(
+                region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+            await _regionUpdateChecker.Received(expectedCalls).MarkProcessedAsync(
+                region, Arg.Any<string>(), Arg.Any<RegionUpdateMetadata>(), Arg.Any<CancellationToken>());
+        }
+    }
+
+    [Theory]
+    [InlineData(-1, 7)]
+    [InlineData(0, 7)]
+    [InlineData(1, 3)]
+    public async Task RunAsync_ChecksOnlyDueRegions_AndAdvancesUnchangedSourcesWithoutProcessing(
+        int secondsAfterDue, int intervalDays)
+    {
+        await using var tempDir = TestTemporaryDirectories.Create("runner-schedule-unchanged", false);
+        var region = BerlinRegion() with { UpdateIntervalDays = intervalDays };
+        var options = CreateOptions();
+        TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, options.RegionsJson), "[]");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new[] { region });
+        var regionWorkDir = Path.Combine(tempDir.DirectoryPath, options.WorkDir, region.Id);
+        var schedulePath = Path.Combine(regionWorkDir, "schedule-state.json");
+        var due = _clock.UtcNow;
+        var initial = new RegionScheduleState(region.Id, region.PbfUrl, due.AddDays(-7), due, false);
+        await _scheduleStore.WriteAsync(schedulePath, initial);
+        TestFiles.WriteAllText(Path.Combine(regionWorkDir, "osm.pbf"), "pbf");
+        TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, options.OutDir, region.Id, "poi.sqlite"), "sqlite");
+        _regionUpdateChecker.CheckAsync(region, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ChangedResult(region) with { ShouldRedownloadPbf = false });
+        _clock.UtcNow = due.AddSeconds(secondsAfterDue);
+        var sut = CreateSut(tempDir.DirectoryPath, options);
+
+        (await sut.RunAsync(CancellationToken.None)).Should().Be(0);
+
+        await _regionUpdateChecker.Received(secondsAfterDue >= 0 ? 1 : 0)
+            .CheckAsync(region, Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _fileDownloader.DidNotReceiveWithAnyArgs().DownloadAsync(default!, default!, default);
+        await _renderRegion.DidNotReceiveWithAnyArgs().RunAsync(default!, default!, default!, default);
+        await _regionUpdateChecker.DidNotReceiveWithAnyArgs().MarkProcessedAsync(default!, default!, default!, default);
+        var stored = await _scheduleStore.ReadAsync(schedulePath);
+        if (secondsAfterDue < 0)
+            stored.Should().Be(initial);
+        else
+        {
+            stored!.LastSuccessfulCheckUtc.Should().Be(_clock.UtcNow);
+            stored.NextDueUtc.Should().Be(_clock.UtcNow.AddDays(intervalDays));
+            stored.ProcessingPending.Should().BeFalse();
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_AdvancesDueDateFromCompletionTime_OnlyAfterSuccessfulProcessing()
+    {
+        await using var tempDir = TestTemporaryDirectories.Create("runner-schedule-completion", false);
+        var region = BerlinRegion();
+        var options = CreateOptions();
+        var regionWorkDir = Path.Combine(tempDir.DirectoryPath, options.WorkDir, region.Id);
+        var schedulePath = Path.Combine(regionWorkDir, "schedule-state.json");
+        TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, options.RegionsJson), "[]");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new[] { region });
+        var initial = new RegionScheduleState(region.Id, region.PbfUrl, _clock.UtcNow.AddDays(-8), _clock.UtcNow.AddDays(-1), false);
+        await _scheduleStore.WriteAsync(schedulePath, initial);
+        _renderRegion.RunAsync(region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), true)
+            .Returns(async _ =>
+            {
+                var pending = await _scheduleStore.ReadAsync(schedulePath);
+                pending!.NextDueUtc.Should().Be(initial.NextDueUtc);
+                pending.LastSuccessfulCheckUtc.Should().Be(initial.LastSuccessfulCheckUtc);
+                pending.ProcessingPending.Should().BeTrue();
+                _clock.UtcNow = _clock.UtcNow.AddHours(3);
+            });
+
+        (await CreateSut(tempDir.DirectoryPath, options).RunAsync(CancellationToken.None)).Should().Be(0);
+
+        var completed = await _scheduleStore.ReadAsync(schedulePath);
+        completed!.LastSuccessfulCheckUtc.Should().Be(_clock.UtcNow);
+        completed.NextDueUtc.Should().Be(_clock.UtcNow.AddDays(7));
+        completed.ProcessingPending.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("metadata")]
+    [InlineData("download")]
+    [InlineData("render")]
+    [InlineData("publish")]
+    [InlineData("cancel")]
+    public async Task RunAsync_DoesNotAdvanceDueDate_WhenCheckOrProcessingFails(string failureStage)
+    {
+        await using var tempDir = TestTemporaryDirectories.Create("runner-schedule-failure", false);
+        var region = BerlinRegion();
+        var options = CreateOptions();
+        var schedulePath = Path.Combine(tempDir.DirectoryPath, options.WorkDir, region.Id, "schedule-state.json");
+        TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, options.RegionsJson), "[]");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new[] { region });
+        var initial = new RegionScheduleState(region.Id, region.PbfUrl, _clock.UtcNow.AddDays(-8), _clock.UtcNow.AddDays(-1), false);
+        await _scheduleStore.WriteAsync(schedulePath, initial);
+        if (failureStage == "metadata")
+            _regionUpdateChecker.CheckAsync(region, Arg.Any<string>(), Arg.Any<CancellationToken>())
+                .ThrowsAsync(new HttpRequestException("HEAD failed"));
+        else if (failureStage == "download")
+            _fileDownloader.DownloadAsync(region.PbfUrl, Arg.Any<string>(), Arg.Any<CancellationToken>())
+                .ThrowsAsync(new IOException("Download failed"));
+        else if (failureStage == "cancel")
+            _renderRegion.RunAsync(region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), true)
+                .ThrowsAsync(new OperationCanceledException());
+        else
+            _renderRegion.RunAsync(region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), true)
+                .ThrowsAsync(new IOException(failureStage + " failed"));
+        var sut = CreateSut(tempDir.DirectoryPath, options);
+
+        if (failureStage == "cancel")
+            await Assert.ThrowsAsync<OperationCanceledException>(() => sut.RunAsync(CancellationToken.None));
+        else
+            (await sut.RunAsync(CancellationToken.None)).Should().Be(1);
+
+        var stored = await _scheduleStore.ReadAsync(schedulePath);
+        stored!.NextDueUtc.Should().Be(initial.NextDueUtc);
+        stored.LastSuccessfulCheckUtc.Should().Be(initial.LastSuccessfulCheckUtc);
+        stored.ProcessingPending.Should().Be(failureStage != "metadata");
+        new RegionUpdateSchedule(_scheduleStore, new RegionUpdateIntervalPolicy(Options.Create(options)), _clock)
+            .IsDue(stored).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunAsync_RetriesFailedForcedMetadataCheck_BeforeScheduledDueDate(bool overwritePbf)
+    {
+        await using var tempDir = TestTemporaryDirectories.Create("runner-forced-metadata-retry");
+        var region = BerlinRegion();
+        var options = CreateOptions(overwriteDatabase: !overwritePbf, overwritePbf: overwritePbf);
+        var regionWorkDir = Path.Combine(tempDir.DirectoryPath, options.WorkDir, region.Id);
+        var schedulePath = Path.Combine(regionWorkDir, "schedule-state.json");
+        TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, options.RegionsJson), "[]");
+        TestFiles.WriteAllText(Path.Combine(regionWorkDir, "osm.pbf"), "pbf");
+        TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, options.OutDir, region.Id, "poi.sqlite"), "sqlite");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new[] { region });
+        var initial = new RegionScheduleState(region.Id, region.PbfUrl, _clock.UtcNow, _clock.UtcNow.AddDays(7), false);
+        await _scheduleStore.WriteAsync(schedulePath, initial);
+        _regionUpdateChecker.CheckAsync(region, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(
+                _ => Task.FromException<RegionUpdateCheckResult>(new HttpRequestException("HEAD failed")),
+                _ => Task.FromResult(ChangedResult(region) with { ShouldRedownloadPbf = false }));
+
+        (await CreateSut(tempDir.DirectoryPath, options).RunAsync(CancellationToken.None)).Should().Be(1);
+
+        (await _scheduleStore.ReadAsync(schedulePath)).Should().Be(initial with { ProcessingPending = true });
+        await _renderRegion.DidNotReceiveWithAnyArgs().RunAsync(default!, default!, default!, default);
+
+        _clock.UtcNow = _clock.UtcNow.AddDays(1);
+        (await CreateSut(tempDir.DirectoryPath, CreateOptions()).RunAsync(CancellationToken.None)).Should().Be(0);
+
+        await _regionUpdateChecker.Received(2).CheckAsync(region, Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _renderRegion.Received(1).RunAsync(region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), true);
+        var completed = await _scheduleStore.ReadAsync(schedulePath);
+        completed!.ProcessingPending.Should().BeFalse();
+        completed.NextDueUtc.Should().Be(_clock.UtcNow.AddDays(7));
+    }
+
     private Runner CreateSut(
         string contentRoot,
-        RendererOptions options)
+        RendererOptions options,
+        IRegionUpdateChecker? updateChecker = null)
         => new(
             new FakeHostEnvironment
             {
@@ -457,9 +749,12 @@ public sealed class RunnerTests
             _fileDownloader,
             _regionSource,
             _renderRegion,
-            _regionUpdateChecker,
+            updateChecker ?? _regionUpdateChecker,
             _lockFactory,
-            Options.Create(options));
+            new RegionUpdateIntervalPolicy(Options.Create(options)),
+            Options.Create(options),
+            new RegionUpdateSchedule(_scheduleStore, new RegionUpdateIntervalPolicy(Options.Create(options)), _clock),
+            Options.Create(new VectorTileOptions()));
 
     private static RendererOptions CreateOptions(
         string workDir = "work",
@@ -497,11 +792,17 @@ public sealed class RunnerTests
             ShouldRedownloadPbf: true,
             Reason: "Remote ETag changed.",
             RemoteMetadata: metadata,
-            StoredState: new RegionRenderState(
+            StoredState: new RegionDownloadState(
                 region.Id,
                 region.PbfUrl,
                 new RegionUpdateMetadata("\"old-etag\"", DateTimeOffset.Parse("2025-01-01T00:00:00Z"), 512),
                 DateTimeOffset.Parse("2025-01-01T00:00:00Z")));
+    }
+
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        public DateTimeOffset UtcNow { get; set; } = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
+        public override DateTimeOffset GetUtcNow() => UtcNow;
     }
 
     private sealed class FakeHostEnvironment : IHostEnvironment

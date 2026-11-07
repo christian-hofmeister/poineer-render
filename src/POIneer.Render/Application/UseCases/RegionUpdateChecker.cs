@@ -7,13 +7,16 @@ public sealed class RegionUpdateChecker : IRegionUpdateChecker
 {
     private readonly IRemotePbfMetadataReader _metadataReader;
     private readonly IRegionRenderStateStore _stateStore;
+    private readonly IRegionDownloadStateStore _downloadStateStore;
 
     public RegionUpdateChecker(
         IRemotePbfMetadataReader metadataReader,
-        IRegionRenderStateStore stateStore)
+        IRegionRenderStateStore stateStore,
+        IRegionDownloadStateStore downloadStateStore)
     {
         _metadataReader = metadataReader;
         _stateStore = stateStore;
+        _downloadStateStore = downloadStateStore;
     }
 
     public async Task<RegionUpdateCheckResult> CheckAsync(
@@ -22,7 +25,7 @@ public sealed class RegionUpdateChecker : IRegionUpdateChecker
         CancellationToken ct = default)
     {
         var remoteMetadata = await _metadataReader.GetMetadataAsync(region.PbfUrl, ct);
-        var storedState = await _stateStore.ReadAsync(statePath, ct);
+        var storedState = await _downloadStateStore.ReadAsync(statePath, ct);
         var reason = GetChangeReason(region, remoteMetadata, storedState);
 
         return new RegionUpdateCheckResult(
@@ -31,6 +34,19 @@ public sealed class RegionUpdateChecker : IRegionUpdateChecker
             RemoteMetadata: remoteMetadata,
             StoredState: storedState);
     }
+
+    public Task InvalidateDownloadAsync(string statePath, CancellationToken ct = default)
+        => _downloadStateStore.DeleteAsync(statePath, ct);
+
+    public Task MarkDownloadedAsync(
+        RegionDto region,
+        string statePath,
+        RegionUpdateMetadata metadata,
+        CancellationToken ct = default)
+        => _downloadStateStore.WriteAsync(
+            statePath,
+            new RegionDownloadState(region.Id, region.PbfUrl, metadata, DateTimeOffset.UtcNow),
+            ct);
 
     public Task MarkProcessedAsync(
         RegionDto region,
@@ -50,27 +66,27 @@ public sealed class RegionUpdateChecker : IRegionUpdateChecker
     private static string? GetChangeReason(
         RegionDto region,
         RegionUpdateMetadata remoteMetadata,
-        RegionRenderState? storedState)
+        RegionDownloadState? storedState)
     {
         if (storedState is null)
-            return "No previous render state exists for this region.";
+            return "No previous download state exists for this region.";
 
         if (!StringComparer.Ordinal.Equals(storedState.RegionId, region.Id))
-            return "Stored render state belongs to a different region.";
+            return "Stored download state belongs to a different region.";
 
         if (!StringComparer.Ordinal.Equals(storedState.PbfUrl, region.PbfUrl))
             return "Configured PBF URL changed.";
 
         if (!string.IsNullOrWhiteSpace(remoteMetadata.ETag))
         {
-            return StringComparer.Ordinal.Equals(remoteMetadata.ETag, storedState.LastProcessedMetadata.ETag)
+            return StringComparer.Ordinal.Equals(remoteMetadata.ETag, storedState.DownloadedMetadata.ETag)
                 ? null
                 : "Remote ETag changed.";
         }
 
         if (remoteMetadata.LastModified.HasValue)
         {
-            return remoteMetadata.LastModified == storedState.LastProcessedMetadata.LastModified
+            return remoteMetadata.LastModified == storedState.DownloadedMetadata.LastModified
                 ? null
                 : "Remote Last-Modified changed.";
         }

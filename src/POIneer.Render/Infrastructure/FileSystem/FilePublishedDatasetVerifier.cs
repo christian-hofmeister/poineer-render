@@ -72,6 +72,11 @@ public sealed class FilePublishedDatasetVerifier : IPublishedDatasetVerifier
 
         var errors = new List<string>();
 
+        if (actualMetadata.ArtifactType != expectedMetadata.ArtifactType)
+        {
+            errors.Add($"Artifact type mismatch at '{destinationPath}': expected {expectedMetadata.ArtifactType}, found {actualMetadata.ArtifactType}.");
+        }
+
         if (actualMetadata.FileSizeBytes != expectedMetadata.FileSizeBytes)
         {
             errors.Add(
