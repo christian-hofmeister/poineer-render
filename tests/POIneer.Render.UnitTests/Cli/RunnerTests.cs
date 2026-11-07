@@ -535,6 +535,53 @@ public sealed class RunnerTests
             region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), true);
     }
 
+    [Fact]
+    public async Task RunAsync_RejectsInvalidRegionIdBeforeCheckingRemoteMetadata()
+    {
+        await using var tempDir = TestTemporaryDirectories.Create("runner-invalid-region-id");
+        var options = CreateOptions();
+        var region = BerlinRegion() with { Id = "geofabrik/Berlin" };
+        TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, options.RegionsJson), "[]");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new[] { region });
+        var sut = CreateSut(tempDir.DirectoryPath, options);
+
+        var result = await sut.RunAsync(CancellationToken.None);
+
+        result.Should().Be(1);
+        await _regionUpdateChecker.DidNotReceiveWithAnyArgs().CheckAsync(default!, default!, default);
+        await _renderRegion.DidNotReceiveWithAnyArgs().RunAsync(default!, default!, default!, default);
+        Directory.Exists(Path.Combine(tempDir.DirectoryPath, options.WorkDir, "geofabrik")).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(null, "https://example.com/invalid.pbf")]
+    [InlineData("berlin", "https://example.com/invalid.pbf")]
+    [InlineData("berlin", "")]
+    public async Task RunAsync_RejectsInvalidRegionIdInJsonBeforeProcessingAnyRegion(
+        string? onlyRegionId, string invalidRegionPbfUrl)
+    {
+        await using var tempDir = TestTemporaryDirectories.Create("runner-invalid-region-config");
+        var options = CreateOptions(onlyRegionId: onlyRegionId);
+        var regionsPath = Path.Combine(tempDir.DirectoryPath, options.RegionsJson);
+        TestFiles.WriteAllText(regionsPath, $$"""
+            [
+              {"Id":"berlin","Name":"Berlin","PbfUrl":"https://example.com/berlin.pbf"},
+              {"Id":"geofabrik/Berlin","Name":"Invalid region","PbfUrl":"{{invalidRegionPbfUrl}}"}
+            ]
+            """);
+        var source = new GeofabrikRegionSource(NullLogger<GeofabrikRegionSource>.Instance);
+        var sut = CreateSut(tempDir.DirectoryPath, options, regionSource: source);
+
+        var act = () => sut.RunAsync(CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidDataException>()
+            .WithMessage("*entry 2*regions.json*geofabrik/Berlin*");
+        await _regionUpdateChecker.DidNotReceiveWithAnyArgs().CheckAsync(default!, default!, default);
+        await _fileDownloader.DidNotReceiveWithAnyArgs().DownloadAsync(default!, default!, default);
+        await _renderRegion.DidNotReceiveWithAnyArgs().RunAsync(default!, default!, default!, default);
+        Directory.Exists(Path.Combine(tempDir.DirectoryPath, options.WorkDir, "berlin")).Should().BeFalse();
+    }
+
     [Theory]
     [InlineData(0, null, 1)]
     [InlineData(-1, null, 1)]
@@ -739,7 +786,8 @@ public sealed class RunnerTests
     private Runner CreateSut(
         string contentRoot,
         RendererOptions options,
-        IRegionUpdateChecker? updateChecker = null)
+        IRegionUpdateChecker? updateChecker = null,
+        IRegionSource? regionSource = null)
         => new(
             new FakeHostEnvironment
             {
@@ -747,7 +795,7 @@ public sealed class RunnerTests
             },
             NullLogger<Runner>.Instance,
             _fileDownloader,
-            _regionSource,
+            regionSource ?? _regionSource,
             _renderRegion,
             updateChecker ?? _regionUpdateChecker,
             _lockFactory,
