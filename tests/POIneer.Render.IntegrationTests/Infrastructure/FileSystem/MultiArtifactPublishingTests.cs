@@ -77,8 +77,11 @@ public sealed class MultiArtifactPublishingTests
         await using var temp = TestTemporaryDirectories.Create("corrupt-artifact-publishing", false);
         var source = Path.Combine(temp.DirectoryPath, $"source.{extension}");
         await File.WriteAllTextAsync(source, "original bytes");
-        var options = new PublisherOptions { DestinationDir = temp.CreateSubDir("publish").DirectoryPath,
-            OverwritePolicy = DatasetPublishOverwritePolicy.Skip };
+        var options = new PublisherOptions
+        {
+            DestinationDir = temp.CreateSubDir("publish").DirectoryPath,
+            OverwritePolicy = DatasetPublishOverwritePolicy.Skip
+        };
         var publisher = new LocalDatasetPublisher(NullLogger<LocalDatasetPublisher>.Instance, Options.Create(options));
         var factory = new FileDatasetArtifactMetadataFactory();
         var verifier = new FilePublishedDatasetVerifier(factory, NullLogger<FilePublishedDatasetVerifier>.Instance);
@@ -92,8 +95,11 @@ public sealed class MultiArtifactPublishingTests
         verification.IsVerified.Should().BeFalse();
         verification.Errors.Should().Contain(error => error.Contains("Checksum mismatch"));
 
-        options = new PublisherOptions { DestinationDir = options.DestinationDir,
-            OverwritePolicy = DatasetPublishOverwritePolicy.SkipIfIdentical };
+        options = new PublisherOptions
+        {
+            DestinationDir = options.DestinationDir,
+            OverwritePolicy = DatasetPublishOverwritePolicy.SkipIfIdentical
+        };
         var identicalPublisher = new LocalDatasetPublisher(NullLogger<LocalDatasetPublisher>.Instance, Options.Create(options));
         var act = () => identicalPublisher.PublishAsync(request);
         await act.Should().ThrowAsync<IOException>();
