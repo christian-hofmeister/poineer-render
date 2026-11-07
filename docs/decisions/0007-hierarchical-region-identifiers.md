@@ -4,6 +4,10 @@
 
 Accepted
 
+The [v1 manifest contract](../../contracts/region-manifest/v1/schema.json) refines
+the original allow-list below. Renderer region IDs now use lowercase ASCII
+alphanumeric groups with single separators inside each slash-separated segment.
+
 ## Context
 
 Issue #175 asks for region identifiers that stay unique, stable, and safe to use in

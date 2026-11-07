@@ -13,6 +13,7 @@ public sealed class RegionIdentifierTests
 {
     [Theory]
     [InlineData("berlin", "berlin")]
+    [InlineData("0/a1.b2-c3_d4", "0|a1.b2-c3_d4")]
     [InlineData("geofabrik/europe/germany/berlin", "geofabrik|europe|germany|berlin")]
     [InlineData(
         "geofabrik/europe/germany/bayern/mittelfranken",
@@ -37,7 +38,17 @@ public sealed class RegionIdentifierTests
     [InlineData("berlin\\sub")]
     [InlineData("berlin:sub")]
     [InlineData("berlin sub")]
-    public void ValidateHierarchicalId_Throws_ForUnsafeIds(string regionId)
+    [InlineData("Berlin")]
+    [InlineData("geofabrik/berLin")]
+    [InlineData("-berlin")]
+    [InlineData("geofabrik/_berlin")]
+    [InlineData("berlin./sub")]
+    [InlineData("berlin_")]
+    [InlineData("berlin--west")]
+    [InlineData("berlin._west")]
+    [InlineData("münchen")]
+    [InlineData("berlin\n")]
+    public void ValidateHierarchicalId_Throws_ForIdsOutsideManifestContract(string regionId)
     {
         var act = () => RegionIdentifier.ValidateHierarchicalId(regionId, "regionId");
 
@@ -84,6 +95,7 @@ public sealed class RegionIdentifierTests
     [Theory]
     [InlineData("2-abc123")]
     [InlineData("20260101000000000")]
+    [InlineData("V2__Legacy")]
     public void ValidateSingleSegment_Accepts_NonHierarchicalValues(string version)
     {
         var act = () => RegionIdentifier.ValidateSingleSegment(version, "version");

@@ -1,17 +1,18 @@
+using System.Text.RegularExpressions;
+
 namespace POIneer.Render.Domain.Models;
 
 // Shared parsing/validation for globally unique, hierarchical region identifiers
-// (ADR 0007), e.g. "geofabrik/europe/germany/berlin". A region id is a '/'-separated
-// sequence of segments, each restricted to ASCII letters, digits, '.', '-', and '_' -
-// safe to use as-is as a local filesystem path (one directory per segment) and as an
-// Azure Blob name prefix. Kept dependency-free (Domain) so every place that turns a
-// region id into a path or a blob name - IDatasetPublisher implementations, RenderRegion,
-// Runner - shares the same validation and the same derivation of the "leaf" segment used
-// for artifact file names, instead of re-implementing (and risking drift in) an allow-list
-// per call site.
-public static class RegionIdentifier
+// (ADR 0007), e.g. "geofabrik/europe/germany/berlin". Renderer paths and blob names
+// use the same region ID syntax as the v1 manifest contract.
+public static partial class RegionIdentifier
 {
     private const char SegmentSeparator = '/';
+    private const string RegionSegmentPattern = "[a-z0-9]+(?:[._-][a-z0-9]+)*";
+
+    // Absolute anchors reject a trailing newline.
+    [GeneratedRegex(@"\A" + RegionSegmentPattern + "(?:/" + RegionSegmentPattern + @")*\z")]
+    private static partial Regex RegionIdPattern();
 
     // Validates a single segment that must not itself contain the hierarchy separator -
     // used for values that are not hierarchical, such as a dataset Version.
@@ -31,28 +32,18 @@ public static class RegionIdentifier
 
     // Validates a hierarchical, '/'-separated region id and returns its segments, e.g.
     // "geofabrik/europe/germany/berlin" -> ["geofabrik", "europe", "germany", "berlin"].
-    // Each segment is validated individually, so a leading/trailing/doubled '/' (which
-    // would produce an empty segment) and a '.'/'..' segment (which could otherwise be
-    // used to escape a destination directory) are both rejected.
     public static string[] ValidateHierarchicalId(string value, string parameterName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value, parameterName);
 
-        var segments = value.Split(SegmentSeparator);
-
-        foreach (var segment in segments)
+        if (!RegionIdPattern().IsMatch(value))
         {
-            if (segment.Length == 0)
-            {
-                throw new ArgumentException(
-                    $"'{value}' is not a valid {parameterName}: segments must not be empty (check for a leading, trailing, or doubled '{SegmentSeparator}').",
-                    parameterName);
-            }
-
-            ValidateSegmentCharacters(segment, value, parameterName);
+            throw new ArgumentException(
+                $"'{value}' is not a valid {parameterName}: use slash-separated segments of lowercase ASCII letters and digits, with '.', '-', or '_' only between alphanumeric groups.",
+                parameterName);
         }
 
-        return segments;
+        return value.Split(SegmentSeparator);
     }
 
     // Returns the last ("leaf") segment of a hierarchical region id, e.g. "berlin" for

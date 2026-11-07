@@ -535,6 +535,24 @@ public sealed class RunnerTests
             region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), true);
     }
 
+    [Fact]
+    public async Task RunAsync_RejectsInvalidRegionIdBeforeCheckingRemoteMetadata()
+    {
+        await using var tempDir = TestTemporaryDirectories.Create("runner-invalid-region-id");
+        var options = CreateOptions();
+        var region = BerlinRegion() with { Id = "geofabrik/Berlin" };
+        TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, options.RegionsJson), "[]");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new[] { region });
+        var sut = CreateSut(tempDir.DirectoryPath, options);
+
+        var result = await sut.RunAsync(CancellationToken.None);
+
+        result.Should().Be(1);
+        await _regionUpdateChecker.DidNotReceiveWithAnyArgs().CheckAsync(default!, default!, default);
+        await _renderRegion.DidNotReceiveWithAnyArgs().RunAsync(default!, default!, default!, default);
+        Directory.Exists(Path.Combine(tempDir.DirectoryPath, options.WorkDir, "geofabrik")).Should().BeFalse();
+    }
+
     [Theory]
     [InlineData(0, null, 1)]
     [InlineData(-1, null, 1)]
