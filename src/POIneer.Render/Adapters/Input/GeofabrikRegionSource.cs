@@ -41,6 +41,6 @@ public sealed class GeofabrikRegionSource : IRegionSource
         }
 
         _logger.LogInformation("Loaded {RegionCount} regions from JSON file.", regions.Count);
-        return regions.Where(r => !string.IsNullOrWhiteSpace(r.PbfUrl)).ToList();
+        return regions;
     }
 }

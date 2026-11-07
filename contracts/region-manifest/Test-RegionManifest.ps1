@@ -1,6 +1,6 @@
 #Requires -Version 7.4
 [CmdletBinding()]
-param()
+param([string[]]$ManifestPath = @())
 
 $ErrorActionPreference = 'Stop'
 $root = Join-Path $PSScriptRoot 'v1'
@@ -16,8 +16,27 @@ if (@($cases.file | Select-Object -Unique).Count -ne @($cases).Count) {
 }
 if (Compare-Object $files @($cases.file)) { throw 'Fixture registrations do not match files.' }
 
-foreach ($case in $cases) {
-    $json = Get-Content (Join-Path $root $case.file) -Raw
+$checks = @($cases | ForEach-Object {
+    [pscustomobject]@{
+        file = $_.file
+        path = Join-Path $root $_.file
+        schemaValid = $_.schemaValid
+        contractValid = $_.contractValid
+        reason = $_.reason
+    }
+})
+$checks += @($ManifestPath | ForEach-Object {
+    [pscustomobject]@{
+        file = $_
+        path = $_
+        schemaValid = $true
+        contractValid = $true
+        reason = 'Generated manifests must satisfy the v1 contract.'
+    }
+})
+
+foreach ($case in $checks) {
+    $json = Get-Content -LiteralPath $case.path -Raw
     # Malformed JSON is a test-data error, not a successful negative test.
     $document = ConvertFrom-Json -InputObject $json -AsHashtable
     $schemaValid = Test-Json -Json $json -Schema $schema -ErrorAction SilentlyContinue
@@ -53,3 +72,6 @@ foreach ($case in $cases) {
     Write-Output "PASS $($case.file)"
 }
 Write-Output "Passed $(@($cases).Count) fixtures (schema with timestamp format checks, plus filename contract checks)."
+if ($ManifestPath.Count -gt 0) {
+    Write-Output "Passed $($ManifestPath.Count) generated manifests."
+}

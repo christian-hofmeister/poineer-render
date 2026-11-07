@@ -20,6 +20,7 @@ public sealed class Runner
     private readonly RegionUpdateIntervalPolicy _updateIntervalPolicy;
     private readonly RegionUpdateSchedule _updateSchedule;
     private readonly VectorTileOptions _vectorTileOptions;
+    private readonly RegionMetadataPublisher? _metadataPublisher;
 
     private readonly IFileDownloader _fileDownloader;
 
@@ -34,7 +35,8 @@ public sealed class Runner
         RegionUpdateIntervalPolicy updateIntervalPolicy,
         IOptions<RendererOptions> rendererOptions,
         RegionUpdateSchedule updateSchedule,
-        IOptions<VectorTileOptions> vectorTileOptions)
+        IOptions<VectorTileOptions> vectorTileOptions,
+        RegionMetadataPublisher? metadataPublisher = null)
     {
         _hostEnvironment = hostEnvironment;
         _logger = log;
@@ -47,6 +49,7 @@ public sealed class Runner
         _rendererOptions = rendererOptions.Value;
         _updateSchedule = updateSchedule;
         _vectorTileOptions = vectorTileOptions.Value;
+        _metadataPublisher = metadataPublisher;
     }
 
     public async Task<int> RunAsync(CancellationToken ct)
@@ -99,9 +102,12 @@ public sealed class Runner
             throw new FileNotFoundException($"Regions file not found: {regionsPath}");
 
         var regions = await _regionSource.GetRegionsAsync(regionsPath, ct);
+        if (_metadataPublisher is not null)
+            await _metadataPublisher.PublishCatalogAsync(regions, ct);
         var failedRegionIds = new List<string>();
 
-        foreach (var r in regions.Where(r => string.IsNullOrEmpty(_rendererOptions.OnlyRegionId) || r.Id == _rendererOptions.OnlyRegionId))
+        foreach (var r in regions.Where(r => !string.IsNullOrWhiteSpace(r.PbfUrl)
+            && (string.IsNullOrEmpty(_rendererOptions.OnlyRegionId) || r.Id == _rendererOptions.OnlyRegionId)))
         {
             using (_logger.BeginScope("region:{RegionId}", r.Id))
             {
@@ -132,6 +138,10 @@ public sealed class Runner
                         // A forced attempt must remain due even if the metadata check fails.
                         await _updateSchedule.MarkProcessingAsync(r, schedulePath, scheduleState, ct);
                     }
+                    // Capture the current release before selecting or downloading the source.
+                    var publication = _metadataPublisher is null
+                        ? null
+                        : new RegionPublicationContext(await _metadataPublisher.ReadManifestRevisionAsync(r.Id, ct));
                     var updateCheck = await _regionUpdateChecker.CheckAsync(r, downloadStatePath, ct);
 
                     var regionOutDir = RegionIdentifier.CombinePath(outDir, r.Id);
@@ -140,7 +150,8 @@ public sealed class Runner
                         || !File.Exists(Path.Combine(regionOutDir, "poi.sqlite"))
                         // If the PBF is newer than the existing output, reprocess
                         || File.GetLastWriteTimeUtc(pbfPath) > File.GetLastWriteTimeUtc(Path.Combine(regionOutDir, "poi.sqlite"))
-                        || (_vectorTileOptions.Enabled && !File.Exists(Path.Combine(regionOutDir, "map.pmtiles")));
+                        || (_vectorTileOptions.Enabled && !File.Exists(Path.Combine(regionOutDir, "map.pmtiles")))
+                        || (publication is not null && publication.ExpectedManifestRevision is null);
                     if (!processingRequired)
                     {
                         var next = await _updateSchedule.MarkSuccessfulAsync(r, schedulePath, ct);
@@ -192,7 +203,10 @@ public sealed class Runner
                             updateCheck.RemoteMetadata.LastModified,
                             updateCheck.RemoteMetadata.ContentLength);
                     }
-                    await _renderRegionUseCase.RunAsync(r, workDir, outDir, ct, forceRebuild: true);
+                    if (publication is null)
+                        await _renderRegionUseCase.RunAsync(r, workDir, outDir, ct, forceRebuild: true);
+                    else
+                        await _renderRegionUseCase.RunAsync(r, workDir, outDir, publication, ct, forceRebuild: true);
                     await _regionUpdateChecker.MarkProcessedAsync(r, renderStatePath, updateCheck.RemoteMetadata, ct);
                     var completed = await _updateSchedule.MarkSuccessfulAsync(r, schedulePath, ct);
                     _logger.LogInformation("({Region}) Processing successful. Next update due at {NextDueUtc}.", r.Id, completed.NextDueUtc);
