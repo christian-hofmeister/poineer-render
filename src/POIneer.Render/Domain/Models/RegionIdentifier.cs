@@ -5,14 +5,15 @@ namespace POIneer.Render.Domain.Models;
 // Shared parsing/validation for globally unique, hierarchical region identifiers
 // (ADR 0007), e.g. "geofabrik/europe/germany/berlin". Renderer paths and blob names
 // use the same region ID syntax as the v1 manifest contract.
-public static partial class RegionIdentifier
+public static class RegionIdentifier
 {
     private const char SegmentSeparator = '/';
     private const string RegionSegmentPattern = "[a-z0-9]+(?:[._-][a-z0-9]+)*";
 
     // Absolute anchors reject a trailing newline.
-    [GeneratedRegex(@"\A" + RegionSegmentPattern + "(?:/" + RegionSegmentPattern + @")*\z")]
-    private static partial Regex RegionIdPattern();
+    private static readonly Regex RegionIdPattern = new(
+        @"\A" + RegionSegmentPattern + "(?:/" + RegionSegmentPattern + @")*\z",
+        RegexOptions.NonBacktracking);
 
     // Validates a single segment that must not itself contain the hierarchy separator -
     // used for values that are not hierarchical, such as a dataset Version.
@@ -36,7 +37,7 @@ public static partial class RegionIdentifier
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value, parameterName);
 
-        if (!RegionIdPattern().IsMatch(value))
+        if (!RegionIdPattern.IsMatch(value))
         {
             throw new ArgumentException(
                 $"'{value}' is not a valid {parameterName}: use slash-separated segments of lowercase ASCII letters and digits, with '.', '-', or '_' only between alphanumeric groups.",
