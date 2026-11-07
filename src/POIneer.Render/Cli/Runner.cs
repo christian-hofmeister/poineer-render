@@ -133,6 +133,8 @@ public sealed class Runner
                     var processingRequired = overwriteRequested || scheduleState is null || scheduleState.ProcessingPending
                         || updateCheck.ShouldRedownloadPbf || !File.Exists(pbfPath)
                         || !File.Exists(Path.Combine(regionOutDir, "poi.sqlite"))
+                        // If the PBF is newer than the existing output, reprocess
+                        || File.GetLastWriteTimeUtc(pbfPath) > File.GetLastWriteTimeUtc(Path.Combine(regionOutDir, "poi.sqlite"))
                         || (_vectorTileOptions.Enabled && !File.Exists(Path.Combine(regionOutDir, "map.pmtiles")));
                     if (!processingRequired)
                     {
