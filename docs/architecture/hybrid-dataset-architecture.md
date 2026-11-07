@@ -58,12 +58,13 @@ dependency.
 
 The [region manifest contract](../../contracts/region-manifest/README.md) is the shared
 specification for POIneer.Render publication and POIneer.Server catalog consumption.
-Use its schemas and fixtures for both integrations; publication implementation remains in
-[issue #202](https://github.com/christian-hofmeister/poineer-render/issues/202).
+Use its schemas and fixtures for both integrations. The renderer can publish metadata
+to a local directory or Azure Blob Storage independently of its artifact target.
+See [region metadata publishing](../workflows/filesystem-artifact-publishing.md#region-metadata-publishing).
 
 ## Planned Architecture
 
-The following target is a contract decision, not an implemented publication pipeline:
+The planned deployment pairs Azure metadata storage with Hetzner artifact storage.
 
 ```mermaid
 flowchart TD

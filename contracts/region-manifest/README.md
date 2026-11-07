@@ -313,6 +313,8 @@ missing date-time format enforcement with .NET `XmlConvert` calendar/time checki
 after the schema's UTC pattern check. Consumers using another validator must enable
 its date-time format checking explicitly. Filename checks are separate from schema
 validation. No new package dependencies or storage credentials are required.
+Pass `-ManifestPath path/to/manifest.json` to also validate a generated manifest
+against the same schema and filename rules.
 
 Producer/consumer implementation tests must use distinct metadata and artifact
 roots, verify discovery only in metadata storage and resolve artifacts only from

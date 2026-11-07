@@ -5,4 +5,5 @@ namespace POIneer.Render.Application.Contracts;
 public sealed record DatasetPublishRequest(
     string RegionId,
     string Version,
-    string SourcePath);
+    string SourcePath,
+    bool RequireImmutable = false);

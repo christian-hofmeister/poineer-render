@@ -4,4 +4,5 @@ namespace POIneer.Render.Application.Contracts;
 // destination file in place because the configured overwrite policy allowed skipping.
 public sealed record DatasetPublishResult(
     string DestinationPath,
-    bool WasSkipped);
+    bool WasSkipped,
+    string? ObjectKey = null);
