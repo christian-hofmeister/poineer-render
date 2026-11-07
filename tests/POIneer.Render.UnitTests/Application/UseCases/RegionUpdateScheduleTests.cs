@@ -17,7 +17,9 @@ public sealed class RegionUpdateScheduleTests
     private RegionUpdateSchedule CreateSut()
         => new(_store, new RegionUpdateIntervalPolicy(Microsoft.Extensions.Options.Options.Create(new RendererOptions
         {
-            WorkDir = "work", OutDir = "out", RegionsJson = "regions.json"
+            WorkDir = "work",
+            OutDir = "out",
+            RegionsJson = "regions.json"
         })), new FixedTimeProvider(_now));
 
     [Fact]
