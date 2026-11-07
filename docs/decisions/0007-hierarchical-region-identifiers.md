@@ -47,7 +47,7 @@ Blob name, on both Windows dev machines and the Linux VPS.
 
    The hierarchy depth is not fixed at 4: `mittelfranken` above needs an extra `bayern`
    segment to stay unique/meaningful under `geofabrik/europe/germany`, matching
-   Geofabrik's own download hierarchy at https://download.geofabrik.de.
+   Geofabrik's own download hierarchy at <https://download.geofabrik.de>.
 
 2. **A region id is a `/`-separated sequence of segments**, each restricted to ASCII
    letters, digits, `.`, `-`, and `_` (the same allow-list `LocalDatasetPublisher` and
@@ -107,8 +107,8 @@ Blob name, on both Windows dev machines and the Linux VPS.
 
    | Old id          | New id                                          |
    | --------------- | ------------------------------------------------|
-   | `berlin`         | `geofabrik/europe/germany/berlin`               |
-   | `mittelfranken`  | `geofabrik/europe/germany/bayern/mittelfranken` |
+   | `berlin`        | `geofabrik/europe/germany/berlin`               |
+   | `mittelfranken` | `geofabrik/europe/germany/bayern/mittelfranken` |
 
    `Renderer:OnlyRegionId` in `appsettings.json`/`appsettings.Development.json` is
    updated to the new Berlin id to match.
