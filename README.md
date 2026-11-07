@@ -310,7 +310,9 @@ docker run --rm \
   poineer-render:local
 ```
 
-See [Docker Renderer Image](docs/workflows/docker-renderer.md) for details.
+See [Run locally with PowerShell](docs/workflows/docker-renderer.md#run-locally-with-powershell)
+for a full development render with persistent data and a lock volume, and
+[Docker Renderer Image](docs/workflows/docker-renderer.md) for VPS setup.
 
 ---
 

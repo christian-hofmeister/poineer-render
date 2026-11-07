@@ -3,9 +3,13 @@ namespace POIneer.Render.Adapters.Input;
 using System.Diagnostics;
 using Microsoft.Extensions.Hosting;
 using POIneer.Render.Infrastructure.Pathing;
+using POIneer.Render.Infrastructure.Process;
 using POIneer.Render.Ports;
 
-public sealed class OsmiumPolygonCutter(IHostEnvironment environment) : IPolygonCutter
+public sealed class OsmiumPolygonCutter(
+    IHostEnvironment environment,
+    IProcessRunner processRunner)
+        : IPolygonCutter
 {
     public async Task<string> CutAsync(
         string pbfPath,
@@ -23,13 +27,13 @@ public sealed class OsmiumPolygonCutter(IHostEnvironment environment) : IPolygon
         var psi = new ProcessStartInfo
         {
             FileName = "osmium",
-            ArgumentList = { "extract", "-p", polyPath, pbfPath, "-o", output },
+            ArgumentList = { "extract", "--overwrite", "-p", polyPath, pbfPath, "-o", output },
             RedirectStandardError = true,
             RedirectStandardOutput = true
         };
-        using var proc = Process.Start(psi)!;
-        await proc.WaitForExitAsync(ct);
-        if (proc.ExitCode != 0) throw new InvalidOperationException($"osmium extract failed: {await proc.StandardError.ReadToEndAsync()}");
+        var result = await processRunner.RunAsync(psi, ct);
+        if (result.ExitCode != 0)
+            throw new InvalidOperationException($"osmium extract failed: {result.StandardError}");
         return output;
     }
 }

@@ -70,6 +70,52 @@ Run a Flyway migration smoke test against a temporary SQLite database inside the
 docker run --rm --entrypoint sh poineer-render:local -c "cd /opt/poineer-render/app && flyway -configFiles=\"migrations/flyway-poi.toml\" -url=\"jdbc:sqlite:/tmp/poineer-migration-smoke.sqlite\" -locations=\"filesystem:migrations/sql/poi\" migrate && test -s /tmp/poineer-migration-smoke.sqlite"
 ```
 
+## Run Locally With PowerShell
+
+From the repository root, build the image with Docker Desktop running Linux
+containers. Create the bind mount directory and initialize the named lock volume.
+The volume keeps the lock on Docker's filesystem and gives the `poineer` user
+write access. The ownership step is needed once per volume.
+
+```powershell
+docker build -t poineer-render:local .
+New-Item -ItemType Directory -Force ./data
+docker run --rm --user root `
+  --mount "type=volume,source=poineer-render-dev-lock,target=/var/lock/poineer" `
+  --entrypoint sh poineer-render:local `
+  -c 'chown poineer:poineer /var/lock/poineer'
+```
+
+Run the development configuration with SQLite and PMTiles enabled. It selects
+Berlin by default. The mirror URL below selects a specific water polygon snapshot.
+
+```powershell
+docker run --rm --name poineer-render-dev `
+  -e DOTNET_ENVIRONMENT=Development `
+  --mount "type=bind,source=$($PWD.Path)/data,target=/opt/poineer-render/app/data" `
+  --mount "type=volume,source=poineer-render-dev-lock,target=/var/lock/poineer" `
+  poineer-render:local `
+  --Renderer:LockFilePath=/var/lock/poineer/poineer-render.lock `
+  --Renderer:WorkDir=data/docker-dev/renderer-work-dir `
+  --Renderer:OutDir=data/docker-dev/renderer-out-dir `
+  --Publisher:DestinationDir=data/docker-dev/renderer-publish-dir `
+  --VectorTiles:AdditionalArguments:0=--download `
+  --VectorTiles:AdditionalArguments:1=--water-polygons-url=https://ftp.uni-erlangen.de/pub/openstreetmapdata.com-archive/2026-04-26/water-polygons-split-3857.zip
+```
+
+The full `data` mount persists Planetiler source downloads under `data/sources`
+and renderer files under `data/docker-dev`. Published files are under
+`data/docker-dev/renderer-publish-dir`. Planetiler's `--download` fills missing
+source files and reuses existing cached files with refresh disabled.
+
+For a configuration check, append `--Renderer:DryRun=true`. For a second render
+with the same work directory, append `--Renderer:OverwriteDatabase=true` to bypass
+the due date and rebuild the outputs. The PBF download still follows the normal
+metadata check. To test the polygon cut for Rügen and Hiddensee, also pass
+`--Renderer:OnlyRegionId=geofabrik/europe/germany/mecklenburg-vorpommern/ruegen-hiddensee`.
+Add a PowerShell continuation backtick to the preceding line when appending an
+argument on a new line. The final line ends without a backtick.
+
 ## Run On The VPS
 
 Configured region polygons under `Cli/config/polygons/**/*.poly` are included in
