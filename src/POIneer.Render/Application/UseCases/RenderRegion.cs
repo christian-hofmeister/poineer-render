@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -114,24 +115,26 @@ public sealed class RenderRegion : IRenderRegion
             artifactPaths.Add(canonicalVectorTilePath);
 
         var checkpointPath = Path.Combine(regionOutDir, "manifest-pending.json");
-        var source = new FileInfo(pbfPath);
-        var sourceSize = source.Length;
-        var sourceModifiedUtc = source.LastWriteTimeUtc;
+        string? sourceSha256 = null;
         if (_metadataPublisher is not null && File.Exists(checkpointPath))
         {
             var pending = _rendererOptions.OverwriteDatabase || _rendererOptions.OverwritePbf
                 ? null
                 : await ReadManifestCheckpointAsync(checkpointPath, ct);
-            if (pending is not null && pending.SourceSize == sourceSize
-                && pending.SourceModifiedUtc == sourceModifiedUtc && artifactPaths.All(File.Exists)
-                && pending.ReleaseVersion == await _datasetVersionCalculator.CalculateAsync(artifactPaths, ct))
+            if (pending?.SourceSha256 is not null && artifactPaths.All(File.Exists))
             {
-                _logger.LogInformation("({Id}) Retrying manifest publication using existing artifacts.", regionDto.Id);
-                await PublishReleaseAsync(regionDto.Id, artifactPaths, pending, checkpointPath, ct);
-                return;
+                sourceSha256 = await CalculateSourceSha256Async(pbfPath, ct);
+                if (pending.SourceSha256 == sourceSha256
+                    && pending.ReleaseVersion == await _datasetVersionCalculator.CalculateAsync(artifactPaths, ct))
+                {
+                    _logger.LogInformation("({Id}) Retrying manifest publication using existing artifacts.", regionDto.Id);
+                    await PublishReleaseAsync(regionDto.Id, artifactPaths, pending, checkpointPath, ct);
+                    return;
+                }
             }
 
-            File.Delete(checkpointPath);
+            // Keep the checkpoint until it is superseded so a failed rebuild remains retryable.
+            recreateDatabase = true;
         }
 
         var pbfChangedSinceOutput = File.Exists(canonicalPath)
@@ -176,6 +179,9 @@ public sealed class RenderRegion : IRenderRegion
                 stagingVectorTilePath);
             File.Delete(stagingVectorTilePath);
         }
+
+        if (_metadataPublisher is not null)
+            sourceSha256 ??= await CalculateSourceSha256Async(pbfPath, ct);
 
         _logger.LogInformation("({Id}) Cutting polygon...", regionDto.Id);
         var cutPbf = await _polygonCutter.CutAsync(pbfPath, regionDto.Poly, ct);
@@ -239,7 +245,7 @@ public sealed class RenderRegion : IRenderRegion
         }
 
         var version = await _datasetVersionCalculator.CalculateAsync(artifactPaths, ct);
-        var release = new PendingManifest(version, manifestRevision, sourceSize, sourceModifiedUtc);
+        var release = new PendingManifest(version, manifestRevision, sourceSha256);
         await PublishReleaseAsync(regionDto.Id, artifactPaths, release, checkpointPath, ct);
     }
 
@@ -312,8 +318,13 @@ public sealed class RenderRegion : IRenderRegion
         }
     }
 
-    private sealed record PendingManifest(
-        string ReleaseVersion, string? ExpectedRevision, long SourceSize, DateTime SourceModifiedUtc);
+    private static async Task<string> CalculateSourceSha256Async(string path, CancellationToken ct)
+    {
+        await using var stream = File.OpenRead(path);
+        return Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, ct));
+    }
+
+    private sealed record PendingManifest(string ReleaseVersion, string? ExpectedRevision, string? SourceSha256);
 
     private async Task<(DatasetArtifactMetadata Metadata, string? ObjectKey)> PublishAndVerifyArtifactAsync(
         string regionId, string version, string artifactPath, CancellationToken ct)

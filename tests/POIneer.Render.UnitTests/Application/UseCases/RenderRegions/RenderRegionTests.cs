@@ -38,10 +38,13 @@ public sealed class RenderRegionTests
     private readonly IVectorTileGenerator _vectorTileGenerator = Substitute.For<IVectorTileGenerator>();
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public async Task RunAsync_AdvertisesOnlyVerifiedArtifacts_AndRetriesMetadataWithoutRendering(bool sharedRoot, bool azureMetadata)
+    [InlineData(false, false, false, true)]
+    [InlineData(true, false, false, true)]
+    [InlineData(false, true, false, true)]
+    [InlineData(false, false, true, true)]
+    [InlineData(false, false, true, false)]
+    public async Task RunAsync_AdvertisesOnlyVerifiedArtifacts_AndReusesThemOnlyForUnchangedSource(
+        bool sharedRoot, bool azureMetadata, bool replaceSource, bool forceRetry)
     {
         await using var temp = TestTemporaryDirectories.Create("publish-region-manifest");
         var workDir = Path.Combine(temp.DirectoryPath, "work");
@@ -49,7 +52,8 @@ public sealed class RenderRegionTests
         var artifactRoot = Path.Combine(temp.DirectoryPath, "artifacts");
         var metadataRoot = sharedRoot ? artifactRoot : Path.Combine(temp.DirectoryPath, "metadata");
         var region = new RegionDto("geofabrik/europe/germany/berlin", "Berlin", "https://example.com/berlin.pbf", null);
-        TestFiles.WriteAllText(Path.Combine(workDir, region.Id, "osm.pbf"), "test PBF");
+        var sourcePath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(sourcePath, "test PBF");
         var store = new FailingManifestStore(new FileRegionMetadataStore(metadataRoot), azureMetadata);
         var metadataPublisher = new RegionMetadataPublisher(
             azureMetadata ? CreateAzureMetadataStore(store, region.Id) : store, TimeProvider.System);
@@ -127,14 +131,29 @@ public sealed class RenderRegionTests
             Assert.IsType<IOException>(failure);
         Assert.Equal(previousJson, await File.ReadAllTextAsync(manifestPath));
 
-        await sut.RunAsync(region, workDir, outDir, forceRebuild: true);
-        await _exporter.Received(4).ExportAsync(
+        if (replaceSource)
+        {
+            var originalSource = new FileInfo(sourcePath);
+            var sourceSize = originalSource.Length;
+            var sourceModifiedUtc = originalSource.LastWriteTimeUtc;
+            await File.WriteAllTextAsync(sourcePath, "next PBF");
+            File.SetLastWriteTimeUtc(sourcePath, sourceModifiedUtc);
+            Assert.Equal(sourceSize, new FileInfo(sourcePath).Length);
+            Assert.Equal(sourceModifiedUtc, File.GetLastWriteTimeUtc(sourcePath));
+            sqliteBytes = "third SQLite";
+        }
+
+        await sut.RunAsync(region, workDir, outDir, forceRebuild: forceRetry);
+        await _exporter.Received(replaceSource ? 5 : 4).ExportAsync(
             Arg.Any<IAsyncEnumerable<Poi>>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
         using var current = JsonDocument.Parse(await File.ReadAllTextAsync(manifestPath));
         Assert.NotEqual(previous.RootElement.GetProperty("releaseVersion").GetString(),
             current.RootElement.GetProperty("releaseVersion").GetString());
+        var currentArtifacts = current.RootElement.GetProperty("artifacts");
+        var sqliteKey = currentArtifacts[0].GetProperty("objectKey").GetString()!;
+        Assert.Equal(sqliteBytes, await File.ReadAllTextAsync(Path.Combine(artifactRoot, sqliteKey)));
         Assert.Equal(previousArtifacts[1].GetProperty("objectKey").GetString(),
-            current.RootElement.GetProperty("artifacts")[1].GetProperty("objectKey").GetString());
+            currentArtifacts[1].GetProperty("objectKey").GetString());
     }
 
     private static AzureBlobRegionMetadataStore CreateAzureMetadataStore(IRegionMetadataStore backing, string regionId)
