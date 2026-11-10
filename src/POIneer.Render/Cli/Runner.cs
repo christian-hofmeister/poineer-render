@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
 using POIneer.Render.Application.UseCases;
@@ -20,6 +21,8 @@ public sealed class Runner
     private readonly RegionUpdateIntervalPolicy _updateIntervalPolicy;
     private readonly RegionUpdateSchedule _updateSchedule;
     private readonly VectorTileOptions _vectorTileOptions;
+    private readonly PublisherOptions _publisherOptions;
+    private readonly IDiskSpaceReader _diskSpaceReader;
     private readonly RegionMetadataPublisher? _metadataPublisher;
 
     private readonly IFileDownloader _fileDownloader;
@@ -36,6 +39,8 @@ public sealed class Runner
         IOptions<RendererOptions> rendererOptions,
         RegionUpdateSchedule updateSchedule,
         IOptions<VectorTileOptions> vectorTileOptions,
+        IOptions<PublisherOptions> publisherOptions,
+        IDiskSpaceReader diskSpaceReader,
         RegionMetadataPublisher? metadataPublisher = null)
     {
         _hostEnvironment = hostEnvironment;
@@ -49,6 +54,8 @@ public sealed class Runner
         _rendererOptions = rendererOptions.Value;
         _updateSchedule = updateSchedule;
         _vectorTileOptions = vectorTileOptions.Value;
+        _publisherOptions = publisherOptions.Value;
+        _diskSpaceReader = diskSpaceReader;
         _metadataPublisher = metadataPublisher;
     }
 
@@ -166,6 +173,8 @@ public sealed class Runner
                         await _updateSchedule.MarkProcessingAsync(r, schedulePath, scheduleState, ct);
                     }
 
+                    CheckAvailableDiskSpace(r.Id, regionWorkDir, regionOutDir);
+
                     if (!File.Exists(pbfPath))
                     {
                         _logger.LogInformation("Downloading PBF for {Region} ... to {TargetPath}", r.Id, pbfPath);
@@ -230,5 +239,32 @@ public sealed class Runner
 
         _logger.LogInformation("All regions processed.");
         return 0;
+    }
+
+    private void CheckAvailableDiskSpace(string regionId, string regionWorkDir, string regionOutDir)
+    {
+        var minimumBytes = _rendererOptions.MinimumFreeDiskSpaceBytes;
+        if (minimumBytes == 0)
+            return;
+
+        var paths = new List<string> { regionWorkDir, regionOutDir, Path.GetTempPath() };
+        if (_publisherOptions.Target == DatasetPublisherTarget.Local && _publisherOptions.DestinationDir is { } destinationDir)
+            paths.Add(RegionIdentifier.CombinePath(destinationDir, regionId));
+
+        if (_vectorTileOptions.Enabled)
+        {
+            // Planetiler's default scratch directory is relative to its process working directory.
+            paths.Add(Path.GetFullPath(Path.Combine("data", "tmp")));
+        }
+
+        foreach (var path in paths)
+        {
+            var availableBytes = _diskSpaceReader.GetAvailableBytes(path);
+            if (availableBytes < minimumBytes)
+            {
+                throw new IOException(
+                    $"Insufficient disk space at '{path}': {availableBytes} bytes available, {minimumBytes} bytes required.");
+            }
+        }
     }
 }

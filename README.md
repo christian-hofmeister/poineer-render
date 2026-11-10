@@ -244,6 +244,17 @@ Important renderer options:
 | `Renderer:OnlyRegionId` | Optional filter for one region | `geofabrik/europe/germany/berlin` |
 | `Renderer:DryRun` | Exit after configuration/logging without rendering | `false` |
 | `Renderer:LockFilePath` | Lock file preventing overlapping runs (e.g. concurrent cron executions) | `<WorkDir>/poineer-render.lock` (auto) |
+| `Renderer:MinimumFreeDiskSpaceBytes` | Minimum available bytes on each filesystem checked before a region is processed. Set to `0` to disable the check. | `1073741824` (1 GiB) |
+
+Before a required download or render, the renderer checks the region's work and output paths,
+the system temp directory, the local dataset publish path when enabled, and Planetiler's default
+`data/tmp` path when vector tiles are enabled. The check uses the nearest existing directory for
+paths that have yet to be created, so it measures the backing filesystem from inside the process.
+A region with insufficient space stays due for retry. The run reports the failure with exit code `1`.
+
+Set `POINEER_RENDER__RENDERER__MINIMUMFREEDISKSPACEBYTES` to adjust the threshold for a deployment.
+The threshold is a minimum, and actual disk usage depends on the region and enabled artifacts.
+Custom Planetiler paths supplied through extra arguments are outside this check.
 
 Region ids in `Renderer:RegionsJson` are globally unique, hierarchical technical
 identifiers such as `geofabrik/europe/germany/berlin` - see
