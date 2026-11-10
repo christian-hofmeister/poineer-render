@@ -17,6 +17,7 @@ public sealed class RendererOptions
     public bool DryRun { get; init; } = false;
 
     public int DownloadTimeoutSeconds { get; init; } = 600;
+    public long MinimumFreeDiskSpaceBytes { get; init; } = 1024L * 1024 * 1024;
 
     // Regions may override this value with UpdateIntervalDays in their JSON configuration.
     public int DefaultUpdateIntervalDays { get; init; } = 7;

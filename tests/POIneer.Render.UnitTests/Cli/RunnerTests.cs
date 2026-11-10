@@ -25,6 +25,7 @@ public sealed class RunnerTests
     private readonly IRegionUpdateChecker _regionUpdateChecker = Substitute.For<IRegionUpdateChecker>();
     private readonly ISingleInstanceLockFactory _lockFactory = Substitute.For<ISingleInstanceLockFactory>();
     private readonly ISingleInstanceLock _instanceLock = Substitute.For<ISingleInstanceLock>();
+    private readonly IDiskSpaceReader _diskSpaceReader = Substitute.For<IDiskSpaceReader>();
 
     private readonly FileRegionScheduleStateStore _scheduleStore = new(NullLogger<FileRegionScheduleStateStore>.Instance);
     private readonly ManualTimeProvider _clock = new();
@@ -34,6 +35,7 @@ public sealed class RunnerTests
         // By default the lock is always available, so existing rendering behavior is unaffected.
         _instanceLock.TryAcquire().Returns(true);
         _lockFactory.Create(Arg.Any<string>()).Returns(_instanceLock);
+        _diskSpaceReader.GetAvailableBytes(Arg.Any<string>()).Returns(long.MaxValue);
         _regionUpdateChecker
             .CheckAsync(Arg.Any<RegionDto>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => Task.FromResult(ChangedResult(callInfo.ArgAt<RegionDto>(0))));
@@ -536,6 +538,61 @@ public sealed class RunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_FailsBeforeDownloadAndRetriesWhenDiskSpaceIsAvailable()
+    {
+        await using var tempDir = TestTemporaryDirectories.Create("runner-disk-space", false);
+        var region = BerlinRegion();
+        var options = CreateOptions(minimumFreeDiskSpaceBytes: 1024);
+        TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, options.RegionsJson), "[]");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new[] { region });
+        var regionOutDir = Path.Combine(tempDir.DirectoryPath, options.OutDir, region.Id);
+        _diskSpaceReader.GetAvailableBytes(regionOutDir).Returns(1023);
+        var sut = CreateSut(tempDir.DirectoryPath, options);
+
+        (await sut.RunAsync(CancellationToken.None)).Should().Be(1);
+
+        await _fileDownloader.DidNotReceiveWithAnyArgs().DownloadAsync(default!, default!, default);
+        await _renderRegion.DidNotReceiveWithAnyArgs().RunAsync(default!, default!, default!, default);
+        var schedulePath = Path.Combine(tempDir.DirectoryPath, options.WorkDir, region.Id, "schedule-state.json");
+        (await _scheduleStore.ReadAsync(schedulePath))!.ProcessingPending.Should().BeTrue();
+
+        _diskSpaceReader.GetAvailableBytes(regionOutDir).Returns(1024);
+
+        (await sut.RunAsync(CancellationToken.None)).Should().Be(0);
+        await _fileDownloader.Received(1).DownloadAsync(region.PbfUrl, Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _renderRegion.Received(1).RunAsync(region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), true);
+        (await _scheduleStore.ReadAsync(schedulePath))!.ProcessingPending.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(DatasetPublisherTarget.Local, 1)]
+    [InlineData(DatasetPublisherTarget.AzureBlob, 0)]
+    public async Task RunAsync_ChecksPublishDiskOnlyForLocalPublisher_WhenRenderingCachedPbf(
+        DatasetPublisherTarget target, int expectedExitCode)
+    {
+        await using var tempDir = TestTemporaryDirectories.Create("runner-publish-disk-space", false);
+        var region = BerlinRegion();
+        var options = CreateOptions(overwriteDatabase: true);
+        TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, options.RegionsJson), "[]");
+        TestFiles.WriteAllText(Path.Combine(tempDir.DirectoryPath, options.WorkDir, region.Id, "osm.pbf"), "cached PBF");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new[] { region });
+        _regionUpdateChecker.CheckAsync(region, Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ChangedResult(region) with { ShouldRedownloadPbf = false });
+        var publishDir = Path.Combine(tempDir.DirectoryPath, "publish");
+        var regionPublishDir = Path.Combine(publishDir, region.Id);
+        _diskSpaceReader.GetAvailableBytes(regionPublishDir).Returns(0);
+        var sut = CreateSut(tempDir.DirectoryPath, options,
+            publisherOptions: new PublisherOptions { Target = target, DestinationDir = publishDir });
+
+        (await sut.RunAsync(CancellationToken.None)).Should().Be(expectedExitCode);
+
+        _diskSpaceReader.Received(expectedExitCode).GetAvailableBytes(regionPublishDir);
+        await _fileDownloader.DidNotReceiveWithAnyArgs().DownloadAsync(default!, default!, default);
+        await _renderRegion.Received(1 - expectedExitCode).RunAsync(
+            region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), true);
+    }
+
+    [Fact]
     public async Task RunAsync_RejectsInvalidRegionIdBeforeCheckingRemoteMetadata()
     {
         await using var tempDir = TestTemporaryDirectories.Create("runner-invalid-region-id");
@@ -658,6 +715,7 @@ public sealed class RunnerTests
 
         (await sut.RunAsync(CancellationToken.None)).Should().Be(0);
 
+        _diskSpaceReader.DidNotReceiveWithAnyArgs().GetAvailableBytes(default!);
         await _regionUpdateChecker.Received(secondsAfterDue >= 0 ? 1 : 0)
             .CheckAsync(region, Arg.Any<string>(), Arg.Any<CancellationToken>());
         await _fileDownloader.DidNotReceiveWithAnyArgs().DownloadAsync(default!, default!, default);
@@ -820,7 +878,8 @@ public sealed class RunnerTests
         RendererOptions options,
         IRegionUpdateChecker? updateChecker = null,
         IRegionSource? regionSource = null,
-        RegionMetadataPublisher? metadataPublisher = null)
+        RegionMetadataPublisher? metadataPublisher = null,
+        PublisherOptions? publisherOptions = null)
         => new(
             new FakeHostEnvironment
             {
@@ -836,6 +895,8 @@ public sealed class RunnerTests
             Options.Create(options),
             new RegionUpdateSchedule(_scheduleStore, new RegionUpdateIntervalPolicy(Options.Create(options)), _clock),
             Options.Create(new VectorTileOptions()),
+            Options.Create(publisherOptions ?? new PublisherOptions()),
+            _diskSpaceReader,
             metadataPublisher);
 
     private static RendererOptions CreateOptions(
@@ -846,7 +907,8 @@ public sealed class RunnerTests
         bool overwritePbf = false,
         bool dryRun = false,
         string? onlyRegionId = null,
-        string? lockFilePath = null)
+        string? lockFilePath = null,
+        long minimumFreeDiskSpaceBytes = 1024L * 1024 * 1024)
         => new()
         {
             WorkDir = workDir,
@@ -857,6 +919,7 @@ public sealed class RunnerTests
             DryRun = dryRun,
             OnlyRegionId = onlyRegionId,
             DownloadTimeoutSeconds = 600,
+            MinimumFreeDiskSpaceBytes = minimumFreeDiskSpaceBytes,
             LockFilePath = lockFilePath
         };
 

@@ -53,6 +53,8 @@ internal class Program
             .Validate(RendererOptionsValidation.HasRequiredPaths, RendererOptionsValidation.RequiredPathsMessage)
             .Validate(RendererOptionsValidation.HasValidDownloadTimeout, RendererOptionsValidation.DownloadTimeoutMessage)
             .Validate(RendererOptionsValidation.HasValidUpdateInterval, RendererOptionsValidation.UpdateIntervalMessage)
+            .Validate(options => options.MinimumFreeDiskSpaceBytes >= 0,
+                "Renderer:MinimumFreeDiskSpaceBytes must be zero or greater.")
             .ValidateOnStart();
 
         builder.Services
@@ -192,6 +194,7 @@ internal class Program
             };
         });
         builder.Services.AddSingleton<ISingleInstanceLockFactory, FileSingleInstanceLockFactory>();
+        builder.Services.AddSingleton<IDiskSpaceReader, DiskSpaceReader>();
         builder.Services.AddSingleton<IRegionRenderStateStore, FileRegionRenderStateStore>();
         builder.Services.AddSingleton<IRegionDownloadStateStore, FileRegionDownloadStateStore>();
         builder.Services.AddSingleton<IRegionUpdateChecker, RegionUpdateChecker>();
