@@ -246,6 +246,33 @@ public sealed class LocalDatasetPublisherTests
     }
 
     [Fact]
+    public async Task PublishAsync_PreservesImmutableArtifact_WhenSourceBytesChangeUnderOverwrite()
+    {
+        // Arrange
+        await using var tempDir = TestTemporaryDirectories.Create("publish-rejects-immutable-conflict", false);
+        var sourcePath = Path.Combine(tempDir.DirectoryPath, "poi.sqlite");
+        var originalBytes = new byte[] { 0x01, 0x02, 0x03 };
+        await File.WriteAllBytesAsync(sourcePath, originalBytes);
+
+        var destinationDir = Path.Combine(tempDir.DirectoryPath, "publish");
+        var sut = new LocalDatasetPublisher(
+            Logger,
+            TestOptionsFactory.CreatePublisherOptions(destinationDir, DatasetPublishOverwritePolicy.Overwrite));
+
+        var request = new DatasetPublishRequest("berlin", "20260101000000000", sourcePath, RequireImmutable: true);
+        var first = await sut.PublishAsync(request, CancellationToken.None);
+        await File.WriteAllBytesAsync(sourcePath, new byte[] { 0x01, 0x02, 0x04 });
+
+        // Act
+        var act = () => sut.PublishAsync(request, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<IOException>()
+            .WithMessage($"Immutable dataset artifact at '{first.DestinationPath}' has different bytes.");
+        (await File.ReadAllBytesAsync(first.DestinationPath)).Should().Equal(originalBytes);
+    }
+
+    [Fact]
     public async Task PublishAsync_ThrowsIOException_WhenOverwritePolicyIsFail_AndDestinationAlreadyExists()
     {
         // Arrange

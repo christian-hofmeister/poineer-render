@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using POIneer.Render.Application.Contracts;
@@ -32,6 +34,7 @@ public sealed class RenderRegion : IRenderRegion
     private readonly IPublishedDatasetVerifier _publishedDatasetVerifier;
     private readonly IVectorTileGenerator _vectorTileGenerator;
     private readonly VectorTileOptions _vectorTileOptions;
+    private readonly RegionMetadataPublisher? _metadataPublisher;
 
     public RenderRegion(
         ILogger<RenderRegion> log,
@@ -47,7 +50,8 @@ public sealed class RenderRegion : IRenderRegion
         IDatasetArtifactMetadataFactory datasetArtifactMetadataFactory,
         IPublishedDatasetVerifier publishedDatasetVerifier,
         IVectorTileGenerator vectorTileGenerator,
-        IOptions<VectorTileOptions> vectorTileOptions)
+        IOptions<VectorTileOptions> vectorTileOptions,
+        RegionMetadataPublisher? metadataPublisher = null)
     {
         _logger = log;
         _polygonCutter = polygonCutter;
@@ -63,14 +67,33 @@ public sealed class RenderRegion : IRenderRegion
         _publishedDatasetVerifier = publishedDatasetVerifier;
         _vectorTileGenerator = vectorTileGenerator;
         _vectorTileOptions = vectorTileOptions.Value;
+        _metadataPublisher = metadataPublisher;
     }
 
-    public async Task RunAsync(
+    public Task RunAsync(
         RegionDto regionDto,
         string workDir,
         string outDir,
         CancellationToken ct = default,
         bool forceRebuild = false)
+        => RunCoreAsync(regionDto, workDir, outDir, null, ct, forceRebuild);
+
+    public Task RunAsync(
+        RegionDto regionDto,
+        string workDir,
+        string outDir,
+        RegionPublicationContext publication,
+        CancellationToken ct,
+        bool forceRebuild)
+        => RunCoreAsync(regionDto, workDir, outDir, publication, ct, forceRebuild);
+
+    private async Task RunCoreAsync(
+        RegionDto regionDto,
+        string workDir,
+        string outDir,
+        RegionPublicationContext? publication,
+        CancellationToken ct,
+        bool forceRebuild)
     {
         // regionDto.Id may be a globally unique, hierarchical region identifier (ADR
         // 0007), e.g. "geofabrik/europe/germany/berlin" - RegionIdentifier turns each
@@ -87,6 +110,33 @@ public sealed class RenderRegion : IRenderRegion
 
         var canonicalPath = Path.GetFullPath(Path.Combine(regionOutDir, PoiDatasetFileName));
         var canonicalVectorTilePath = Path.GetFullPath(Path.Combine(regionOutDir, VectorTileFileName));
+        var artifactPaths = new List<string> { canonicalPath };
+        if (_vectorTileOptions.Enabled)
+            artifactPaths.Add(canonicalVectorTilePath);
+
+        var checkpointPath = Path.Combine(regionOutDir, "manifest-pending.json");
+        string? sourceSha256 = null;
+        if (_metadataPublisher is not null && File.Exists(checkpointPath))
+        {
+            var pending = _rendererOptions.OverwriteDatabase || _rendererOptions.OverwritePbf
+                ? null
+                : await ReadManifestCheckpointAsync(checkpointPath, ct);
+            if (pending?.SourceSha256 is not null && artifactPaths.All(File.Exists))
+            {
+                sourceSha256 = await CalculateSourceSha256Async(pbfPath, ct);
+                if (pending.SourceSha256 == sourceSha256
+                    && pending.ReleaseVersion == await _datasetVersionCalculator.CalculateAsync(artifactPaths, ct))
+                {
+                    _logger.LogInformation("({Id}) Retrying manifest publication using existing artifacts.", regionDto.Id);
+                    await PublishReleaseAsync(regionDto.Id, artifactPaths, pending, checkpointPath, ct);
+                    return;
+                }
+            }
+
+            // Keep the checkpoint until it is superseded so a failed rebuild remains retryable.
+            recreateDatabase = true;
+        }
+
         var pbfChangedSinceOutput = File.Exists(canonicalPath)
             && File.GetLastWriteTimeUtc(pbfPath) > File.GetLastWriteTimeUtc(canonicalPath);
 
@@ -106,6 +156,9 @@ public sealed class RenderRegion : IRenderRegion
                 pbfChangedSinceOutput);
         }
 
+        var manifestRevision = publication is null && _metadataPublisher is not null
+            ? await _metadataPublisher.ReadManifestRevisionAsync(regionDto.Id, ct)
+            : publication?.ExpectedManifestRevision;
         var stagingPath = canonicalPath + StagingFileSuffix;
         var stagingVectorTilePath = GetVectorTileStagingPath(canonicalVectorTilePath);
 
@@ -126,6 +179,9 @@ public sealed class RenderRegion : IRenderRegion
                 stagingVectorTilePath);
             File.Delete(stagingVectorTilePath);
         }
+
+        if (_metadataPublisher is not null)
+            sourceSha256 ??= await CalculateSourceSha256Async(pbfPath, ct);
 
         _logger.LogInformation("({Id}) Cutting polygon...", regionDto.Id);
         var cutPbf = await _polygonCutter.CutAsync(pbfPath, regionDto.Poly, ct);
@@ -188,26 +244,89 @@ public sealed class RenderRegion : IRenderRegion
             PromoteVectorTileToCanonical(stagingVectorTilePath, canonicalVectorTilePath);
         }
 
-        var artifactPaths = new List<string> { canonicalPath };
-        if (_vectorTileOptions.Enabled)
-            artifactPaths.Add(canonicalVectorTilePath);
-
         var version = await _datasetVersionCalculator.CalculateAsync(artifactPaths, ct);
+        var release = new PendingManifest(version, manifestRevision, sourceSha256);
+        await PublishReleaseAsync(regionDto.Id, artifactPaths, release, checkpointPath, ct);
+    }
 
+    private async Task PublishReleaseAsync(
+        string regionId, IReadOnlyList<string> artifactPaths, PendingManifest release, string checkpointPath, CancellationToken ct)
+    {
+        if (_metadataPublisher is not null)
+            RegionMetadataPublisher.ValidateVersion(release.ReleaseVersion);
+        var manifestArtifacts = new List<RegionManifestArtifact>(artifactPaths.Count);
         long totalSizeBytes = 0;
         foreach (var artifactPath in artifactPaths)
         {
-            var metadata = await PublishAndVerifyArtifactAsync(regionDto.Id, version, artifactPath, ct);
+            var artifactVersion = _metadataPublisher is not null && artifactPaths.Count > 1
+                ? await _datasetVersionCalculator.CalculateAsync([artifactPath], ct)
+                : release.ReleaseVersion;
+            var (metadata, objectKey) = await PublishAndVerifyArtifactAsync(regionId, artifactVersion, artifactPath, ct);
             totalSizeBytes = checked(totalSizeBytes + metadata.FileSizeBytes);
+            if (_metadataPublisher is not null)
+            {
+                manifestArtifacts.Add(new RegionManifestArtifact(
+                    metadata.ArtifactType.ToString().ToLowerInvariant(), artifactVersion,
+                    objectKey ?? throw new InvalidOperationException("The artifact publisher did not return an object key."),
+                    metadata.FileSizeBytes, metadata.Sha256Checksum));
+            }
         }
 
         _logger.LogInformation(
             "({Id}) Release artifacts verified: version={Version}, artifactCount={ArtifactCount}, totalSizeBytes={TotalSizeBytes}.",
-            regionDto.Id, version, artifactPaths.Count, totalSizeBytes);
-        _logger.LogInformation("({Id}) Done.", regionDto.Id);
+            regionId, release.ReleaseVersion, artifactPaths.Count, totalSizeBytes);
+
+        if (_metadataPublisher is not null)
+        {
+            await WriteManifestCheckpointAsync(checkpointPath, release, ct);
+            var published = await _metadataPublisher.TryPublishManifestAsync(
+                regionId, release.ReleaseVersion, manifestArtifacts, release.ExpectedRevision, ct);
+            File.Delete(checkpointPath);
+            if (!published)
+                throw new IOException($"The current manifest for '{regionId}' changed during publication. Retry with a fresh render.");
+
+            _logger.LogInformation("({Id}) Current region manifest published: version={Version}.", regionId, release.ReleaseVersion);
+        }
+
+        _logger.LogInformation("({Id}) Done.", regionId);
     }
 
-    private async Task<DatasetArtifactMetadata> PublishAndVerifyArtifactAsync(
+    private async Task<PendingManifest?> ReadManifestCheckpointAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<PendingManifest>(await File.ReadAllBytesAsync(path, ct));
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Ignoring invalid manifest checkpoint at {Path}.", path);
+            return null;
+        }
+    }
+
+    private static async Task WriteManifestCheckpointAsync(string path, PendingManifest pending, CancellationToken ct)
+    {
+        var stagingPath = path + ".tmp";
+        try
+        {
+            await File.WriteAllBytesAsync(stagingPath, JsonSerializer.SerializeToUtf8Bytes(pending), ct);
+            File.Move(stagingPath, path, overwrite: true);
+        }
+        finally
+        {
+            File.Delete(stagingPath);
+        }
+    }
+
+    private static async Task<string> CalculateSourceSha256Async(string path, CancellationToken ct)
+    {
+        await using var stream = File.OpenRead(path);
+        return Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, ct));
+    }
+
+    private sealed record PendingManifest(string ReleaseVersion, string? ExpectedRevision, string? SourceSha256);
+
+    private async Task<(DatasetArtifactMetadata Metadata, string? ObjectKey)> PublishAndVerifyArtifactAsync(
         string regionId, string version, string artifactPath, CancellationToken ct)
     {
         // Metadata is generated from the canonical artifact - only after validation and
@@ -230,7 +349,7 @@ public sealed class RenderRegion : IRenderRegion
             artifactMetadata.CreatedUtc);
 
         var publishResult = await _datasetPublisher.PublishAsync(
-            new DatasetPublishRequest(regionId, version, artifactPath),
+            new DatasetPublishRequest(regionId, version, artifactPath, RequireImmutable: _metadataPublisher is not null),
             ct);
 
         _logger.LogInformation(
@@ -266,7 +385,7 @@ public sealed class RenderRegion : IRenderRegion
             regionId,
             publishResult.DestinationPath);
 
-        return artifactMetadata;
+        return (artifactMetadata, publishResult.ObjectKey);
     }
 
     /// <summary>

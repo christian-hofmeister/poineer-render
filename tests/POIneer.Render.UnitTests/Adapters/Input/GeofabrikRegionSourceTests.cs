@@ -65,7 +65,7 @@ public sealed class GeofabrikRegionSourceTests
     }
 
     [Fact]
-    public async Task GetRegionsAsync_FiltersRegionsWithoutPbfUrl()
+    public async Task GetRegionsAsync_PreservesCatalogEntriesWithoutPbfUrl()
     {
         // Arrange
         await using var tempDir = TestTemporaryDirectories.Create("geofabrik-region-source-filters-missing-pbf-url", false);
@@ -98,8 +98,7 @@ public sealed class GeofabrikRegionSourceTests
         var regions = await sut.GetRegionsAsync(regionsPath, CancellationToken.None);
 
         // Assert
-        regions.Should().ContainSingle();
-        regions[0].Id.Should().Be("berlin");
+        regions.Select(region => region.Id).Should().Equal("berlin", "empty-url", "whitespace-url");
     }
 
     [Fact]

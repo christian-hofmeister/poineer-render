@@ -72,18 +72,21 @@ public sealed class LocalDatasetPublisher : IDatasetPublisher
         // just make an already-long, hierarchical id even longer for no benefit.
         var leafRegionId = regionIdSegments[^1];
         var extension = Path.GetExtension(request.SourcePath);
+        var fileName = $"{leafRegionId}.{request.Version}{extension}";
+        var objectKey = $"{request.RegionId}/{fileName}";
         var destinationPath = Path.GetFullPath(
-            Path.Combine(destinationDir, $"{leafRegionId}.{request.Version}{extension}"));
+            Path.Combine(destinationDir, fileName));
 
         if (File.Exists(destinationPath))
         {
-            switch (_options.OverwritePolicy)
+            var policy = request.RequireImmutable ? DatasetPublishOverwritePolicy.SkipIfIdentical : _options.OverwritePolicy;
+            switch (policy)
             {
                 case DatasetPublishOverwritePolicy.Skip:
                     _logger.LogInformation(
                         "Publish target already exists at {DestinationPath}, skipping (overwrite policy: Skip).",
                         destinationPath);
-                    return new DatasetPublishResult(destinationPath, WasSkipped: true);
+                    return new DatasetPublishResult(destinationPath, WasSkipped: true, objectKey);
 
                 case DatasetPublishOverwritePolicy.SkipIfIdentical:
                     if (await FilesAreEqualAsync(request.SourcePath, destinationPath, cancellationToken))
@@ -91,9 +94,11 @@ public sealed class LocalDatasetPublisher : IDatasetPublisher
                         _logger.LogInformation(
                             "Publish target already exists at {DestinationPath} and matches the source artifact, skipping (overwrite policy: SkipIfIdentical).",
                             destinationPath);
-                        return new DatasetPublishResult(destinationPath, WasSkipped: true);
+                        return new DatasetPublishResult(destinationPath, WasSkipped: true, objectKey);
                     }
 
+                    if (request.RequireImmutable)
+                        throw new IOException($"Immutable dataset artifact at '{destinationPath}' has different bytes.");
                     throw new IOException(
                         $"Publish target already exists at {destinationPath}, but differs from the source artifact. Use overwrite policy Overwrite to replace it.");
 
@@ -116,7 +121,9 @@ public sealed class LocalDatasetPublisher : IDatasetPublisher
         // (cancellation, crash, disk full), the half-written bytes land in the ".tmp" file,
         // never at destinationPath - so a later run's existence check for the overwrite
         // policy above never mistakes a partial file for a real, previously published one.
-        var stagingDestinationPath = destinationPath + StagingFileSuffix;
+        var stagingDestinationPath = request.RequireImmutable
+            ? $"{destinationPath}.{Guid.NewGuid():N}{StagingFileSuffix}"
+            : destinationPath + StagingFileSuffix;
 
         try
         {
@@ -128,7 +135,7 @@ public sealed class LocalDatasetPublisher : IDatasetPublisher
                 await source.CopyToAsync(destination, cancellationToken);
             }
 
-            File.Move(stagingDestinationPath, destinationPath, overwrite: true);
+            File.Move(stagingDestinationPath, destinationPath, overwrite: !request.RequireImmutable);
         }
         catch
         {
@@ -148,7 +155,7 @@ public sealed class LocalDatasetPublisher : IDatasetPublisher
             request.Version,
             destinationPath);
 
-        return new DatasetPublishResult(destinationPath, WasSkipped: false);
+        return new DatasetPublishResult(destinationPath, WasSkipped: false, objectKey);
     }
 
     private void TryDeleteStagingFile(string stagingDestinationPath)

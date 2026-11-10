@@ -484,13 +484,14 @@ This project is intended as a learning and open-source project. The final licens
 
 POIneer.Render is the producer of the shared [region manifest contract](contracts/region-manifest/README.md).
 It defines the schema, region metadata exchange, discovery rules and reusable validation fixtures
-consumed by POIneer.Server. Manifest generation and publication are tracked separately in
-[issue #202](https://github.com/christian-hofmeister/poineer-render/issues/202).
+consumed by POIneer.Server. Set `MetadataPublisher:Target` to enable catalog and manifest
+publication after artifact verification. See the
+[configuration guide](docs/workflows/filesystem-artifact-publishing.md#region-metadata-publishing).
 
 Planned distribution uses Azure Blob Storage for `regions.json` and manifests,
 and Hetzner Object Storage for SQLite/PMTiles downloads. The metadata and artifact
-roots are independent and may also share a destination. Runtime implementation
-remains in #202/#203; see [ADR 0009](docs/decisions/0009-separate-metadata-artifact-storage-roots.md).
+roots are independent and may also share a destination. See
+[ADR 0009](docs/decisions/0009-separate-metadata-artifact-storage-roots.md).
 
 ## Related Documents
 

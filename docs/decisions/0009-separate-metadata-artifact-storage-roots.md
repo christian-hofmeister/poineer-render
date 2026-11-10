@@ -27,7 +27,9 @@ the cost assessment remains in #200.
 
 There is no cross-provider transaction. If artifact upload or verification fails,
 the current manifest stays unchanged. If metadata publication fails, preserve the
-previous release and retry with already verified immutable artifacts. Local cleanup
+previous release and retry with already verified immutable artifacts when the source
+PBF SHA-256 and local artifact version match the pending checkpoint. A checkpoint
+without a matching fingerprint triggers a fresh render. Local cleanup
 waits for successful manifest publication (#189). Retention reads the authoritative
 metadata and must not delete potentially referenced files if that source is unavailable
 (#190); cached releases and concurrent publication require protection as well.

@@ -12,6 +12,7 @@ using POIneer.Render.Application.Mapping;
 using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
 using POIneer.Render.Application.UseCases;
+using POIneer.Render.Domain.Models;
 using POIneer.Render.Infrastructure.Adapters.Osm;
 using POIneer.Render.Infrastructure.Azure;
 using POIneer.Render.Infrastructure.FileSystem;
@@ -141,7 +142,6 @@ internal class Program
         builder.Services.AddSingleton<LocalDatasetPublisher>();
         builder.Services.AddSingleton<AzureBlobDatasetPublisher>();
         builder.Services.AddSingleton<FilePublishedDatasetVerifier>();
-        builder.Services.AddSingleton<AzureBlobPublishedDatasetVerifier>();
         builder.Services.AddSingleton<IAzureBlobDatasetMetadataReader, AzureBlobDatasetMetadataReader>();
         builder.Services.AddSingleton<IAzureBlobDatasetPublishPlanner, AzureBlobDatasetPublishPlanner>();
         builder.Services.AddSingleton<IAzureBlobDatasetUploader, AzureBlobDatasetUploader>();
@@ -170,13 +170,24 @@ internal class Program
         });
         builder.Services.AddSingleton<IDatasetVersionCalculator, FileHashDatasetVersionCalculator>();
         builder.Services.AddSingleton<IDatasetArtifactMetadataFactory, FileDatasetArtifactMetadataFactory>();
+        var metadataOptions = builder.Configuration.GetSection(MetadataPublisherOptions.SectionName)
+            .Get<MetadataPublisherOptions>();
+        if (metadataOptions?.Target is not null)
+        {
+            builder.Services.AddSingleton(CreateMetadataStore(metadataOptions, builder.Environment.ContentRootPath));
+            builder.Services.AddSingleton<RegionMetadataPublisher>();
+        }
+
         builder.Services.AddSingleton<IPublishedDatasetVerifier>(sp =>
         {
             var options = sp.GetRequiredService<IOptions<PublisherOptions>>().Value;
             return options.Target switch
             {
                 DatasetPublisherTarget.Local => sp.GetRequiredService<FilePublishedDatasetVerifier>(),
-                DatasetPublisherTarget.AzureBlob => sp.GetRequiredService<AzureBlobPublishedDatasetVerifier>(),
+                DatasetPublisherTarget.AzureBlob => new AzureBlobPublishedDatasetVerifier(
+                    sp.GetRequiredService<IAzureBlobDatasetMetadataReader>(),
+                    sp.GetRequiredService<ILogger<AzureBlobPublishedDatasetVerifier>>(),
+                    metadataOptions?.Target is not null ? sp.GetRequiredService<BlobContainerClient>() : null),
                 _ => throw new InvalidOperationException($"Unrecognized publisher target: {options.Target}")
             };
         });
@@ -196,16 +207,40 @@ internal class Program
         );
     }
 
-    private static Uri ResolveBlobServiceEndpoint(AzureBlobPublisherOptions options)
+    private static IRegionMetadataStore CreateMetadataStore(MetadataPublisherOptions options, string contentRoot)
     {
-        if (!string.IsNullOrWhiteSpace(options.BlobEndpoint))
-            return new Uri(options.BlobEndpoint);
+        if (options.Target == DatasetPublisherTarget.Local)
+        {
+            if (string.IsNullOrWhiteSpace(options.DestinationDir))
+                throw new InvalidOperationException("MetadataPublisher:DestinationDir must be set for the Local target.");
+            return new FileRegionMetadataStore(ConfiguredPathResolver.Resolve(contentRoot, options.DestinationDir));
+        }
 
-        if (!string.IsNullOrWhiteSpace(options.AccountName))
-            return new Uri($"https://{options.AccountName}.blob.core.windows.net");
+        if (options.Target != DatasetPublisherTarget.AzureBlob)
+            throw new InvalidOperationException($"Unrecognized metadata publisher target: {options.Target}.");
+        if (string.IsNullOrWhiteSpace(options.ContainerName))
+            throw new InvalidOperationException("MetadataPublisher:ContainerName must be set for the AzureBlob target.");
+        if (!string.IsNullOrEmpty(options.Prefix))
+            RegionIdentifier.ValidateHierarchicalId(options.Prefix, nameof(options.Prefix));
+
+        var endpoint = ResolveBlobServiceEndpoint(options.BlobEndpoint, options.AccountName, MetadataPublisherOptions.SectionName);
+        var client = new BlobServiceClient(endpoint, new DefaultAzureCredential());
+        return new AzureBlobRegionMetadataStore(client.GetBlobContainerClient(options.ContainerName), options.Prefix);
+    }
+
+    private static Uri ResolveBlobServiceEndpoint(AzureBlobPublisherOptions options)
+        => ResolveBlobServiceEndpoint(options.BlobEndpoint, options.AccountName, AzureBlobPublisherOptions.SectionName);
+
+    private static Uri ResolveBlobServiceEndpoint(string? blobEndpoint, string? accountName, string section)
+    {
+        if (!string.IsNullOrWhiteSpace(blobEndpoint))
+            return new Uri(blobEndpoint);
+
+        if (!string.IsNullOrWhiteSpace(accountName))
+            return new Uri($"https://{accountName}.blob.core.windows.net");
 
         throw new InvalidOperationException(
-            "AzureBlobPublisher:AccountName or AzureBlobPublisher:BlobEndpoint must be set.");
+            $"{section}:AccountName or {section}:BlobEndpoint must be set.");
     }
 
     private static bool IsLocalPublisherTarget(IConfiguration configuration)

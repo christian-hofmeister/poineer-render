@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using Azure.Storage.Blobs;
 using Microsoft.Extensions.Logging;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Ports;
@@ -8,13 +10,16 @@ public sealed class AzureBlobPublishedDatasetVerifier : IPublishedDatasetVerifie
 {
     private readonly IAzureBlobDatasetMetadataReader _metadataReader;
     private readonly ILogger<AzureBlobPublishedDatasetVerifier> _logger;
+    private readonly BlobContainerClient? _contentContainer;
 
     public AzureBlobPublishedDatasetVerifier(
         IAzureBlobDatasetMetadataReader metadataReader,
-        ILogger<AzureBlobPublishedDatasetVerifier> logger)
+        ILogger<AzureBlobPublishedDatasetVerifier> logger,
+        BlobContainerClient? contentContainer = null)
     {
         _metadataReader = metadataReader;
         _logger = logger;
+        _contentContainer = contentContainer;
     }
 
     public async Task<DatasetVerificationResult> VerifyAsync(
@@ -47,6 +52,17 @@ public sealed class AzureBlobPublishedDatasetVerifier : IPublishedDatasetVerifie
         if (errors.Count > 0)
         {
             return Fail(expectedMetadata, destinationPath, errors.ToArray());
+        }
+
+        if (_contentContainer is not null)
+        {
+            var download = await _contentContainer.GetBlobClient(destinationPath)
+                .DownloadStreamingAsync(cancellationToken: cancellationToken);
+            await using var content = download.Value.Content;
+            var sha256 = Convert.ToHexStringLower(await SHA256.HashDataAsync(content, cancellationToken));
+            if (download.Value.Details.ContentLength != expectedMetadata.FileSizeBytes
+                || !string.Equals(sha256, expectedMetadata.Sha256Checksum, StringComparison.Ordinal))
+                return Fail(expectedMetadata, destinationPath, $"Blob bytes at '{destinationPath}' differ from the source artifact.");
         }
 
         _logger.LogInformation(

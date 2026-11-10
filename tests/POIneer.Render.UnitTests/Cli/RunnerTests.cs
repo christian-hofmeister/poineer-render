@@ -783,11 +783,44 @@ public sealed class RunnerTests
         completed.NextDueUtc.Should().Be(_clock.UtcNow.AddDays(7));
     }
 
+    [Fact]
+    public async Task RunAsync_PublishesCompleteCatalogBeforeRenderingOnlySelectedRegion()
+    {
+        await using var temp = TestTemporaryDirectories.Create("runner-publishes-catalog");
+        var options = CreateOptions(onlyRegionId: "berlin");
+        TestFiles.WriteAllText(Path.Combine(temp.DirectoryPath, options.RegionsJson), "[]");
+        var berlin = BerlinRegion();
+        var hamburg = new RegionDto("hamburg", "Hamburg", "https://example.com/hamburg.pbf", null);
+        var disabled = new RegionDto("disabled", "Disabled", "", null);
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new[] { berlin, hamburg, disabled });
+        var store = new FileRegionMetadataStore(Path.Combine(temp.DirectoryPath, "metadata"));
+        var metadataPublisher = new RegionMetadataPublisher(store, _clock);
+        var publication = new RegionPublicationContext(null);
+        _renderRegion.RunAsync(berlin, Arg.Any<string>(), Arg.Any<string>(), publication, Arg.Any<CancellationToken>(), true)
+            .Returns(async _ =>
+            {
+                var snapshot = await store.ReadAsync("regions.json", CancellationToken.None);
+                Assert.NotNull(snapshot);
+                using var json = System.Text.Json.JsonDocument.Parse(snapshot.Content);
+                Assert.Equal(new[] { "berlin", "disabled", "hamburg" },
+                    json.RootElement.EnumerateArray().Select(entry => entry.GetProperty("Id").GetString()));
+            });
+
+        var sut = CreateSut(temp.DirectoryPath, options, metadataPublisher: metadataPublisher);
+        (await sut.RunAsync(CancellationToken.None)).Should().Be(0);
+
+        await _renderRegion.Received(1).RunAsync(
+            berlin, Arg.Any<string>(), Arg.Any<string>(), publication, Arg.Any<CancellationToken>(), true);
+        await _renderRegion.DidNotReceive().RunAsync(
+            hamburg, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<RegionPublicationContext>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+    }
+
     private Runner CreateSut(
         string contentRoot,
         RendererOptions options,
         IRegionUpdateChecker? updateChecker = null,
-        IRegionSource? regionSource = null)
+        IRegionSource? regionSource = null,
+        RegionMetadataPublisher? metadataPublisher = null)
         => new(
             new FakeHostEnvironment
             {
@@ -802,7 +835,8 @@ public sealed class RunnerTests
             new RegionUpdateIntervalPolicy(Options.Create(options)),
             Options.Create(options),
             new RegionUpdateSchedule(_scheduleStore, new RegionUpdateIntervalPolicy(Options.Create(options)), _clock),
-            Options.Create(new VectorTileOptions()));
+            Options.Create(new VectorTileOptions()),
+            metadataPublisher);
 
     private static RendererOptions CreateOptions(
         string workDir = "work",
