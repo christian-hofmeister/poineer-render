@@ -2,6 +2,7 @@ namespace POIneer.Render.Adapters.Input;
 
 using System.Diagnostics;
 using Microsoft.Extensions.Hosting;
+using POIneer.Render.Application;
 using POIneer.Render.Infrastructure.Pathing;
 using POIneer.Render.Infrastructure.Process;
 using POIneer.Render.Ports;
@@ -23,7 +24,7 @@ public sealed class OsmiumPolygonCutter(
         if (!File.Exists(polyPath))
             throw new FileNotFoundException("Configured region polygon file was not found.", polyPath);
 
-        var output = Path.Combine(Path.GetDirectoryName(pbfPath)!, Path.GetFileNameWithoutExtension(pbfPath) + ".cut.osm.pbf");
+        var output = RenderFilePaths.GetCutPbfPath(pbfPath);
         var psi = new ProcessStartInfo
         {
             FileName = "osmium",

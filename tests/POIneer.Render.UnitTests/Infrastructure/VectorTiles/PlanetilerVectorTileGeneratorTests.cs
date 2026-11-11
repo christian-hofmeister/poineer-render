@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Options;
 using POIneer.Render.Infrastructure.Process;
 using POIneer.Render.Infrastructure.VectorTiles;
@@ -12,8 +13,10 @@ namespace POIneer.Render.UnitTests.Infrastructure.VectorTiles;
 
 public sealed class PlanetilerVectorTileGeneratorTests
 {
-    [Fact]
-    public async Task GenerateAsync_StartsPlanetiler_WithExpectedArguments()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GenerateAsync_StartsPlanetiler_WithExpectedArguments(bool cleanupEnabled)
     {
         // Arrange
         var processRunner = Substitute.For<IProcessRunner>();
@@ -50,7 +53,7 @@ public sealed class PlanetilerVectorTileGeneratorTests
                 MinZoom = 0,
                 MaxZoom = 14,
                 AdditionalArguments = ["--download=false"]
-            });
+            }, cleanupEnabled);
 
         using var cts = new CancellationTokenSource();
 
@@ -77,6 +80,11 @@ public sealed class PlanetilerVectorTileGeneratorTests
         Assert.Contains("--minzoom=0", capturedStartInfo.ArgumentList);
         Assert.Contains("--maxzoom=14", capturedStartInfo.ArgumentList);
         Assert.Contains("--download=false", capturedStartInfo.ArgumentList);
+        var scratchArgument = $"--tmpdir={Path.Combine(tempDir.DirectoryPath, "planetiler+scratch", "tmp")}";
+        if (cleanupEnabled)
+            Assert.Contains(scratchArgument, capturedStartInfo.ArgumentList);
+        else
+            Assert.DoesNotContain(scratchArgument, capturedStartInfo.ArgumentList);
         Assert.Equal(cts.Token, capturedCancellationToken);
     }
 
@@ -181,7 +189,8 @@ public sealed class PlanetilerVectorTileGeneratorTests
 
     private static PlanetilerVectorTileGenerator CreateSut(
         IProcessRunner processRunner,
-        VectorTileOptions? options = null)
+        VectorTileOptions? options = null,
+        bool cleanupEnabled = false)
         => new(
             processRunner,
             Options.Create(options ?? new VectorTileOptions
@@ -190,5 +199,7 @@ public sealed class PlanetilerVectorTileGeneratorTests
                 JavaExecutablePath = "java",
                 PlanetilerJarPath = "planetiler.jar"
             }),
+            Options.Create(new CleanupOptions { DeleteLocalFilesAfterVerifiedPublish = cleanupEnabled }),
+            Options.Create(new PublisherOptions { Target = DatasetPublisherTarget.AzureBlob }),
             NullLogger<PlanetilerVectorTileGenerator>.Instance);
 }

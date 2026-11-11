@@ -14,12 +14,6 @@ namespace POIneer.Render.Application.UseCases;
 
 public sealed class RenderRegion : IRenderRegion
 {
-    private const string StagingFileSuffix = ".tmp";
-    private const string PoiDatasetFileName = "poi.sqlite";
-    private const string VectorTileFileName = "map.pmtiles";
-
-    private static readonly string[] SqliteSidecarSuffixes = ["-wal", "-shm", "-journal"];
-
     private readonly ILogger<RenderRegion> _logger;
     private readonly IPolygonCutter _polygonCutter;
     private readonly IOsmReader _osmReader;
@@ -105,11 +99,11 @@ public sealed class RenderRegion : IRenderRegion
         if (!File.Exists(pbfPath))
             throw new FileNotFoundException($"PBF not found: {pbfPath}");
 
-        var regionOutDir = RegionIdentifier.CombinePath(outDir, regionDto.Id);
+        var regionOutDir = Path.GetFullPath(RegionIdentifier.CombinePath(outDir, regionDto.Id));
         Directory.CreateDirectory(regionOutDir);
 
-        var canonicalPath = Path.GetFullPath(Path.Combine(regionOutDir, PoiDatasetFileName));
-        var canonicalVectorTilePath = Path.GetFullPath(Path.Combine(regionOutDir, VectorTileFileName));
+        var canonicalPath = Path.Combine(regionOutDir, RenderFilePaths.PoiDataset);
+        var canonicalVectorTilePath = Path.Combine(regionOutDir, RenderFilePaths.VectorTiles);
         var artifactPaths = new List<string> { canonicalPath };
         if (_vectorTileOptions.Enabled)
             artifactPaths.Add(canonicalVectorTilePath);
@@ -159,8 +153,8 @@ public sealed class RenderRegion : IRenderRegion
         var manifestRevision = publication is null && _metadataPublisher is not null
             ? await _metadataPublisher.ReadManifestRevisionAsync(regionDto.Id, ct)
             : publication?.ExpectedManifestRevision;
-        var stagingPath = canonicalPath + StagingFileSuffix;
-        var stagingVectorTilePath = GetVectorTileStagingPath(canonicalVectorTilePath);
+        var stagingPath = Path.Combine(regionOutDir, RenderFilePaths.StagingPoiDataset);
+        var stagingVectorTilePath = Path.Combine(regionOutDir, RenderFilePaths.StagingVectorTiles);
 
         if (File.Exists(stagingPath))
         {
@@ -399,7 +393,7 @@ public sealed class RenderRegion : IRenderRegion
     /// </summary>
     private static void PromoteStagingToCanonical(string stagingPath, string canonicalPath)
     {
-        foreach (var suffix in SqliteSidecarSuffixes)
+        foreach (var suffix in RenderFilePaths.SqliteSidecarSuffixes)
         {
             var canonicalSidecarPath = canonicalPath + suffix;
             if (File.Exists(canonicalSidecarPath))
@@ -420,18 +414,6 @@ public sealed class RenderRegion : IRenderRegion
     private static void PromoteVectorTileToCanonical(string stagingPath, string canonicalPath)
         => File.Move(stagingPath, canonicalPath, overwrite: true);
 
-    private static string GetVectorTileStagingPath(string canonicalPath)
-    {
-        var directory = Path.GetDirectoryName(canonicalPath);
-        var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(canonicalPath);
-        var extension = Path.GetExtension(canonicalPath);
-        var stagingFileName = $"{fileNameWithoutExtension}{StagingFileSuffix}{extension}";
-
-        return string.IsNullOrWhiteSpace(directory)
-            ? stagingFileName
-            : Path.Combine(directory, stagingFileName);
-    }
-
     /// <summary>
     /// Moves an invalid dataset out of the staging location into a per-region quarantine
     /// folder so it doesn't linger next to the canonical output, while still being
@@ -447,7 +429,7 @@ public sealed class RenderRegion : IRenderRegion
 
         File.Move(invalidDatasetPath, quarantinePath, overwrite: true);
 
-        foreach (var suffix in SqliteSidecarSuffixes)
+        foreach (var suffix in RenderFilePaths.SqliteSidecarSuffixes)
         {
             var sidecarPath = invalidDatasetPath + suffix;
             if (File.Exists(sidecarPath))
@@ -468,7 +450,7 @@ public sealed class RenderRegion : IRenderRegion
     {
         File.Delete(sqliteFilePath);
 
-        foreach (var suffix in SqliteSidecarSuffixes)
+        foreach (var suffix in RenderFilePaths.SqliteSidecarSuffixes)
         {
             var sidecarPath = sqliteFilePath + suffix;
             if (File.Exists(sidecarPath))
@@ -479,7 +461,7 @@ public sealed class RenderRegion : IRenderRegion
     }
 
     private static string GetPbfPath(string workDir, string regionId) =>
-        Path.Combine(RegionIdentifier.CombinePath(workDir, regionId), "osm.pbf");
+        Path.Combine(RegionIdentifier.CombinePath(workDir, regionId), RenderFilePaths.SourcePbf);
 
     private async IAsyncEnumerable<Poi> MapRawPoisAsync(IAsyncEnumerable<RawPoi> rawPois, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {

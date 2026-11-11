@@ -1,11 +1,13 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using POIneer.Render.Application;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
 using POIneer.Render.Application.UseCases;
 using POIneer.Render.Domain.Models;
+using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Pathing;
 using POIneer.Render.Ports;
 
@@ -23,6 +25,7 @@ public sealed class Runner
     private readonly VectorTileOptions _vectorTileOptions;
     private readonly PublisherOptions _publisherOptions;
     private readonly IDiskSpaceReader _diskSpaceReader;
+    private readonly LocalRenderFileCleanup _localRenderFileCleanup;
     private readonly RegionMetadataPublisher? _metadataPublisher;
 
     private readonly IFileDownloader _fileDownloader;
@@ -41,6 +44,7 @@ public sealed class Runner
         IOptions<VectorTileOptions> vectorTileOptions,
         IOptions<PublisherOptions> publisherOptions,
         IDiskSpaceReader diskSpaceReader,
+        LocalRenderFileCleanup localRenderFileCleanup,
         RegionMetadataPublisher? metadataPublisher = null)
     {
         _hostEnvironment = hostEnvironment;
@@ -56,6 +60,7 @@ public sealed class Runner
         _vectorTileOptions = vectorTileOptions.Value;
         _publisherOptions = publisherOptions.Value;
         _diskSpaceReader = diskSpaceReader;
+        _localRenderFileCleanup = localRenderFileCleanup;
         _metadataPublisher = metadataPublisher;
     }
 
@@ -137,7 +142,7 @@ public sealed class Runner
                     _logger.LogInformation("({Region}) Checking region (next due: {NextDueUtc}, processing pending: {Pending}, overwrite: {Overwrite}).",
                         r.Id, scheduleState?.NextDueUtc, scheduleState?.ProcessingPending ?? false, overwriteRequested);
                     Directory.CreateDirectory(regionWorkDir);
-                    var pbfPath = Path.Combine(regionWorkDir, "osm.pbf");
+                    var pbfPath = Path.Combine(regionWorkDir, RenderFilePaths.SourcePbf);
                     var downloadStatePath = Path.Combine(regionWorkDir, "download-state.json");
                     var renderStatePath = Path.Combine(regionWorkDir, "render-state.json");
                     if (overwriteRequested)
@@ -154,10 +159,10 @@ public sealed class Runner
                     var regionOutDir = RegionIdentifier.CombinePath(outDir, r.Id);
                     var processingRequired = overwriteRequested || scheduleState is null || scheduleState.ProcessingPending
                         || updateCheck.ShouldRedownloadPbf || !File.Exists(pbfPath)
-                        || !File.Exists(Path.Combine(regionOutDir, "poi.sqlite"))
+                        || !File.Exists(Path.Combine(regionOutDir, RenderFilePaths.PoiDataset))
                         // If the PBF is newer than the existing output, reprocess
-                        || File.GetLastWriteTimeUtc(pbfPath) > File.GetLastWriteTimeUtc(Path.Combine(regionOutDir, "poi.sqlite"))
-                        || (_vectorTileOptions.Enabled && !File.Exists(Path.Combine(regionOutDir, "map.pmtiles")))
+                        || File.GetLastWriteTimeUtc(pbfPath) > File.GetLastWriteTimeUtc(Path.Combine(regionOutDir, RenderFilePaths.PoiDataset))
+                        || (_vectorTileOptions.Enabled && !File.Exists(Path.Combine(regionOutDir, RenderFilePaths.VectorTiles)))
                         || (publication is not null && publication.ExpectedManifestRevision is null);
                     if (!processingRequired)
                     {
@@ -218,6 +223,7 @@ public sealed class Runner
                         await _renderRegionUseCase.RunAsync(r, workDir, outDir, publication, ct, forceRebuild: true);
                     await _regionUpdateChecker.MarkProcessedAsync(r, renderStatePath, updateCheck.RemoteMetadata, ct);
                     var completed = await _updateSchedule.MarkSuccessfulAsync(r, schedulePath, ct);
+                    _localRenderFileCleanup.Run(r, workDir, outDir, _vectorTileOptions.Enabled);
                     _logger.LogInformation("({Region}) Processing successful. Next update due at {NextDueUtc}.", r.Id, completed.NextDueUtc);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -253,8 +259,9 @@ public sealed class Runner
 
         if (_vectorTileOptions.Enabled)
         {
-            // Planetiler's default scratch directory is relative to its process working directory.
-            paths.Add(Path.GetFullPath(Path.Combine("data", "tmp")));
+            paths.Add(_localRenderFileCleanup.Enabled
+                ? RenderFilePaths.GetPlanetilerTempPath(regionWorkDir)
+                : Path.GetFullPath(Path.Combine("data", "tmp")));
         }
 
         foreach (var path in paths)
