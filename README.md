@@ -256,6 +256,27 @@ Set `POINEER_RENDER__RENDERER__MINIMUMFREEDISKSPACEBYTES` to adjust the threshol
 The threshold is a minimum, and actual disk usage depends on the region and enabled artifacts.
 Custom Planetiler paths supplied through extra arguments are outside this check.
 
+### Local cleanup after verified publishing
+
+Set `Cleanup:DeleteLocalFilesAfterVerifiedPublish` to `true` to reclaim local disk space
+after a successful `AzureBlob` release. The setting defaults to `false` and can also be set
+with `POINEER_RENDER__CLEANUP__DELETELOCALFILESAFTERVERIFIEDPUBLISH=true`.
+
+Cleanup runs under the renderer lock after the renderer streams back all published artifacts to
+verify their SHA-256, publishes the current manifest when enabled, and saves the successful render
+and schedule state.
+It removes the region's PBF, polygon extract, SQLite files, and generated PMTiles files.
+With cleanup enabled, Planetiler uses a reserved `planetiler+scratch` directory in the region's
+work directory for its scratch data. The renderer supplies `--tmpdir` for this directory and
+removes it after success. Shared Planetiler source downloads and paths configured separately for
+other tool outputs are outside the cleanup scope.
+
+Render failures leave local files available for retry or diagnosis. Cleanup errors are logged
+as warnings and the already verified release remains successful. Render state, schedule state,
+metadata, and quarantined files are preserved. Local publishing keeps its local files.
+Until checksum-based change detection (#188) is available, a later scheduled run can download
+the same PBF again because the local PBF was removed.
+
 Region ids in `Renderer:RegionsJson` are globally unique, hierarchical technical
 identifiers such as `geofabrik/europe/germany/berlin` - see
 [ADR 0007](docs/decisions/0007-hierarchical-region-identifiers.md) for the naming

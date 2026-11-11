@@ -873,13 +873,97 @@ public sealed class RunnerTests
             hamburg, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<RegionPublicationContext>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
     }
 
+    [Theory]
+    [InlineData(true, DatasetPublisherTarget.AzureBlob, null, true)]
+    [InlineData(false, DatasetPublisherTarget.AzureBlob, null, false)]
+    [InlineData(true, DatasetPublisherTarget.Local, null, false)]
+    [InlineData(true, DatasetPublisherTarget.AzureBlob, "Verification failed", false)]
+    [InlineData(true, DatasetPublisherTarget.AzureBlob, "Manifest publication failed", false)]
+    public async Task RunAsync_CleansOnlyRegionFilesAfterSuccessfulRemotePublication(
+        bool enabled, DatasetPublisherTarget target, string? publishError, bool expectDeletion)
+    {
+        await using var temp = TestTemporaryDirectories.Create("runner-cleanup-after-publish");
+        var options = CreateOptions();
+        var region = BerlinRegion() with { Id = "geofabrik/berlin" };
+        var workDir = Path.Combine(temp.DirectoryPath, options.WorkDir);
+        var regionWorkDir = Path.Combine(workDir, "geofabrik", "berlin");
+        var regionOutDir = Path.Combine(temp.DirectoryPath, options.OutDir, "geofabrik", "berlin");
+        var renderFiles = new[]
+        {
+            Path.Combine(regionWorkDir, "osm.pbf"),
+            Path.Combine(regionWorkDir, "osm.cut.osm.pbf"),
+            Path.Combine(regionOutDir, "poi.sqlite"),
+            Path.Combine(regionOutDir, "poi.sqlite-wal"),
+            Path.Combine(regionOutDir, "poi.sqlite.tmp-journal"),
+            Path.Combine(regionOutDir, "map.pmtiles"),
+            Path.Combine(regionOutDir, "map.tmp.pmtiles.layerstats.tsv.gz"),
+            Path.Combine(regionWorkDir, "planetiler+scratch", "tmp", "feature.db", "chunk"),
+            Path.Combine(regionWorkDir, "planetiler+scratch", "tile_weights.tsv.gz")
+        };
+        var preservedFiles = new[]
+        {
+            Path.Combine(regionWorkDir, "download-state.json"),
+            Path.Combine(regionWorkDir, "render-state.json"),
+            Path.Combine(regionOutDir, "manifest.json"),
+            Path.Combine(regionOutDir, "_failed", "poi.sqlite"),
+            Path.Combine(workDir, "geofabrik", "hamburg", "osm.pbf")
+        };
+        foreach (var file in renderFiles.Concat(preservedFiles))
+            TestFiles.WriteAllText(file, "fixture");
+
+        TestFiles.WriteAllText(Path.Combine(temp.DirectoryPath, options.RegionsJson), "[]");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new[] { region });
+        var metadataPublisher = new RegionMetadataPublisher(new FileRegionMetadataStore(regionOutDir), _clock);
+        _renderRegion.RunAsync(region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<RegionPublicationContext>(),
+                Arg.Any<CancellationToken>(), true)
+            .Returns(_ => publishError is null ? Task.CompletedTask : Task.FromException(new IOException(publishError)));
+        var sut = CreateSut(temp.DirectoryPath, options, metadataPublisher: metadataPublisher,
+            publisherOptions: new PublisherOptions { Target = target },
+            cleanupOptions: new CleanupOptions { DeleteLocalFilesAfterVerifiedPublish = enabled }, vectorTilesEnabled: true);
+
+        var exitCode = await sut.RunAsync(CancellationToken.None);
+
+        exitCode.Should().Be(publishError is null ? 0 : 1);
+        renderFiles.Should().OnlyContain(path => File.Exists(path) == !expectDeletion);
+        preservedFiles.Should().OnlyContain(path => File.Exists(path));
+        var schedule = await _scheduleStore.ReadAsync(Path.Combine(regionWorkDir, "schedule-state.json"));
+        schedule!.ProcessingPending.Should().Be(publishError is not null);
+    }
+
+    [Fact]
+    public async Task RunAsync_KeepsSuccessfulSchedule_WhenOneCleanupPathCannotBeDeleted()
+    {
+        await using var temp = TestTemporaryDirectories.Create("runner-cleanup-error");
+        var options = CreateOptions();
+        var region = BerlinRegion();
+        var regionWorkDir = Path.Combine(temp.DirectoryPath, options.WorkDir, region.Id);
+        var sourcePath = Path.Combine(regionWorkDir, "osm.pbf");
+        var blockedPath = Path.Combine(temp.DirectoryPath, options.OutDir, region.Id, "poi.sqlite");
+        TestFiles.WriteAllText(sourcePath, "fixture");
+        TestFiles.WriteAllText(Path.Combine(blockedPath, "keep.txt"), "fixture");
+        TestFiles.WriteAllText(Path.Combine(temp.DirectoryPath, options.RegionsJson), "[]");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new[] { region });
+        var sut = CreateSut(temp.DirectoryPath, options,
+            publisherOptions: new PublisherOptions { Target = DatasetPublisherTarget.AzureBlob },
+            cleanupOptions: new CleanupOptions { DeleteLocalFilesAfterVerifiedPublish = true });
+
+        (await sut.RunAsync(CancellationToken.None)).Should().Be(0);
+
+        File.Exists(sourcePath).Should().BeFalse();
+        File.Exists(Path.Combine(blockedPath, "keep.txt")).Should().BeTrue();
+        var schedule = await _scheduleStore.ReadAsync(Path.Combine(regionWorkDir, "schedule-state.json"));
+        schedule!.ProcessingPending.Should().BeFalse();
+    }
+
     private Runner CreateSut(
         string contentRoot,
         RendererOptions options,
         IRegionUpdateChecker? updateChecker = null,
         IRegionSource? regionSource = null,
         RegionMetadataPublisher? metadataPublisher = null,
-        PublisherOptions? publisherOptions = null)
+        PublisherOptions? publisherOptions = null,
+        CleanupOptions? cleanupOptions = null,
+        bool vectorTilesEnabled = false)
         => new(
             new FakeHostEnvironment
             {
@@ -894,9 +978,11 @@ public sealed class RunnerTests
             new RegionUpdateIntervalPolicy(Options.Create(options)),
             Options.Create(options),
             new RegionUpdateSchedule(_scheduleStore, new RegionUpdateIntervalPolicy(Options.Create(options)), _clock),
-            Options.Create(new VectorTileOptions()),
+            Options.Create(new VectorTileOptions { Enabled = vectorTilesEnabled }),
             Options.Create(publisherOptions ?? new PublisherOptions()),
             _diskSpaceReader,
+            new LocalRenderFileCleanup(Options.Create(cleanupOptions ?? new CleanupOptions()),
+                Options.Create(publisherOptions ?? new PublisherOptions()), NullLogger<LocalRenderFileCleanup>.Instance),
             metadataPublisher);
 
     private static RendererOptions CreateOptions(

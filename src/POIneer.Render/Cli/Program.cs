@@ -125,6 +125,8 @@ internal class Program
         builder.Logging.SetMinimumLevel(LogLevel.Debug);
         builder.Services.Configure<TempOptions>(
             builder.Configuration.GetSection("Temp"));
+        builder.Services.Configure<CleanupOptions>(builder.Configuration.GetSection(CleanupOptions.SectionName));
+        builder.Services.AddSingleton<LocalRenderFileCleanup>();
         builder.Services.AddSingleton<ITemporaryDirectoryFactory, TemporaryDirectoryFactory>();
         builder.Services.AddSingleton<IRegionSource, GeofabrikRegionSource>();
         builder.Services.AddSingleton<RegionUpdateIntervalPolicy>();
@@ -189,7 +191,10 @@ internal class Program
                 DatasetPublisherTarget.AzureBlob => new AzureBlobPublishedDatasetVerifier(
                     sp.GetRequiredService<IAzureBlobDatasetMetadataReader>(),
                     sp.GetRequiredService<ILogger<AzureBlobPublishedDatasetVerifier>>(),
-                    metadataOptions?.Target is not null ? sp.GetRequiredService<BlobContainerClient>() : null),
+                    metadataOptions?.Target is not null
+                    || sp.GetRequiredService<IOptions<CleanupOptions>>().Value.IsEnabledFor(options.Target)
+                        ? sp.GetRequiredService<BlobContainerClient>()
+                        : null),
                 _ => throw new InvalidOperationException($"Unrecognized publisher target: {options.Target}")
             };
         });
