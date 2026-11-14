@@ -6,10 +6,11 @@ SQLite database, and produces a versioned dataset artifact. Storage is a publish
 it keeps validated artifacts available for downstream services and apps.
 
 This separation is intentional. POIneer does not require every workload to run in Azure. The
-existing VPS can provide predictable fixed-cost rendering capacity, while Azure Blob Storage
-provides scalable, independently managed dataset storage.
+existing VPS can provide rendering capacity, while the planned distribution uses
+Azure Blob Storage for metadata and Hetzner Object Storage for large downloads.
+The two storage roots are independent and may also share a destination.
 
-## Architecture Overview
+## Existing Publishing Options
 
 ```mermaid
 flowchart TD
@@ -53,7 +54,32 @@ filesystem or Azure Blob Storage:
 This is enough for the MVP and keeps rendering independent from any mandatory cloud
 dependency.
 
+## Producer/consumer contract
+
+The [region manifest contract](../../contracts/region-manifest/README.md) is the shared
+specification for POIneer.Render publication and POIneer.Server catalog consumption.
+Use its schemas and fixtures for both integrations. The renderer can publish metadata
+to a local directory or Azure Blob Storage independently of its artifact target.
+See [region metadata publishing](../workflows/filesystem-artifact-publishing.md#region-metadata-publishing).
+
 ## Planned Architecture
+
+The planned deployment pairs Azure metadata storage with Hetzner artifact storage.
+
+```mermaid
+flowchart TD
+    Renderer[POIneer.Render] -->|Upload and verify SQLite / PMTiles| Hetzner[Hetzner artifact storage]
+    Renderer -->|Publish metadata; current manifest last| Azure[Azure metadata storage]
+    Azure -->|regions.json and manifests| Server[POIneer.Server]
+    Server -->|Catalog and download URLs / redirects| Mobile[Mobile app]
+    Hetzner -->|Direct artifact downloads| Mobile
+```
+
+Metadata discovery uses the metadata root; artifact `objectKey` resolution uses
+the artifact root. Upload and verify every required file before atomically updating
+the current manifest. A metadata failure preserves the previous advertised release;
+retry using already verified files. There is no transaction across the two stores.
+See [ADR 0009](../decisions/0009-separate-metadata-artifact-storage-roots.md).
 
 The planned architecture keeps the same boundaries while adding cloud-backed storage and,
 optionally, cloud-backed compute:
@@ -63,8 +89,8 @@ optionally, cloud-backed compute:
   `poineerstoragedev`, and container `regions`.
 - Azure compute can become an additional renderer execution environment if future workload,
   scaling, or operational requirements justify it.
-- POIneer.Server can read dataset metadata and dataset artifacts from the selected publishing
-  target.
+- POIneer.Server reads regions and manifests from Azure metadata storage and resolves
+  direct downloads from the separately configured Hetzner artifact storage.
 - POIneer.Mobile can receive dataset availability through POIneer.Server rather than knowing
   how datasets were rendered.
 

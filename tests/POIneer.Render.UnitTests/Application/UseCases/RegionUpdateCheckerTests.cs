@@ -1,4 +1,5 @@
 using FluentAssertions;
+using NSubstitute;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Ports;
 using POIneer.Render.Application.UseCases;
@@ -19,15 +20,15 @@ public sealed class RegionUpdateCheckerTests
     {
         // Arrange
         var metadata = new RegionUpdateMetadata("\"abc\"", DateTimeOffset.Parse("2026-01-01T00:00:00Z"), 42);
-        var stateStore = new InMemoryRegionRenderStateStore();
-        var sut = new RegionUpdateChecker(new StubRemotePbfMetadataReader(metadata), stateStore);
+        var stateStore = new InMemoryRegionDownloadStateStore();
+        var sut = new RegionUpdateChecker(new StubRemotePbfMetadataReader(metadata), Substitute.For<IRegionRenderStateStore>(), stateStore);
 
         // Act
         var result = await sut.CheckAsync(Berlin, "state.json");
 
         // Assert
         result.ShouldRedownloadPbf.Should().BeTrue();
-        result.Reason.Should().Be("No previous render state exists for this region.");
+        result.Reason.Should().Be("No previous download state exists for this region.");
     }
 
     [Fact]
@@ -36,9 +37,9 @@ public sealed class RegionUpdateCheckerTests
         // Arrange
         var remoteMetadata = new RegionUpdateMetadata("\"abc\"", DateTimeOffset.Parse("2026-01-02T00:00:00Z"), 128);
         var storedMetadata = new RegionUpdateMetadata("\"abc\"", DateTimeOffset.Parse("2026-01-01T00:00:00Z"), 42);
-        var stateStore = new InMemoryRegionRenderStateStore(
-            new RegionRenderState(Berlin.Id, Berlin.PbfUrl, storedMetadata, DateTimeOffset.UtcNow));
-        var sut = new RegionUpdateChecker(new StubRemotePbfMetadataReader(remoteMetadata), stateStore);
+        var stateStore = new InMemoryRegionDownloadStateStore(
+            new RegionDownloadState(Berlin.Id, Berlin.PbfUrl, storedMetadata, DateTimeOffset.UtcNow));
+        var sut = new RegionUpdateChecker(new StubRemotePbfMetadataReader(remoteMetadata), Substitute.For<IRegionRenderStateStore>(), stateStore);
 
         // Act
         var result = await sut.CheckAsync(Berlin, "state.json");
@@ -54,9 +55,9 @@ public sealed class RegionUpdateCheckerTests
         // Arrange
         var remoteMetadata = new RegionUpdateMetadata("\"new\"", DateTimeOffset.Parse("2026-01-01T00:00:00Z"), 42);
         var storedMetadata = new RegionUpdateMetadata("\"old\"", DateTimeOffset.Parse("2026-01-01T00:00:00Z"), 42);
-        var stateStore = new InMemoryRegionRenderStateStore(
-            new RegionRenderState(Berlin.Id, Berlin.PbfUrl, storedMetadata, DateTimeOffset.UtcNow));
-        var sut = new RegionUpdateChecker(new StubRemotePbfMetadataReader(remoteMetadata), stateStore);
+        var stateStore = new InMemoryRegionDownloadStateStore(
+            new RegionDownloadState(Berlin.Id, Berlin.PbfUrl, storedMetadata, DateTimeOffset.UtcNow));
+        var sut = new RegionUpdateChecker(new StubRemotePbfMetadataReader(remoteMetadata), Substitute.For<IRegionRenderStateStore>(), stateStore);
 
         // Act
         var result = await sut.CheckAsync(Berlin, "state.json");
@@ -73,9 +74,9 @@ public sealed class RegionUpdateCheckerTests
         var lastModified = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
         var remoteMetadata = new RegionUpdateMetadata(null, lastModified, 128);
         var storedMetadata = new RegionUpdateMetadata(null, lastModified, 42);
-        var stateStore = new InMemoryRegionRenderStateStore(
-            new RegionRenderState(Berlin.Id, Berlin.PbfUrl, storedMetadata, DateTimeOffset.UtcNow));
-        var sut = new RegionUpdateChecker(new StubRemotePbfMetadataReader(remoteMetadata), stateStore);
+        var stateStore = new InMemoryRegionDownloadStateStore(
+            new RegionDownloadState(Berlin.Id, Berlin.PbfUrl, storedMetadata, DateTimeOffset.UtcNow));
+        var sut = new RegionUpdateChecker(new StubRemotePbfMetadataReader(remoteMetadata), Substitute.For<IRegionRenderStateStore>(), stateStore);
 
         // Act
         var result = await sut.CheckAsync(Berlin, "state.json");
@@ -90,9 +91,9 @@ public sealed class RegionUpdateCheckerTests
         // Arrange
         var remoteMetadata = new RegionUpdateMetadata(null, null, 128);
         var storedMetadata = new RegionUpdateMetadata(null, null, 128);
-        var stateStore = new InMemoryRegionRenderStateStore(
-            new RegionRenderState(Berlin.Id, Berlin.PbfUrl, storedMetadata, DateTimeOffset.UtcNow));
-        var sut = new RegionUpdateChecker(new StubRemotePbfMetadataReader(remoteMetadata), stateStore);
+        var stateStore = new InMemoryRegionDownloadStateStore(
+            new RegionDownloadState(Berlin.Id, Berlin.PbfUrl, storedMetadata, DateTimeOffset.UtcNow));
+        var sut = new RegionUpdateChecker(new StubRemotePbfMetadataReader(remoteMetadata), Substitute.For<IRegionRenderStateStore>(), stateStore);
 
         // Act
         var result = await sut.CheckAsync(Berlin, "state.json");
@@ -103,22 +104,39 @@ public sealed class RegionUpdateCheckerTests
     }
 
     [Fact]
-    public async Task MarkProcessedAsync_WritesCurrentMetadataToState()
+    public async Task MarkDownloadedAsync_WritesCurrentMetadataToState()
     {
         // Arrange
         var metadata = new RegionUpdateMetadata("\"abc\"", DateTimeOffset.Parse("2026-01-01T00:00:00Z"), 42);
-        var stateStore = new InMemoryRegionRenderStateStore();
-        var sut = new RegionUpdateChecker(new StubRemotePbfMetadataReader(metadata), stateStore);
+        var stateStore = new InMemoryRegionDownloadStateStore();
+        var sut = new RegionUpdateChecker(new StubRemotePbfMetadataReader(metadata), Substitute.For<IRegionRenderStateStore>(), stateStore);
 
         // Act
-        await sut.MarkProcessedAsync(Berlin, "state.json", metadata);
+        await sut.MarkDownloadedAsync(Berlin, "state.json", metadata);
 
         // Assert
         stateStore.WrittenState.Should().NotBeNull();
         stateStore.WrittenState!.RegionId.Should().Be(Berlin.Id);
         stateStore.WrittenState.PbfUrl.Should().Be(Berlin.PbfUrl);
-        stateStore.WrittenState.LastProcessedMetadata.Should().Be(metadata);
+        stateStore.WrittenState.DownloadedMetadata.Should().Be(metadata);
         stateStore.WrittenPath.Should().Be("state.json");
+    }
+
+    [Fact]
+    public async Task MarkProcessedAsync_WritesRenderStateWithoutWritingDownloadState()
+    {
+        var metadata = new RegionUpdateMetadata("etag", null, 42);
+        var renderStore = Substitute.For<IRegionRenderStateStore>();
+        var downloadStore = Substitute.For<IRegionDownloadStateStore>();
+        var sut = new RegionUpdateChecker(new StubRemotePbfMetadataReader(metadata), renderStore, downloadStore);
+
+        await sut.MarkProcessedAsync(Berlin, "render-state.json", metadata);
+
+        await renderStore.Received(1).WriteAsync(
+            "render-state.json",
+            Arg.Is<RegionRenderState>(state => state.LastProcessedMetadata == metadata && state.RegionId == Berlin.Id),
+            Arg.Any<CancellationToken>());
+        await downloadStore.DidNotReceiveWithAnyArgs().WriteAsync(default!, default!, default);
     }
 
     private sealed class StubRemotePbfMetadataReader : IRemotePbfMetadataReader
@@ -134,24 +152,27 @@ public sealed class RegionUpdateCheckerTests
             => Task.FromResult(_metadata);
     }
 
-    private sealed class InMemoryRegionRenderStateStore : IRegionRenderStateStore
+    private sealed class InMemoryRegionDownloadStateStore : IRegionDownloadStateStore
     {
-        private readonly RegionRenderState? _state;
+        private readonly RegionDownloadState? _state;
 
-        public InMemoryRegionRenderStateStore(RegionRenderState? state = null)
+        public InMemoryRegionDownloadStateStore(RegionDownloadState? state = null)
             => _state = state;
 
         public string? WrittenPath { get; private set; }
-        public RegionRenderState? WrittenState { get; private set; }
+        public RegionDownloadState? WrittenState { get; private set; }
 
-        public Task<RegionRenderState?> ReadAsync(
+        public Task<RegionDownloadState?> ReadAsync(
             string statePath,
             CancellationToken ct = default)
             => Task.FromResult(_state);
 
+        public Task DeleteAsync(string statePath, CancellationToken ct = default)
+            => Task.CompletedTask;
+
         public Task WriteAsync(
             string statePath,
-            RegionRenderState state,
+            RegionDownloadState state,
             CancellationToken ct = default)
         {
             WrittenPath = statePath;

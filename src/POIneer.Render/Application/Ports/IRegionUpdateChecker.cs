@@ -9,6 +9,16 @@ public interface IRegionUpdateChecker
         string statePath,
         CancellationToken ct = default);
 
+    Task InvalidateDownloadAsync(string statePath, CancellationToken ct = default);
+
+    Task<bool> MatchesProcessedChecksumAsync(RegionDto region, string statePath, string checksum, CancellationToken ct = default);
+
+    Task MarkDownloadedAsync(
+        RegionDto region,
+        string statePath,
+        RegionUpdateMetadata metadata,
+        CancellationToken ct = default);
+
     Task MarkProcessedAsync(
         RegionDto region,
         string statePath,

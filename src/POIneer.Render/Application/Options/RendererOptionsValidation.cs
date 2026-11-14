@@ -4,6 +4,7 @@ public static class RendererOptionsValidation
 {
     public const string RequiredPathsMessage = "WorkDir, OutDir, and RegionsJson must be set";
     public const string DownloadTimeoutMessage = "DownloadTimeoutSeconds must be greater than 0";
+    public const string UpdateIntervalMessage = "DefaultUpdateIntervalDays must be greater than 0";
 
     public static bool HasRequiredPaths(RendererOptions options)
         => !string.IsNullOrWhiteSpace(options.WorkDir)
@@ -12,4 +13,7 @@ public static class RendererOptionsValidation
 
     public static bool HasValidDownloadTimeout(RendererOptions options)
         => options.DownloadTimeoutSeconds > 0;
+
+    public static bool HasValidUpdateInterval(RendererOptions options)
+        => options.DefaultUpdateIntervalDays > 0;
 }

@@ -183,6 +183,22 @@ public sealed class RendererConfigurationFilesTests
             .Should().Be("Development");
     }
 
+    [Theory]
+    [InlineData("regions.local.json")]
+    [InlineData("regions.production.json")]
+    public void BuiltRegionConfiguration_IncludesConfiguredPolygonFiles(string fileName)
+    {
+        var regionsPath = Path.Combine(AppContext.BaseDirectory, "Cli", "config", fileName);
+        var regions = JsonSerializer.Deserialize<List<RegionDto>>(File.ReadAllText(regionsPath))!;
+        var polygons = regions.Where(region => !string.IsNullOrWhiteSpace(region.Poly)).ToArray();
+        polygons.Should().NotBeEmpty();
+        foreach (var region in polygons)
+        {
+            var polygonPath = Path.Combine(AppContext.BaseDirectory, region.Poly!);
+            File.Exists(polygonPath).Should().BeTrue($"the configured polygon for {region.Id} must be included in build output");
+        }
+    }
+
     private static string FindRepositoryRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

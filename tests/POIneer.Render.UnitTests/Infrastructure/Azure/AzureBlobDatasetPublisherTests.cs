@@ -168,6 +168,37 @@ public sealed class AzureBlobDatasetPublisherTests
                 Arg.Any<CancellationToken>());
     }
 
+    [Theory]
+    [InlineData("different-checksum")]
+    [InlineData(null)]
+    public async Task PublishAsync_RejectsImmutableBlob_WhenExistingMetadataDiffersOrIsMissingUnderOverwrite(
+        string? existingChecksum)
+    {
+        await using var source = TestSourceFile.Create();
+        var request = CreateRequest(source.Path) with { RequireImmutable = true };
+        var metadata = CreateMetadata(fileSizeBytes: source.Length);
+        const string blobName = "berlin/berlin.2-abc123.sqlite";
+        var metadataReader = Substitute.For<IAzureBlobDatasetMetadataReader>();
+        var existingMetadata = existingChecksum is null
+            ? null
+            : new AzureBlobDatasetMetadata(metadata.RegionId, metadata.Version, metadata.FileSizeBytes, existingChecksum);
+        var sut = CreateSut(
+            overwritePolicy: DatasetPublishOverwritePolicy.Overwrite,
+            planner: new AzureBlobDatasetPublishPlanner(_metadataFactory, metadataReader));
+
+        _metadataFactory.CreateAsync(request.RegionId, request.Version, request.SourcePath, Arg.Any<CancellationToken>())
+            .Returns(metadata);
+        metadataReader.ReadAsync(blobName, Arg.Any<CancellationToken>())
+            .Returns(new AzureBlobDatasetMetadataReadResult(BlobExists: true, Metadata: existingMetadata));
+
+        var act = async () => await sut.PublishAsync(request);
+
+        await act.Should().ThrowAsync<IOException>()
+            .WithMessage($"Immutable dataset artifact at '{blobName}' has different or missing metadata.");
+        await _uploader.DidNotReceiveWithAnyArgs()
+            .UploadAsync(default!, default!, default!, default, default);
+    }
+
     [Fact]
     public async Task PublishAsync_Throws_WhenMaxUploadsPerRunWouldBeExceeded()
     {
@@ -259,9 +290,10 @@ public sealed class AzureBlobDatasetPublisherTests
     private AzureBlobDatasetPublisher CreateSut(
         DatasetPublishOverwritePolicy overwritePolicy = DatasetPublishOverwritePolicy.SkipIfIdentical,
         int maxUploadsPerRun = 1,
-        long maxUploadBytesPerRun = 1_073_741_824)
+        long maxUploadBytesPerRun = 1_073_741_824,
+        IAzureBlobDatasetPublishPlanner? planner = null)
         => new(
-            _planner,
+            planner ?? _planner,
             _uploader,
             _metadataFactory,
             NullLogger<AzureBlobDatasetPublisher>.Instance,

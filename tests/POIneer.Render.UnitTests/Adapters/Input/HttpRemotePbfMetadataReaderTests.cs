@@ -53,6 +53,7 @@ public sealed class HttpRemotePbfMetadataReaderTests
         public List<HttpMethod> RequestMethods { get; } = [];
         public string? RequestUri { get; private set; }
         public string? Range { get; private set; }
+        public HttpResponseMessage? ChecksumResponse { get; init; }
 
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -61,6 +62,9 @@ public sealed class HttpRemotePbfMetadataReaderTests
             RequestMethods.Add(request.Method);
             RequestUri = request.RequestUri?.ToString();
             Range = request.Headers.Range?.ToString();
+
+            if (ChecksumResponse is not null)
+                return Task.FromResult(ChecksumResponse);
 
             if (request.Method == HttpMethod.Head && _headStatusCode.HasValue)
                 return Task.FromResult(new HttpResponseMessage(_headStatusCode.Value));
@@ -75,5 +79,41 @@ public sealed class HttpRemotePbfMetadataReaderTests
 
             return Task.FromResult(response);
         }
+    }
+
+    [Fact]
+    public async Task GetMetadataAsync_ReadsGeofabrikChecksumWithoutRequestingPbf()
+    {
+        const string url = "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf";
+        using var handler = new StubHttpMessageHandler
+        {
+            ChecksumResponse = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("D41D8CD98F00B204E9800998ECF8427E  berlin-latest.osm.pbf\n")
+            }
+        };
+        using var client = new HttpClient(handler);
+
+        var result = await new HttpRemotePbfMetadataReader(client).GetMetadataAsync(url);
+
+        handler.RequestMethods.Should().Equal(HttpMethod.Get);
+        handler.RequestUri.Should().Be(url + ".md5");
+        result.Md5Checksum.Should().Be("d41d8cd98f00b204e9800998ecf8427e");
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound, typeof(HttpRequestException))]
+    [InlineData(HttpStatusCode.OK, typeof(InvalidDataException))]
+    public async Task GetMetadataAsync_RejectsMissingOrMalformedGeofabrikChecksum(HttpStatusCode status, Type exceptionType)
+    {
+        using var handler = new StubHttpMessageHandler
+        {
+            ChecksumResponse = new HttpResponseMessage(status) { Content = new StringContent("invalid digest") }
+        };
+        using var client = new HttpClient(handler);
+        var sut = new HttpRemotePbfMetadataReader(client);
+
+        await Assert.ThrowsAsync(exceptionType, () =>
+            sut.GetMetadataAsync("https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf"));
     }
 }

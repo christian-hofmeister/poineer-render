@@ -1,3 +1,6 @@
+> **Versioning update:** The PBF-based versioning described below is superseded by
+> [Artifact-based release versions](0009-artifact-based-release-versions.md).
+
 # ADR 0002: Local Dataset Publisher
 
 ## Status

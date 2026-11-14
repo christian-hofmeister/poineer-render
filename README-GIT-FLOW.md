@@ -18,7 +18,6 @@ We use a **simplified GitFlow strategy**:
 
 ---
 
-
 ## 🔄 Overview
 
 ```text
@@ -27,6 +26,7 @@ feature --> develop --> release/x.y.z --> main (tag)
                  |            v              v
                (back) <--- bugfixes      hotfix --> main(tag) & develop
 ```
+
 # 🚀 Feature Branch Flow
 
 ## 1. Branch off from develop
@@ -51,7 +51,7 @@ git push origin feature/<kurzer-titel>
 - All checks (build, tests, lint, coverage) must pass
 - At least one review required
 
-## 4. Merge-method:
+## 4. Merge-method
 
 - ✅ Squash Merge
 
@@ -59,10 +59,9 @@ git push origin feature/<kurzer-titel>
 
 # 📦 Release Branch Flow
 
-## 1. Create once develop is stable:
+## 1. Create once develop is stable
 
 ```git checkout -b release/<version> develop```
-
 
 ## 2. Final adjustments & version bump
 
@@ -70,24 +69,41 @@ git push origin feature/<kurzer-titel>
 - No new features!
 
 ## 3. PR: release/<version> → main
+
 - CI must pass
 - Reviewers verify stability
 
-## 4. After merge into main:
+## 4. Tag the release after merging into `main`
+
+Switch to `main` and update it from the remote:
 
 ```bash
-git tag v<version>
-git push origin v<version>
+git switch main
+git pull --ff-only origin main
+git log -1 --oneline
 ```
 
-## 5. Back-merge into develop to sync changes:
+Confirm that the latest commit is the release PR's merge commit. Then create and push the tag. Replace `v0.4.0` with the version you are releasing.
+
+```bash
+git tag v0.4.0
+git push origin v0.4.0
+```
+
+`git tag` uses the current `HEAD` when you omit the commit. If `main` has already moved past the release merge commit, pass the SHA of that merge commit explicitly:
+
+```bash
+git tag v0.4.0 MERGE_COMMIT_SHA
+git push origin v0.4.0
+```
+
+## 5. Back-merge into develop to sync changes
 
 ```bash
 git checkout develop
 git merge --no-ff main
 git push
 ```
-
 
 # 🛠️ Hotfix Branch Flow
 
@@ -156,12 +172,14 @@ Every pull request must:
 - have at least one reviewer
 
 ---
+
 ## Benefits
 
 - Clear, professional history
 - Easy to scan in `git log --oneline`
 - Tools can auto-generate changelogs
 - Recruiters see structured workflow
+
 ---
 
 ## Quick Reference
@@ -176,12 +194,10 @@ Every pull request must:
 - **style:** formatting only  
 - **perf:** performance improvements
 
-
 # Git Commit Message Cheat Sheet (Conventional Commits)
 
 Conventional Commits help to keep history clean, readable, and automatable.  
 Format: `<type>(<scope>): <short summary>`
-
 
 Optional body with more details.
 
@@ -190,50 +206,58 @@ Optional body with more details.
 ## Types
 
 ### feat
+
 **New feature** for the user.
 
 <code>feat(domain): add PropertyListing aggregate and Incident entity</code>
 
 ### fix
+
 **Bug fix**.
 
 <code>fix(infrastructure): correct DbContext mapping for owned types</code>
 
 ### docs
+
 Documentation changes only.
 
 <code>docs(readme): add Swagger setup and usage instructions</code>
 
 ### test
+
 Add or modify **tests**.
 
 <code>test(domain): add unit tests for Money and Address validation</code>
 
 ### ci
+
 Changes to CI/CD configuration.
 
 <code>chore(ci): add GitHub Actions workflow</code>
 
 ### chore
+
 General tasks, dependencies, config updates (no production code change).
 
 <code>chore: bump Swashbuckle.AspNetCore to 6.6.2</code>
 
 ### refactor
+
 Code change that doesn’t add features or fix bugs (improves structure).
 
 <code>refactor(webapi): simplify endpoint mapping and response objects</code>
 
 ### style
+
 Code style/formatting (no logic change).
 
 <code>style(domain): apply consistent naming to value objects</code>
 
 ### perf
+
 Performance improvement.
 
 <code>perf(repository): optimize query for listing with incidents</code>
-
 
 # Scopes
 
@@ -253,4 +277,3 @@ Performance improvement.
 - ci – Jenkinsfile, Pipeline, Coverage
 - docs – README, Doku
 - scripts – Repo-Skripte (scripts/...)
-

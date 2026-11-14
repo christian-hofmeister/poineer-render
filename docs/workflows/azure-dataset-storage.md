@@ -14,6 +14,21 @@ Azure Blob Storage
 
 ## Current Scope
 
+The instructions below describe the existing Azure artifact storage option.
+The planned distribution in [ADR 0009](../decisions/0009-separate-metadata-artifact-storage-roots.md)
+uses Azure for `regions.json` and current manifests, and Hetzner for SQLite/PMTiles.
+Existing Azure artifact publishing remains supported; this decision does not
+repurpose containers or change deployed configuration automatically.
+
+Configure the metadata account, container, and prefix independently of the artifact
+target using [metadata publisher settings](filesystem-artifact-publishing.md#region-metadata-publishing).
+The renderer needs metadata
+publication access; the server needs metadata listing/read access. Hetzner upload,
+verification and optional signing permissions are separate. Keep credentials outside
+source control.
+Verify Hetzner artifacts before updating the Azure manifest; publication failure
+must preserve the previous release. Clients download large files directly from Hetzner.
+
 This workflow provisions only storage:
 
 - one Azure Storage Account
@@ -247,6 +262,11 @@ default `SkipIfIdentical` overwrite policy fails the publish instead of replacin
 blob. Replacing an existing blob requires the explicit `Overwrite` policy. Safety limits
 such as `AzureBlobPublisher:MaxUploadsPerRun` and `AzureBlobPublisher:MaxUploadBytesPerRun`
 guard against runaway publishing behavior within a single renderer run.
+
+For a single region with SQLite and PMTiles enabled, set
+`--AzureBlobPublisher:MaxUploadsPerRun=2` and `--VectorTiles:Enabled=true` on
+the renderer invocation. For multiple regions, budget two uploads per region
+when both artifacts are new. The separate byte limit applies to their combined size.
 
 Keep checked-in environment configuration on `Publisher:Target = Local` until the deployment
 is intentionally switched over. For a local development smoke test against the dev storage

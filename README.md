@@ -244,6 +244,46 @@ Important renderer options:
 | `Renderer:OnlyRegionId` | Optional filter for one region | `geofabrik/europe/germany/berlin` |
 | `Renderer:DryRun` | Exit after configuration/logging without rendering | `false` |
 | `Renderer:LockFilePath` | Lock file preventing overlapping runs (e.g. concurrent cron executions) | `<WorkDir>/poineer-render.lock` (auto) |
+| `Renderer:MinimumFreeDiskSpaceBytes` | Minimum available bytes on each filesystem checked before a region is processed. Set to `0` to disable the check. | `1073741824` (1 GiB) |
+
+Before a required download or render, the renderer checks the region's work and output paths,
+the system temp directory, the local dataset publish path when enabled, and Planetiler's default
+`data/tmp` path when vector tiles are enabled. The check uses the nearest existing directory for
+paths that have yet to be created, so it measures the backing filesystem from inside the process.
+A region with insufficient space stays due for retry. The run reports the failure with exit code `1`.
+
+Set `POINEER_RENDER__RENDERER__MINIMUMFREEDISKSPACEBYTES` to adjust the threshold for a deployment.
+The threshold is a minimum, and actual disk usage depends on the region and enabled artifacts.
+Custom Planetiler paths supplied through extra arguments are outside this check.
+
+### Local cleanup after verified publishing
+
+Set `Cleanup:DeleteLocalFilesAfterVerifiedPublish` to `true` to reclaim local disk space
+after a successful `AzureBlob` release. The setting defaults to `false` and can also be set
+with `POINEER_RENDER__CLEANUP__DELETELOCALFILESAFTERVERIFIEDPUBLISH=true`.
+
+Cleanup runs under the renderer lock after the renderer streams back all published artifacts to
+verify their SHA-256, publishes the current manifest when enabled, and saves the successful render
+and schedule state.
+It removes the region's PBF, polygon extract, SQLite files, and generated PMTiles files.
+With cleanup enabled, Planetiler uses a reserved `planetiler+scratch` directory in the region's
+work directory for its scratch data. The renderer supplies `--tmpdir` for this directory and
+removes it after success. Shared Planetiler source downloads and paths configured separately for
+other tool outputs are outside the cleanup scope.
+
+Render failures leave local files available for retry or diagnosis. Cleanup errors are logged
+as warnings and the already verified release remains successful. Render state, schedule state,
+metadata, and quarantined files are preserved. Local publishing keeps its local files.
+
+### Geofabrik source checksums
+
+For sources hosted on `download.geofabrik.de`, the renderer reads the `.md5` file alongside the
+configured PBF. A matching checksum from the last successful render lets a scheduled run skip
+download and rendering after cleanup. An unavailable or malformed checksum fails the region check.
+New or reused PBF files are checked against the published MD5 before rendering. The renderer saves
+the processed checksum only after verified publishing and any required manifest publication succeed.
+Existing state without a checksum is populated on the next successful render. Other sources continue
+to use HTTP metadata, and published dataset artifacts continue to use SHA-256.
 
 Region ids in `Renderer:RegionsJson` are globally unique, hierarchical technical
 identifiers such as `geofabrik/europe/germany/berlin` - see
@@ -310,7 +350,9 @@ docker run --rm \
   poineer-render:local
 ```
 
-See [Docker Renderer Image](docs/workflows/docker-renderer.md) for details.
+See [Run locally with PowerShell](docs/workflows/docker-renderer.md#run-locally-with-powershell)
+for a full development render with persistent data and a lock volume, and
+[Docker Renderer Image](docs/workflows/docker-renderer.md) for VPS setup.
 
 ---
 
@@ -478,8 +520,23 @@ This project is intended as a learning and open-source project. The final licens
 
 ---
 
+## Region manifest producer contract
+
+POIneer.Render is the producer of the shared [region manifest contract](contracts/region-manifest/README.md).
+It defines the schema, region metadata exchange, discovery rules and reusable validation fixtures
+consumed by POIneer.Server. Set `MetadataPublisher:Target` to enable catalog and manifest
+publication after artifact verification. See the
+[configuration guide](docs/workflows/filesystem-artifact-publishing.md#region-metadata-publishing).
+
+Planned distribution uses Azure Blob Storage for `regions.json` and manifests,
+and Hetzner Object Storage for SQLite/PMTiles downloads. The metadata and artifact
+roots are independent and may also share a destination. See
+[ADR 0009](docs/decisions/0009-separate-metadata-artifact-storage-roots.md).
+
 ## Related Documents
 
+- [Filesystem Artifact Publishing](docs/workflows/filesystem-artifact-publishing.md)
+- [Create a Region Polygon](docs/workflows/region-polygons.md)
 - [Git - Branch Flow Guide](README-GIT-FLOW.md)
 - [Git - Pull Requests Flow Guide](README-GIT-PR.md)
 - [Git - Handling Dependabot Branches](README-GIT-DEPENDABOT.md)

@@ -31,7 +31,12 @@ public sealed class AzureBlobDatasetUploader : IAzureBlobDatasetUploader
         {
             HttpHeaders = new BlobHttpHeaders
             {
-                ContentType = "application/vnd.sqlite3"
+                ContentType = Path.GetExtension(sourcePath).ToLowerInvariant() switch
+                {
+                    ".sqlite" => "application/vnd.sqlite3",
+                    ".pmtiles" => "application/octet-stream",
+                    _ => throw new NotSupportedException($"Unsupported dataset artifact extension: {sourcePath}")
+                }
             },
             Metadata = new Dictionary<string, string>(metadata, StringComparer.OrdinalIgnoreCase),
             Conditions = overwriteExisting

@@ -55,18 +55,21 @@ public sealed class AzureBlobDatasetPublisher : IDatasetPublisher
                 decision.BlobName,
                 decision.Reason);
 
-            return new DatasetPublishResult(decision.BlobName, WasSkipped: true);
+            return new DatasetPublishResult(decision.BlobName, WasSkipped: true, decision.BlobName);
         }
 
         if (decision.DestinationExists)
         {
+            if (request.RequireImmutable)
+                throw new IOException($"Immutable dataset artifact at '{decision.BlobName}' has different or missing metadata.");
+
             switch (_publisherOptions.OverwritePolicy)
             {
                 case DatasetPublishOverwritePolicy.Skip:
                     _logger.LogInformation(
                         "Azure Blob publish target already exists at {BlobName}, skipping (overwrite policy: Skip).",
                         decision.BlobName);
-                    return new DatasetPublishResult(decision.BlobName, WasSkipped: true);
+                    return new DatasetPublishResult(decision.BlobName, WasSkipped: true, decision.BlobName);
 
                 case DatasetPublishOverwritePolicy.Fail:
                     throw new InvalidOperationException(
@@ -115,7 +118,7 @@ public sealed class AzureBlobDatasetPublisher : IDatasetPublisher
             request.Version,
             decision.BlobName);
 
-        return new DatasetPublishResult(decision.BlobName, WasSkipped: false);
+        return new DatasetPublishResult(decision.BlobName, WasSkipped: false, decision.BlobName);
     }
 
     private void ReserveUploadCapacity(long uploadBytes)

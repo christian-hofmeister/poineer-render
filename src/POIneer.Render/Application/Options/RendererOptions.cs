@@ -17,6 +17,10 @@ public sealed class RendererOptions
     public bool DryRun { get; init; } = false;
 
     public int DownloadTimeoutSeconds { get; init; } = 600;
+    public long MinimumFreeDiskSpaceBytes { get; init; } = 1024L * 1024 * 1024;
+
+    // Regions may override this value with UpdateIntervalDays in their JSON configuration.
+    public int DefaultUpdateIntervalDays { get; init; } = 7;
 
     // Optional. Path to the lock file used to prevent overlapping executions
     // (e.g. concurrent cron-triggered runs). Resolved relative to the content root

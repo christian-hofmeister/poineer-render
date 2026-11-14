@@ -16,6 +16,20 @@ public sealed class HttpRemotePbfMetadataReader : IRemotePbfMetadataReader
         string pbfUrl,
         CancellationToken ct = default)
     {
+        if (Uri.TryCreate(pbfUrl, UriKind.Absolute, out var source)
+            && source.IdnHost.Equals("download.geofabrik.de", StringComparison.OrdinalIgnoreCase))
+        {
+            var checksumUrl = new UriBuilder(source) { Path = source.AbsolutePath + ".md5", Fragment = "" }.Uri;
+            try
+            {
+                return await GetChecksumMetadataAsync(checksumUrl, ct);
+            }
+            catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+            {
+                throw new TimeoutException($"Timed out reading Geofabrik checksum at '{checksumUrl}'.", ex);
+            }
+        }
+
         using var request = new HttpRequestMessage(HttpMethod.Head, pbfUrl);
         using var response = await _httpClient.SendAsync(
             request,
@@ -28,6 +42,30 @@ public sealed class HttpRemotePbfMetadataReader : IRemotePbfMetadataReader
         response.EnsureSuccessStatusCode();
 
         return ToMetadata(response);
+    }
+
+    private async Task<RegionUpdateMetadata> GetChecksumMetadataAsync(Uri checksumUrl, CancellationToken ct)
+    {
+        using var response = await _httpClient.GetAsync(checksumUrl, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"Geofabrik checksum request for '{checksumUrl}' returned HTTP {(int)response.StatusCode}.",
+                null, response.StatusCode);
+
+        using var readTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        readTimeout.CancelAfter(_httpClient.Timeout);
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(readTimeout.Token));
+        var buffer = new char[4097];
+        var length = await reader.ReadBlockAsync(buffer.AsMemory(), readTimeout.Token);
+        var line = new string(buffer, 0, length).Trim();
+        var separator = line.IndexOfAny([' ', '\t']);
+        var checksum = separator < 0 ? line : line[..separator];
+        if (length == buffer.Length || line.Contains('\n') || line.Contains('\r')
+            || checksum.Length != 32 || !checksum.All(Uri.IsHexDigit))
+        {
+            throw new InvalidDataException($"Invalid Geofabrik MD5 checksum at '{checksumUrl}'.");
+        }
+
+        return new RegionUpdateMetadata(null, null, null, checksum.ToLowerInvariant());
     }
 
     private async Task<RegionUpdateMetadata> GetMetadataWithGetAsync(string pbfUrl, CancellationToken ct)

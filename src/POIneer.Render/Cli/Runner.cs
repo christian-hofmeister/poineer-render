@@ -1,9 +1,14 @@
+using System.Security.Cryptography;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using POIneer.Render.Application;
+using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
+using POIneer.Render.Application.UseCases;
 using POIneer.Render.Domain.Models;
+using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Infrastructure.Pathing;
 using POIneer.Render.Ports;
 
@@ -16,6 +21,13 @@ public sealed class Runner
     private readonly IRegionUpdateChecker _regionUpdateChecker;
     private readonly RendererOptions _rendererOptions;
     private readonly ISingleInstanceLockFactory _lockFactory;
+    private readonly RegionUpdateIntervalPolicy _updateIntervalPolicy;
+    private readonly RegionUpdateSchedule _updateSchedule;
+    private readonly VectorTileOptions _vectorTileOptions;
+    private readonly PublisherOptions _publisherOptions;
+    private readonly IDiskSpaceReader _diskSpaceReader;
+    private readonly LocalRenderFileCleanup _localRenderFileCleanup;
+    private readonly RegionMetadataPublisher? _metadataPublisher;
 
     private readonly IFileDownloader _fileDownloader;
 
@@ -27,7 +39,14 @@ public sealed class Runner
         IRenderRegion renderRegionUseCase,
         IRegionUpdateChecker regionUpdateChecker,
         ISingleInstanceLockFactory lockFactory,
-        IOptions<RendererOptions> rendererOptions)
+        RegionUpdateIntervalPolicy updateIntervalPolicy,
+        IOptions<RendererOptions> rendererOptions,
+        RegionUpdateSchedule updateSchedule,
+        IOptions<VectorTileOptions> vectorTileOptions,
+        IOptions<PublisherOptions> publisherOptions,
+        IDiskSpaceReader diskSpaceReader,
+        LocalRenderFileCleanup localRenderFileCleanup,
+        RegionMetadataPublisher? metadataPublisher = null)
     {
         _hostEnvironment = hostEnvironment;
         _logger = log;
@@ -36,7 +55,14 @@ public sealed class Runner
         _renderRegionUseCase = renderRegionUseCase;
         _regionUpdateChecker = regionUpdateChecker;
         _lockFactory = lockFactory;
+        _updateIntervalPolicy = updateIntervalPolicy;
         _rendererOptions = rendererOptions.Value;
+        _updateSchedule = updateSchedule;
+        _vectorTileOptions = vectorTileOptions.Value;
+        _publisherOptions = publisherOptions.Value;
+        _diskSpaceReader = diskSpaceReader;
+        _localRenderFileCleanup = localRenderFileCleanup;
+        _metadataPublisher = metadataPublisher;
     }
 
     public async Task<int> RunAsync(CancellationToken ct)
@@ -89,55 +115,115 @@ public sealed class Runner
             throw new FileNotFoundException($"Regions file not found: {regionsPath}");
 
         var regions = await _regionSource.GetRegionsAsync(regionsPath, ct);
+        if (_metadataPublisher is not null)
+            await _metadataPublisher.PublishCatalogAsync(regions, ct);
         var failedRegionIds = new List<string>();
 
-        foreach (var r in regions.Where(r => string.IsNullOrEmpty(_rendererOptions.OnlyRegionId) || r.Id == _rendererOptions.OnlyRegionId))
+        foreach (var r in regions.Where(r => !string.IsNullOrWhiteSpace(r.PbfUrl)
+            && (string.IsNullOrEmpty(_rendererOptions.OnlyRegionId) || r.Id == _rendererOptions.OnlyRegionId)))
         {
             using (_logger.BeginScope("region:{RegionId}", r.Id))
             {
                 try
                 {
+                    // Validate before creating region work files or making remote requests.
+                    _updateIntervalPolicy.GetIntervalDays(r);
+
                     // r.Id may be a globally unique, hierarchical region identifier
                     // (ADR 0007), e.g. "geofabrik/europe/germany/berlin".
                     var regionWorkDir = RegionIdentifier.CombinePath(workDir, r.Id);
+                    var schedulePath = Path.Combine(regionWorkDir, "schedule-state.json");
+                    var scheduleState = await _updateSchedule.ReadAsync(r, schedulePath, ct);
+                    var overwriteRequested = _rendererOptions.OverwriteDatabase || redownloadPbf;
+                    if (!overwriteRequested && !_updateSchedule.IsDue(scheduleState))
+                    {
+                        _logger.LogInformation("({Region}) Skipping region: next update due at {NextDueUtc}.", r.Id, scheduleState!.NextDueUtc);
+                        continue;
+                    }
+                    _logger.LogInformation("({Region}) Checking region (next due: {NextDueUtc}, processing pending: {Pending}, overwrite: {Overwrite}).",
+                        r.Id, scheduleState?.NextDueUtc, scheduleState?.ProcessingPending ?? false, overwriteRequested);
                     Directory.CreateDirectory(regionWorkDir);
-                    var pbfPath = Path.Combine(regionWorkDir, "osm.pbf");
+                    var pbfPath = Path.Combine(regionWorkDir, RenderFilePaths.SourcePbf);
+                    var downloadStatePath = Path.Combine(regionWorkDir, "download-state.json");
                     var renderStatePath = Path.Combine(regionWorkDir, "render-state.json");
-                    var updateCheck = await _regionUpdateChecker.CheckAsync(r, renderStatePath, ct);
+                    if (overwriteRequested)
+                    {
+                        // A forced attempt must remain due even if the metadata check fails.
+                        await _updateSchedule.MarkProcessingAsync(r, schedulePath, scheduleState, ct);
+                    }
+                    // Capture the current release before selecting or downloading the source.
+                    var publication = _metadataPublisher is null
+                        ? null
+                        : new RegionPublicationContext(await _metadataPublisher.ReadManifestRevisionAsync(r.Id, ct));
+                    var updateCheck = await _regionUpdateChecker.CheckAsync(r, downloadStatePath, ct);
 
-                    if (!File.Exists(pbfPath))
+                    var regionOutDir = RegionIdentifier.CombinePath(outDir, r.Id);
+                    var checksum = updateCheck.RemoteMetadata.Md5Checksum;
+                    var poiPath = Path.Combine(regionOutDir, RenderFilePaths.PoiDataset);
+                    var manifestMissing = publication is not null && publication.ExpectedManifestRevision is null;
+                    var outputsMissing = !File.Exists(poiPath)
+                        || (_vectorTileOptions.Enabled && !File.Exists(Path.Combine(regionOutDir, RenderFilePaths.VectorTiles)));
+                    var processingRequired = overwriteRequested || scheduleState is null || scheduleState.ProcessingPending
+                        || manifestMissing;
+                    if (!processingRequired)
                     {
-                        _logger.LogInformation("Downloading PBF for {Region} ... to {TargetPath}", r.Id, pbfPath);
-                        await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
+                        processingRequired = checksum is null
+                            ? updateCheck.ShouldRedownloadPbf || !File.Exists(pbfPath) || outputsMissing
+                              || File.GetLastWriteTimeUtc(pbfPath) > File.GetLastWriteTimeUtc(poiPath)
+                            : (outputsMissing && !_localRenderFileCleanup.Enabled)
+                              || !await _regionUpdateChecker.MatchesProcessedChecksumAsync(r, renderStatePath, checksum, ct);
                     }
-                    else if (redownloadPbf)
+                    if (!processingRequired)
                     {
-                        _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, but overwrite is enabled, re-downloading.", r.Id, pbfPath);
-                        await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
+                        var next = await _updateSchedule.MarkSuccessfulAsync(r, schedulePath, ct);
+                        _logger.LogInformation("({Region}) Source unchanged; skipping download and rendering. Next update due at {NextDueUtc}.", r.Id, next.NextDueUtc);
+                        continue;
                     }
-                    else if (updateCheck.ShouldRedownloadPbf)
+
+                    // Persist before downloading/rendering so a failed attempt remains due,
+                    // even if canonical outputs were promoted before publishing failed.
+                    if (!overwriteRequested)
                     {
-                        _logger.LogInformation(
-                            "PBF metadata changed for {Region} ({Reason}), re-downloading to {TargetPath}. ETag={ETag}, LastModified={LastModified}, ContentLength={ContentLength}",
-                            r.Id,
-                            updateCheck.Reason,
-                            pbfPath,
-                            updateCheck.RemoteMetadata.ETag,
-                            updateCheck.RemoteMetadata.LastModified,
-                            updateCheck.RemoteMetadata.ContentLength);
+                        await _updateSchedule.MarkProcessingAsync(r, schedulePath, scheduleState, ct);
+                    }
+
+                    CheckAvailableDiskSpace(r.Id, regionWorkDir, regionOutDir);
+
+                    var needsDownload = !File.Exists(pbfPath) || redownloadPbf || updateCheck.ShouldRedownloadPbf;
+                    if (needsDownload)
+                    {
+                        _logger.LogInformation("({Region}) Downloading PBF to {Path}. Source check: {Reason}",
+                            r.Id, pbfPath, updateCheck.Reason);
+                        await _regionUpdateChecker.InvalidateDownloadAsync(downloadStatePath, ct);
                         await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
                     }
                     else
                     {
-                        _logger.LogInformation(
-                            "PBF metadata unchanged for {Region}; skipping download. Render output checks will still run. ETag={ETag}, LastModified={LastModified}, ContentLength={ContentLength}",
-                            r.Id,
-                            updateCheck.RemoteMetadata.ETag,
-                            updateCheck.RemoteMetadata.LastModified,
-                            updateCheck.RemoteMetadata.ContentLength);
+                        _logger.LogInformation("({Region}) Reusing local PBF at {Path} for processing.", r.Id, pbfPath);
                     }
-                    await _renderRegionUseCase.RunAsync(r, workDir, outDir, ct);
+
+                    if (checksum is not null)
+                    {
+                        await using var source = File.OpenRead(pbfPath);
+                        var actual = Convert.ToHexStringLower(await MD5.HashDataAsync(source, ct));
+                        if (!StringComparer.OrdinalIgnoreCase.Equals(checksum, actual))
+                        {
+                            await _regionUpdateChecker.InvalidateDownloadAsync(downloadStatePath, ct);
+                            throw new InvalidDataException(
+                                $"Geofabrik MD5 mismatch for '{pbfPath}': expected {checksum}, got {actual}.");
+                        }
+                    }
+
+                    if (needsDownload)
+                        await _regionUpdateChecker.MarkDownloadedAsync(r, downloadStatePath, updateCheck.RemoteMetadata, ct);
+                    if (publication is null)
+                        await _renderRegionUseCase.RunAsync(r, workDir, outDir, ct, forceRebuild: true);
+                    else
+                        await _renderRegionUseCase.RunAsync(r, workDir, outDir, publication, ct, forceRebuild: true);
                     await _regionUpdateChecker.MarkProcessedAsync(r, renderStatePath, updateCheck.RemoteMetadata, ct);
+                    var completed = await _updateSchedule.MarkSuccessfulAsync(r, schedulePath, ct);
+                    _localRenderFileCleanup.Run(r, workDir, outDir, _vectorTileOptions.Enabled);
+                    _logger.LogInformation("({Region}) Processing successful. Next update due at {NextDueUtc}.", r.Id, completed.NextDueUtc);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -158,5 +244,33 @@ public sealed class Runner
 
         _logger.LogInformation("All regions processed.");
         return 0;
+    }
+
+    private void CheckAvailableDiskSpace(string regionId, string regionWorkDir, string regionOutDir)
+    {
+        var minimumBytes = _rendererOptions.MinimumFreeDiskSpaceBytes;
+        if (minimumBytes == 0)
+            return;
+
+        var paths = new List<string> { regionWorkDir, regionOutDir, Path.GetTempPath() };
+        if (_publisherOptions.Target == DatasetPublisherTarget.Local && _publisherOptions.DestinationDir is { } destinationDir)
+            paths.Add(RegionIdentifier.CombinePath(destinationDir, regionId));
+
+        if (_vectorTileOptions.Enabled)
+        {
+            paths.Add(_localRenderFileCleanup.Enabled
+                ? RenderFilePaths.GetPlanetilerTempPath(regionWorkDir)
+                : Path.GetFullPath(Path.Combine("data", "tmp")));
+        }
+
+        foreach (var path in paths)
+        {
+            var availableBytes = _diskSpaceReader.GetAvailableBytes(path);
+            if (availableBytes < minimumBytes)
+            {
+                throw new IOException(
+                    $"Insufficient disk space at '{path}': {availableBytes} bytes available, {minimumBytes} bytes required.");
+            }
+        }
     }
 }

@@ -1,29 +1,40 @@
 namespace POIneer.Render.Adapters.Input;
 
 using System.Diagnostics;
+using Microsoft.Extensions.Hosting;
+using POIneer.Render.Application;
+using POIneer.Render.Infrastructure.Pathing;
+using POIneer.Render.Infrastructure.Process;
 using POIneer.Render.Ports;
 
-public sealed class OsmiumPolygonCutter : IPolygonCutter
+public sealed class OsmiumPolygonCutter(
+    IHostEnvironment environment,
+    IProcessRunner processRunner)
+        : IPolygonCutter
 {
     public async Task<string> CutAsync(
         string pbfPath,
         string? polyPath,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(polyPath) || !File.Exists(polyPath))
+        if (string.IsNullOrWhiteSpace(polyPath))
             return pbfPath;
 
-        var output = Path.Combine(Path.GetDirectoryName(pbfPath)!, Path.GetFileNameWithoutExtension(pbfPath) + ".cut.osm.pbf");
+        polyPath = ConfiguredPathResolver.Resolve(environment.ContentRootPath, polyPath);
+        if (!File.Exists(polyPath))
+            throw new FileNotFoundException("Configured region polygon file was not found.", polyPath);
+
+        var output = RenderFilePaths.GetCutPbfPath(pbfPath);
         var psi = new ProcessStartInfo
         {
             FileName = "osmium",
-            ArgumentList = { "extract", "-p", polyPath, pbfPath, "-o", output },
+            ArgumentList = { "extract", "--overwrite", "-p", polyPath, pbfPath, "-o", output },
             RedirectStandardError = true,
             RedirectStandardOutput = true
         };
-        using var proc = Process.Start(psi)!;
-        await proc.WaitForExitAsync(ct);
-        if (proc.ExitCode != 0) throw new InvalidOperationException($"osmium extract failed: {await proc.StandardError.ReadToEndAsync()}");
+        var result = await processRunner.RunAsync(psi, ct);
+        if (result.ExitCode != 0)
+            throw new InvalidOperationException($"osmium extract failed: {result.StandardError}");
         return output;
     }
 }

@@ -1,11 +1,20 @@
+using System.Security.Cryptography;
+using System.Text.Json;
+using Azure;
+using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using POIneer.Render.Application.Contracts;
 using POIneer.Render.Application.Mapping;
+using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
 using POIneer.Render.Application.Ports.Model;
 using POIneer.Render.Application.UseCases;
 using POIneer.Render.Domain.Models;
+using POIneer.Render.Infrastructure.Azure;
+using POIneer.Render.Infrastructure.FileSystem;
 using POIneer.Render.Ports;
 using POIneer.Render.TestHelpers;
 using Xunit;
@@ -28,6 +37,175 @@ public sealed class RenderRegionTests
     private readonly IPublishedDatasetVerifier _publishedDatasetVerifier = Substitute.For<IPublishedDatasetVerifier>();
     private readonly IVectorTileGenerator _vectorTileGenerator = Substitute.For<IVectorTileGenerator>();
 
+    [Theory]
+    [InlineData(false, false, false, true)]
+    [InlineData(true, false, false, true)]
+    [InlineData(false, true, false, true)]
+    [InlineData(false, false, true, true)]
+    [InlineData(false, false, true, false)]
+    public async Task RunAsync_AdvertisesOnlyVerifiedArtifacts_AndReusesThemOnlyForUnchangedSource(
+        bool sharedRoot, bool azureMetadata, bool replaceSource, bool forceRetry)
+    {
+        await using var temp = TestTemporaryDirectories.Create("publish-region-manifest");
+        var workDir = Path.Combine(temp.DirectoryPath, "work");
+        var outDir = Path.Combine(temp.DirectoryPath, "out");
+        var artifactRoot = Path.Combine(temp.DirectoryPath, "artifacts");
+        var metadataRoot = sharedRoot ? artifactRoot : Path.Combine(temp.DirectoryPath, "metadata");
+        var region = new RegionDto("geofabrik/europe/germany/berlin", "Berlin", "https://example.com/berlin.pbf", null);
+        var sourcePath = Path.Combine(workDir, region.Id, "osm.pbf");
+        TestFiles.WriteAllText(sourcePath, "test PBF");
+        var store = new FailingManifestStore(new FileRegionMetadataStore(metadataRoot), azureMetadata);
+        var metadataPublisher = new RegionMetadataPublisher(
+            azureMetadata ? CreateAzureMetadataStore(store, region.Id) : store, TimeProvider.System);
+        await metadataPublisher.PublishCatalogAsync([region], CancellationToken.None);
+
+        var options = Microsoft.Extensions.Options.Options.Create(new PublisherOptions { DestinationDir = artifactRoot });
+        var metadataFactory = new FileDatasetArtifactMetadataFactory();
+        var localPublisher = new LocalDatasetPublisher(NullLogger<LocalDatasetPublisher>.Instance, options);
+        var rejectTileUpload = false;
+        _datasetPublisher.PublishAsync(Arg.Any<DatasetPublishRequest>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var request = call.Arg<DatasetPublishRequest>();
+                if (rejectTileUpload && Path.GetExtension(request.SourcePath) == ".pmtiles")
+                    return Task.FromException<DatasetPublishResult>(new IOException("Tiles failed upload"));
+                return localPublisher.PublishAsync(request, call.Arg<CancellationToken>());
+            });
+        var localVerifier = new FilePublishedDatasetVerifier(metadataFactory, NullLogger<FilePublishedDatasetVerifier>.Instance);
+        var rejectTiles = false;
+        _publishedDatasetVerifier.VerifyAsync(Arg.Any<DatasetArtifactMetadata>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(call => rejectTiles && call.Arg<DatasetArtifactMetadata>().ArtifactType == DatasetArtifactType.Pmtiles
+                ? Task.FromResult(new DatasetVerificationResult(false, ["Tiles failed verification"]))
+                : localVerifier.VerifyAsync(call.Arg<DatasetArtifactMetadata>(), call.Arg<string>(), call.Arg<CancellationToken>()));
+        _datasetValidator.ValidateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DatasetValidationResult(true, []));
+        _osmReader.ReadAmenityNodesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerable.Empty<RawPoi>());
+        var sqliteBytes = "first SQLite";
+        _exporter.ExportAsync(Arg.Any<IAsyncEnumerable<Poi>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(call => File.WriteAllTextAsync(call.Arg<string>(), sqliteBytes));
+        _vectorTileGenerator.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(call => File.WriteAllTextAsync(call.ArgAt<string>(1), "unchanged tiles"));
+
+        var sut = new RenderRegion(
+            _logger, _polygonCutter, _dbInit, _osmReader, _exporter, Substitute.For<IRawPoiMapper>(),
+            TestRendererOptions.Create(false, false), _datasetValidator,
+            _datasetPublisher,
+            new FileHashDatasetVersionCalculator(options), metadataFactory, _publishedDatasetVerifier,
+            _vectorTileGenerator, TestRendererOptions.CreateVectorTiles(enabled: true, planetilerJarPath: "planetiler.jar"),
+            metadataPublisher);
+        var manifestPath = Path.Combine(metadataRoot, region.Id, "manifest.json");
+
+        await sut.RunAsync(region, workDir, outDir);
+        var previousJson = await File.ReadAllTextAsync(manifestPath);
+        using var previous = JsonDocument.Parse(previousJson);
+        var previousArtifacts = previous.RootElement.GetProperty("artifacts");
+        Assert.Equal(2, previousArtifacts.GetArrayLength());
+        Assert.EndsWith("Z", previous.RootElement.GetProperty("publishedAt").GetString());
+        foreach (var artifact in previousArtifacts.EnumerateArray())
+        {
+            var key = artifact.GetProperty("objectKey").GetString()!;
+            var bytes = await File.ReadAllBytesAsync(Path.Combine(artifactRoot, key));
+            Assert.Equal(bytes.LongLength, artifact.GetProperty("sizeBytes").GetInt64());
+            Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(bytes)), artifact.GetProperty("sha256").GetString());
+            Assert.Equal(sharedRoot, File.Exists(Path.Combine(metadataRoot, key)));
+        }
+        Assert.Equal(sharedRoot, File.Exists(Path.Combine(artifactRoot, region.Id, "manifest.json")));
+
+        sqliteBytes = "second SQLite";
+        rejectTileUpload = true;
+        await Assert.ThrowsAsync<IOException>(() => sut.RunAsync(region, workDir, outDir, forceRebuild: true));
+        Assert.Equal(previousJson, await File.ReadAllTextAsync(manifestPath));
+
+        rejectTileUpload = false;
+        rejectTiles = true;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => sut.RunAsync(region, workDir, outDir, forceRebuild: true));
+        Assert.Equal(previousJson, await File.ReadAllTextAsync(manifestPath));
+
+        rejectTiles = false;
+        store.FailNextManifestWrite = true;
+        var failure = await Record.ExceptionAsync(() => sut.RunAsync(region, workDir, outDir, forceRebuild: true));
+        if (azureMetadata)
+            Assert.IsType<RequestFailedException>(failure);
+        else
+            Assert.IsType<IOException>(failure);
+        Assert.Equal(previousJson, await File.ReadAllTextAsync(manifestPath));
+
+        if (replaceSource)
+        {
+            var originalSource = new FileInfo(sourcePath);
+            var sourceSize = originalSource.Length;
+            var sourceModifiedUtc = originalSource.LastWriteTimeUtc;
+            await File.WriteAllTextAsync(sourcePath, "next PBF");
+            File.SetLastWriteTimeUtc(sourcePath, sourceModifiedUtc);
+            Assert.Equal(sourceSize, new FileInfo(sourcePath).Length);
+            Assert.Equal(sourceModifiedUtc, File.GetLastWriteTimeUtc(sourcePath));
+            sqliteBytes = "third SQLite";
+        }
+
+        await sut.RunAsync(region, workDir, outDir, forceRebuild: forceRetry);
+        await _exporter.Received(replaceSource ? 5 : 4).ExportAsync(
+            Arg.Any<IAsyncEnumerable<Poi>>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        using var current = JsonDocument.Parse(await File.ReadAllTextAsync(manifestPath));
+        Assert.NotEqual(previous.RootElement.GetProperty("releaseVersion").GetString(),
+            current.RootElement.GetProperty("releaseVersion").GetString());
+        var currentArtifacts = current.RootElement.GetProperty("artifacts");
+        var sqliteKey = currentArtifacts[0].GetProperty("objectKey").GetString()!;
+        Assert.Equal(sqliteBytes, await File.ReadAllTextAsync(Path.Combine(artifactRoot, sqliteKey)));
+        Assert.Equal(previousArtifacts[1].GetProperty("objectKey").GetString(),
+            currentArtifacts[1].GetProperty("objectKey").GetString());
+    }
+
+    private static AzureBlobRegionMetadataStore CreateAzureMetadataStore(IRegionMetadataStore backing, string regionId)
+    {
+        var container = Substitute.For<BlobContainerClient>();
+        foreach (var key in new[] { "regions.json", $"{regionId}/manifest.json" })
+        {
+            var blob = Substitute.For<BlobClient>();
+            container.GetBlobClient(key).Returns(blob);
+            blob.DownloadContentAsync(Arg.Any<CancellationToken>()).Returns(async call =>
+            {
+                var document = await backing.ReadAsync(key, call.Arg<CancellationToken>())
+                    ?? throw new RequestFailedException(404, "Blob missing", "BlobNotFound", null);
+                return Response.FromValue(BlobsModelFactory.BlobDownloadResult(
+                    new BinaryData(document.Content), BlobsModelFactory.BlobDownloadDetails(eTag: new ETag(document.Revision))),
+                    Substitute.For<Response>());
+            });
+            blob.UploadAsync(Arg.Any<Stream>(), Arg.Any<BlobUploadOptions>(), Arg.Any<CancellationToken>())
+                .Returns(async call =>
+                {
+                    using var bytes = new MemoryStream();
+                    var ct = call.Arg<CancellationToken>();
+                    await call.Arg<Stream>().CopyToAsync(bytes, ct);
+                    var expectedRevision = call.Arg<BlobUploadOptions>().Conditions.IfMatch?.ToString();
+                    if (!await backing.TryWriteAsync(key, bytes.ToArray(), expectedRevision, ct))
+                        throw new RequestFailedException(412, "Precondition failed");
+                    return Substitute.For<Response<BlobContentInfo>>();
+                });
+        }
+        return new AzureBlobRegionMetadataStore(container, prefix: null);
+    }
+
+    private sealed class FailingManifestStore(IRegionMetadataStore inner, bool azureMetadata) : IRegionMetadataStore
+    {
+        public bool FailNextManifestWrite { get; set; }
+
+        public Task<StoredRegionMetadata?> ReadAsync(string key, CancellationToken ct)
+            => inner.ReadAsync(key, ct);
+
+        public Task<bool> TryWriteAsync(string key, byte[] content, string? expectedRevision, CancellationToken ct)
+        {
+            if (FailNextManifestWrite && key.EndsWith("/manifest.json", StringComparison.Ordinal))
+            {
+                FailNextManifestWrite = false;
+                if (azureMetadata)
+                    throw new RequestFailedException(503, "Simulated Azure metadata write failure.");
+                throw new IOException("Simulated metadata write failure.");
+            }
+
+            return inner.TryWriteAsync(key, content, expectedRevision, ct);
+        }
+    }
 
     private RenderRegion CreateSut(
         ILogger<RenderRegion>? logger = null,
@@ -70,7 +248,7 @@ public sealed class RenderRegionTests
 
         versionCalculator
             .CalculateAsync(
-                Arg.Any<string>(),
+                Arg.Any<IReadOnlyCollection<string>>(),
                 Arg.Any<CancellationToken>())
             .Returns("test-version");
 
@@ -345,7 +523,7 @@ public sealed class RenderRegionTests
                 Arg.Any<IAsyncEnumerable<Poi>>(),
                 expectedStagingPath,
                 Arg.Any<CancellationToken>());
-            _datasetVersionCalculator.CalculateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+            _datasetVersionCalculator.CalculateAsync(Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>());
             _datasetArtifactMetadataFactory.CreateAsync(
                 Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
             _datasetPublisher.PublishAsync(Arg.Any<DatasetPublishRequest>(), Arg.Any<CancellationToken>());
@@ -358,8 +536,11 @@ public sealed class RenderRegionTests
         Assert.False(File.Exists(expectedStagingPath));
     }
 
-    [Fact]
-    public async Task RunAsync_GeneratesVectorTilesFromTheCutPbf_WhenVectorTilesAreEnabled()
+    [Theory]
+    [InlineData("success")]
+    [InlineData("publish-failure")]
+    [InlineData("verification-failure")]
+    public async Task RunAsync_PublishesAndVerifiesBothArtifacts_WhenVectorTilesAreEnabled(string scenario)
     {
         // Arrange
         var vectorTileGenerator = Substitute.For<IVectorTileGenerator>();
@@ -413,12 +594,51 @@ public sealed class RenderRegionTests
                 return Task.CompletedTask;
             });
 
-        // Act
-        await sut.RunAsync(region, workDir, outDir, cts.Token);
-
-        // Assert
         var expectedCanonicalMapPath = Path.Combine(outDir, region.Id, "map.pmtiles");
         var expectedStagingMapPath = Path.Combine(outDir, region.Id, "map.tmp.pmtiles");
+        var expectedSqlitePath = Path.Combine(outDir, region.Id, "poi.sqlite");
+        _datasetVersionCalculator.CalculateAsync(
+                Arg.Is<IReadOnlyCollection<string>>(paths => paths.SequenceEqual(new[] { expectedSqlitePath, expectedCanonicalMapPath })
+                    && paths.All(File.Exists)), cts.Token)
+            .Returns("test-version");
+        var tileMetadata = new DatasetArtifactMetadata(region.Id, "test-version", "map.pmtiles",
+            19, DateTimeOffset.UnixEpoch, "tile-checksum", DatasetArtifactType.Pmtiles);
+        _datasetArtifactMetadataFactory.CreateAsync(region.Id, "test-version", expectedCanonicalMapPath, cts.Token)
+            .Returns(tileMetadata);
+
+        if (scenario == "publish-failure")
+            _datasetPublisher.PublishAsync(Arg.Is<DatasetPublishRequest>(r => r.SourcePath == expectedCanonicalMapPath), cts.Token)
+                .Returns<Task<DatasetPublishResult>>(_ => throw new IOException("Tile copy failed"));
+        if (scenario == "verification-failure")
+            _publishedDatasetVerifier.VerifyAsync(tileMetadata, Arg.Any<string>(), cts.Token)
+                .Returns(new DatasetVerificationResult(false, ["Tile checksum mismatch"]));
+
+        // Act / Assert
+        if (scenario == "success")
+            await sut.RunAsync(region, workDir, outDir, cts.Token);
+        else if (scenario == "publish-failure")
+            await Assert.ThrowsAsync<IOException>(() => sut.RunAsync(region, workDir, outDir, cts.Token));
+        else
+            await Assert.ThrowsAsync<InvalidOperationException>(() => sut.RunAsync(region, workDir, outDir, cts.Token));
+
+        await _datasetVersionCalculator.Received(1).CalculateAsync(
+            Arg.Is<IReadOnlyCollection<string>>(paths => paths.SequenceEqual(new[] { expectedSqlitePath, expectedCanonicalMapPath })), cts.Token);
+        await _datasetPublisher.Received(1).PublishAsync(
+            Arg.Is<DatasetPublishRequest>(r => r.RegionId == region.Id && r.Version == "test-version"
+                && r.SourcePath == expectedCanonicalMapPath), cts.Token);
+        await _datasetPublisher.Received(1).PublishAsync(
+            Arg.Is<DatasetPublishRequest>(r => r.SourcePath.EndsWith("poi.sqlite")), cts.Token);
+        await _publishedDatasetVerifier.Received(scenario == "publish-failure" ? 0 : 1)
+            .VerifyAsync(tileMetadata, "test-publish-destination-path", cts.Token);
+
+        var releaseLogs = _logger.ReceivedCalls()
+            .Where(call => call.GetMethodInfo().Name == "Log")
+            .Select(call => call.GetArguments()[2]?.ToString())
+            .Where(message => message?.Contains("Release artifacts verified:") == true).ToList();
+        if (scenario == "success")
+            Assert.Contains("artifactCount=2, totalSizeBytes=19", Assert.Single(releaseLogs));
+        else
+            Assert.Empty(releaseLogs);
 
         await vectorTileGenerator
             .Received(1)
@@ -612,7 +832,7 @@ public sealed class RenderRegionTests
             ct);
 
         await _datasetPublisher.Received(1).PublishAsync(Arg.Any<DatasetPublishRequest>(), ct);
-        await _datasetVersionCalculator.Received(1).CalculateAsync(Arg.Any<string>(), ct);
+        await _datasetVersionCalculator.Received(1).CalculateAsync(Arg.Any<IReadOnlyCollection<string>>(), ct);
         await _datasetArtifactMetadataFactory.Received(1).CreateAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), ct);
         await _publishedDatasetVerifier.Received(1).VerifyAsync(
@@ -778,7 +998,7 @@ public sealed class RenderRegionTests
             datasetArtifactMetadataFactory: metadataFactory);
 
         versionCalculator
-            .CalculateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .CalculateAsync(Arg.Any<IReadOnlyCollection<string>>(), Arg.Any<CancellationToken>())
             .Returns("1-abc123");
 
         var region = new RegionDto(
@@ -825,11 +1045,9 @@ public sealed class RenderRegionTests
     }
 
     [Fact]
-    public async Task RunAsync_CalculatesVersion_FromTheCutPbf_AndUsesItForPublishing()
+    public async Task RunAsync_CalculatesVersion_FromCompletedSqlite_AndUsesItForPublishing()
     {
-        // Arrange: the version calculator is meant to hash the actual data that was
-        // rendered (the cut PBF), not the raw download - a poly-file change can alter what
-        // gets rendered even when the raw PBF download did not change.
+        // Arrange
         var polygonCutter = Substitute.For<IPolygonCutter>();
         var versionCalculator = Substitute.For<IDatasetVersionCalculator>();
         var sut = CreateSut(polygonCutter: polygonCutter, datasetVersionCalculator: versionCalculator);
@@ -840,7 +1058,7 @@ public sealed class RenderRegionTests
             PbfUrl: "http://example.com/berlin.osm.pbf",
             Poly: "berlin.poly");
 
-        await using var tempDir = TestTemporaryDirectories.Create("calculates-version-from-cut-pbf", false);
+        await using var tempDir = TestTemporaryDirectories.Create("calculates-version-from-artifacts", false);
         var workDir = tempDir.CreateSubDir("work").DirectoryPath;
         var outDir = tempDir.CreateSubDir("out").DirectoryPath;
 
@@ -853,7 +1071,7 @@ public sealed class RenderRegionTests
             .Returns(cutPbfPath);
 
         versionCalculator
-            .CalculateAsync(cutPbfPath, Arg.Any<CancellationToken>())
+            .CalculateAsync(Arg.Is<IReadOnlyCollection<string>>(paths => paths.SequenceEqual(new[] { Path.Combine(outDir, region.Id, "poi.sqlite") })), Arg.Any<CancellationToken>())
             .Returns("1-abc123");
 
         _osmReader
@@ -875,7 +1093,7 @@ public sealed class RenderRegionTests
         await sut.RunAsync(region, workDir, outDir, CancellationToken.None);
 
         // Assert
-        await versionCalculator.Received(1).CalculateAsync(cutPbfPath, Arg.Any<CancellationToken>());
+        await versionCalculator.Received(1).CalculateAsync(Arg.Is<IReadOnlyCollection<string>>(paths => paths.SequenceEqual(new[] { Path.Combine(outDir, region.Id, "poi.sqlite") })), Arg.Any<CancellationToken>());
 
         await _datasetPublisher
             .Received(1)
@@ -1350,11 +1568,13 @@ public sealed class RenderRegionTests
         Assert.Equal("freshly rendered data", File.ReadAllText(canonicalPath));
     }
 
-    [Fact]
-    public async Task RunAsync_RecreatesDatabase_WhenOutputExistsAndOverwritePbfIsEnabled()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunAsync_RecreatesDatabase_WhenOverwriteOrPendingProcessingForcesRebuild(bool forceRebuild)
     {
         // Arrange
-        var sut = CreateSut(overwritePbf: true);
+        var sut = CreateSut(overwritePbf: !forceRebuild);
 
         var region = new RegionDto(
             Id: "berlin",
@@ -1395,7 +1615,7 @@ public sealed class RenderRegionTests
         var expectedStagingPath = existingOutputPath + ".tmp";
 
         // Act
-        await sut.RunAsync(region, workDir, outDir, CancellationToken.None);
+        await sut.RunAsync(region, workDir, outDir, CancellationToken.None, forceRebuild);
 
         // Assert: dbInit/export run against the staging file, not the still-existing
         // old canonical file directly

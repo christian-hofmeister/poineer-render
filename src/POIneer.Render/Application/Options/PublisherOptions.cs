@@ -19,7 +19,7 @@ public sealed class PublisherOptions
     // Bumped deliberately (as part of a deployment) whenever a new POIneer.Render release
     // changes the exported schema, mapping, export logic, or dataset semantics in a way
     // that should be republished even though the source OSM PBF is unchanged. Combined
-    // with a hash of the source PBF content to form the dataset version - see
+    // with a hash of the completed artifact set to form the dataset version - see
     // IDatasetVersionCalculator.
     public string SchemaVersion { get; init; } = "2";
 }

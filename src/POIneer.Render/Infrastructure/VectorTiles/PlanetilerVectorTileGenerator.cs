@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using POIneer.Render.Application;
 using POIneer.Render.Application.Options;
 using POIneer.Render.Application.Ports;
 using POIneer.Render.Infrastructure.Process;
@@ -12,14 +13,18 @@ public sealed class PlanetilerVectorTileGenerator : IVectorTileGenerator
     private readonly ILogger<PlanetilerVectorTileGenerator> _logger;
     private readonly VectorTileOptions _options;
     private readonly IProcessRunner _processRunner;
+    private readonly bool _useRegionScratchDirectory;
 
     public PlanetilerVectorTileGenerator(
         IProcessRunner processRunner,
         IOptions<VectorTileOptions> options,
+        IOptions<CleanupOptions> cleanupOptions,
+        IOptions<PublisherOptions> publisherOptions,
         ILogger<PlanetilerVectorTileGenerator> logger)
     {
         _processRunner = processRunner;
         _options = options.Value;
+        _useRegionScratchDirectory = cleanupOptions.Value.IsEnabledFor(publisherOptions.Value.Target);
         _logger = logger;
     }
 
@@ -113,6 +118,16 @@ public sealed class PlanetilerVectorTileGenerator : IVectorTileGenerator
         foreach (var argument in _options.AdditionalArguments.Where(a => !string.IsNullOrWhiteSpace(a)))
         {
             startInfo.ArgumentList.Add(argument);
+        }
+
+        if (_useRegionScratchDirectory)
+        {
+            var regionWorkDir = Path.GetDirectoryName(Path.GetFullPath(pbfPath))!;
+            var scratch = new DirectoryInfo(RenderFilePaths.GetPlanetilerTempPath(regionWorkDir));
+            if (scratch.Parent!.LinkTarget is not null || scratch.LinkTarget is not null)
+                throw new IOException($"Planetiler scratch path must not traverse a directory link: '{scratch.FullName}'.");
+
+            startInfo.ArgumentList.Add($"--tmpdir={scratch.FullName}");
         }
 
         return startInfo;
