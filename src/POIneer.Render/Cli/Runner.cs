@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -157,13 +158,21 @@ public sealed class Runner
                     var updateCheck = await _regionUpdateChecker.CheckAsync(r, downloadStatePath, ct);
 
                     var regionOutDir = RegionIdentifier.CombinePath(outDir, r.Id);
+                    var checksum = updateCheck.RemoteMetadata.Md5Checksum;
+                    var poiPath = Path.Combine(regionOutDir, RenderFilePaths.PoiDataset);
+                    var manifestMissing = publication is not null && publication.ExpectedManifestRevision is null;
+                    var outputsMissing = !File.Exists(poiPath)
+                        || (_vectorTileOptions.Enabled && !File.Exists(Path.Combine(regionOutDir, RenderFilePaths.VectorTiles)));
                     var processingRequired = overwriteRequested || scheduleState is null || scheduleState.ProcessingPending
-                        || updateCheck.ShouldRedownloadPbf || !File.Exists(pbfPath)
-                        || !File.Exists(Path.Combine(regionOutDir, RenderFilePaths.PoiDataset))
-                        // If the PBF is newer than the existing output, reprocess
-                        || File.GetLastWriteTimeUtc(pbfPath) > File.GetLastWriteTimeUtc(Path.Combine(regionOutDir, RenderFilePaths.PoiDataset))
-                        || (_vectorTileOptions.Enabled && !File.Exists(Path.Combine(regionOutDir, RenderFilePaths.VectorTiles)))
-                        || (publication is not null && publication.ExpectedManifestRevision is null);
+                        || manifestMissing;
+                    if (!processingRequired)
+                    {
+                        processingRequired = checksum is null
+                            ? updateCheck.ShouldRedownloadPbf || !File.Exists(pbfPath) || outputsMissing
+                              || File.GetLastWriteTimeUtc(pbfPath) > File.GetLastWriteTimeUtc(poiPath)
+                            : (outputsMissing && !_localRenderFileCleanup.Enabled)
+                              || !await _regionUpdateChecker.MatchesProcessedChecksumAsync(r, renderStatePath, checksum, ct);
+                    }
                     if (!processingRequired)
                     {
                         var next = await _updateSchedule.MarkSuccessfulAsync(r, schedulePath, ct);
@@ -180,43 +189,33 @@ public sealed class Runner
 
                     CheckAvailableDiskSpace(r.Id, regionWorkDir, regionOutDir);
 
-                    if (!File.Exists(pbfPath))
+                    var needsDownload = !File.Exists(pbfPath) || redownloadPbf || updateCheck.ShouldRedownloadPbf;
+                    if (needsDownload)
                     {
-                        _logger.LogInformation("Downloading PBF for {Region} ... to {TargetPath}", r.Id, pbfPath);
+                        _logger.LogInformation("({Region}) Downloading PBF to {Path}. Source check: {Reason}",
+                            r.Id, pbfPath, updateCheck.Reason);
                         await _regionUpdateChecker.InvalidateDownloadAsync(downloadStatePath, ct);
                         await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
-                        await _regionUpdateChecker.MarkDownloadedAsync(r, downloadStatePath, updateCheck.RemoteMetadata, ct);
-                    }
-                    else if (redownloadPbf)
-                    {
-                        _logger.LogInformation("PBF already exists for {Region} at {TargetPath}, but overwrite is enabled, re-downloading.", r.Id, pbfPath);
-                        await _regionUpdateChecker.InvalidateDownloadAsync(downloadStatePath, ct);
-                        await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
-                        await _regionUpdateChecker.MarkDownloadedAsync(r, downloadStatePath, updateCheck.RemoteMetadata, ct);
-                    }
-                    else if (updateCheck.ShouldRedownloadPbf)
-                    {
-                        _logger.LogInformation(
-                            "PBF metadata changed for {Region} ({Reason}), re-downloading to {TargetPath}. ETag={ETag}, LastModified={LastModified}, ContentLength={ContentLength}",
-                            r.Id,
-                            updateCheck.Reason,
-                            pbfPath,
-                            updateCheck.RemoteMetadata.ETag,
-                            updateCheck.RemoteMetadata.LastModified,
-                            updateCheck.RemoteMetadata.ContentLength);
-                        await _regionUpdateChecker.InvalidateDownloadAsync(downloadStatePath, ct);
-                        await _fileDownloader.DownloadAsync(r.PbfUrl, pbfPath, ct);
-                        await _regionUpdateChecker.MarkDownloadedAsync(r, downloadStatePath, updateCheck.RemoteMetadata, ct);
                     }
                     else
                     {
-                        _logger.LogInformation(
-                            "PBF metadata unchanged for {Region}; reusing local PBF for required processing. ETag={ETag}, LastModified={LastModified}, ContentLength={ContentLength}",
-                            r.Id,
-                            updateCheck.RemoteMetadata.ETag,
-                            updateCheck.RemoteMetadata.LastModified,
-                            updateCheck.RemoteMetadata.ContentLength);
+                        _logger.LogInformation("({Region}) Reusing local PBF at {Path} for processing.", r.Id, pbfPath);
                     }
+
+                    if (checksum is not null)
+                    {
+                        await using var source = File.OpenRead(pbfPath);
+                        var actual = Convert.ToHexStringLower(await MD5.HashDataAsync(source, ct));
+                        if (!StringComparer.OrdinalIgnoreCase.Equals(checksum, actual))
+                        {
+                            await _regionUpdateChecker.InvalidateDownloadAsync(downloadStatePath, ct);
+                            throw new InvalidDataException(
+                                $"Geofabrik MD5 mismatch for '{pbfPath}': expected {checksum}, got {actual}.");
+                        }
+                    }
+
+                    if (needsDownload)
+                        await _regionUpdateChecker.MarkDownloadedAsync(r, downloadStatePath, updateCheck.RemoteMetadata, ct);
                     if (publication is null)
                         await _renderRegionUseCase.RunAsync(r, workDir, outDir, ct, forceRebuild: true);
                     else

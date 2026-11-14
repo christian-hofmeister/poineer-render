@@ -274,8 +274,16 @@ other tool outputs are outside the cleanup scope.
 Render failures leave local files available for retry or diagnosis. Cleanup errors are logged
 as warnings and the already verified release remains successful. Render state, schedule state,
 metadata, and quarantined files are preserved. Local publishing keeps its local files.
-Until checksum-based change detection (#188) is available, a later scheduled run can download
-the same PBF again because the local PBF was removed.
+
+### Geofabrik source checksums
+
+For sources hosted on `download.geofabrik.de`, the renderer reads the `.md5` file alongside the
+configured PBF. A matching checksum from the last successful render lets a scheduled run skip
+download and rendering after cleanup. An unavailable or malformed checksum fails the region check.
+New or reused PBF files are checked against the published MD5 before rendering. The renderer saves
+the processed checksum only after verified publishing and any required manifest publication succeed.
+Existing state without a checksum is populated on the next successful render. Other sources continue
+to use HTTP metadata, and published dataset artifacts continue to use SHA-256.
 
 Region ids in `Renderer:RegionsJson` are globally unique, hierarchical technical
 identifiers such as `geofabrik/europe/germany/berlin` - see

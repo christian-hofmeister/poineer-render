@@ -38,6 +38,16 @@ public sealed class RegionUpdateChecker : IRegionUpdateChecker
     public Task InvalidateDownloadAsync(string statePath, CancellationToken ct = default)
         => _downloadStateStore.DeleteAsync(statePath, ct);
 
+    public async Task<bool> MatchesProcessedChecksumAsync(
+        RegionDto region, string statePath, string checksum, CancellationToken ct = default)
+    {
+        var state = await _stateStore.ReadAsync(statePath, ct);
+        return state is not null
+            && state.RegionId == region.Id
+            && state.PbfUrl == region.PbfUrl
+            && StringComparer.OrdinalIgnoreCase.Equals(checksum, state.LastProcessedMetadata.Md5Checksum);
+    }
+
     public Task MarkDownloadedAsync(
         RegionDto region,
         string statePath,
@@ -76,6 +86,13 @@ public sealed class RegionUpdateChecker : IRegionUpdateChecker
 
         if (!StringComparer.Ordinal.Equals(storedState.PbfUrl, region.PbfUrl))
             return "Configured PBF URL changed.";
+
+        if (remoteMetadata.Md5Checksum is { } checksum)
+        {
+            return StringComparer.OrdinalIgnoreCase.Equals(checksum, storedState.DownloadedMetadata.Md5Checksum)
+                ? null
+                : "Geofabrik MD5 checksum changed or no verified download checksum exists.";
+        }
 
         if (!string.IsNullOrWhiteSpace(remoteMetadata.ETag))
         {
