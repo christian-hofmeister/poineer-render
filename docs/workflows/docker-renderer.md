@@ -35,7 +35,7 @@ docker build \
   -t poineer-render:<version> .
 ```
 
-Jenkins enforces `PLANETILER_SHA256` and `FLYWAY_SHA256` for `release/*` branch builds.
+Jenkins requires the Planetiler and Flyway SHA-256 values for release tag builds.
 Feature branch builds may use the upstream checksum sidecars as a convenience while iterating.
 In Jenkins, provide the release checksums through the `PLANETILER_SHA256` and `FLYWAY_SHA256`
 build parameters. They are public integrity values, not secrets.
@@ -203,9 +203,11 @@ size reporting, overwrite policies, and retry behavior.
 
 ## Release Image Deployment
 
-Jenkins builds every Docker image with a temporary CI tag derived from the branch and build
-number, for example `poineer-render:release_v0.2.1-42`. After a successful `release/*`
-build verifies the image, Jenkins promotes that exact image to two stable local VPS tags:
+Jenkins builds each Docker image with a temporary CI tag derived from the SCM head name
+and build number. Branch and pull request builds run the Docker checks and remove their
+temporary images. Once the release PR is merged, push a Git tag matching `vX.Y.Z` from
+the release commit on `main`. Jenkins checks that the tagged commit is reachable from
+the remote `main` branch, runs CI, and promotes the verified image to two local VPS tags:
 
 - `poineer-render:<release-version>`, for example `poineer-render:v0.2.1`
 - `poineer-render:production`
@@ -215,7 +217,17 @@ scheduler change. Releasing a new version moves the `production` tag to the newl
 image. See [Scheduled Renderer Execution](scheduled-renders.md) for the recommended systemd
 timer setup.
 
-Release branches must be named like `release/v0.2.1`; Jenkins derives the release image tag
-from the branch suffix. After promotion, Jenkins removes the temporary CI tag during post-build
-cleanup. A release cleanup step keeps the two newest semantic release tags and leaves
-`poineer-render:production` untouched.
+Jenkins derives the versioned image tag from the Git tag. After promotion, post-build cleanup
+removes the temporary CI tag. The release cleanup stage keeps the two newest versioned image tags.
+
+### Configure Jenkins tag builds
+
+1. In the Multibranch Pipeline's GitHub Branch Source, enable **Discover tags**.
+2. Enable automatic **Tags** builds using the [Basic Branch Build Strategies plugin](https://plugins.jenkins.io/basic-branch-build-strategies/). Keep **Regular branches** and **Change requests** enabled if the job currently builds them. Adding a strategy replaces Jenkins' default build selection. When enabling tag builds, use an age limit or source filter to exclude historical release tags from the initial automatic scan.
+3. Set `CI_PLANETILER_SHA256` and `CI_FLYWAY_SHA256` in the Jenkins build environment used by the tag jobs. Automatic builds use these values. A manually parameterized build can override them with `PLANETILER_SHA256` and `FLYWAY_SHA256`.
+4. Confirm a pushed release tag is discovered and scheduled through the existing GitHub webhook or a multibranch scan. For the first release using this workflow, tag a merge commit that already contains the updated Jenkinsfile.
+
+Jenkins reads the Jenkinsfile from the revision being built. Before switching over, retire or
+disable release-branch jobs that still point to the previous branch-based deployment pipeline.
+
+Verify the rollout on a Jenkins test agent with a separate Docker daemon and isolated VPS deploy paths. A release-branch build and a tag build that fails validation or Docker verification should leave the existing `production` image ID in place. A successful release tag build should set both the versioned and `production` tags to the same image ID.

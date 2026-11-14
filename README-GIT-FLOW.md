@@ -97,6 +97,8 @@ git tag v0.4.0 MERGE_COMMIT_SHA
 git push origin v0.4.0
 ```
 
+The pushed `vX.Y.Z` tag triggers the Jenkins release build and Docker image promotion after verification. See the [Jenkins tag-build setup](docs/workflows/docker-renderer.md#configure-jenkins-tag-builds).
+
 ## 5. Back-merge into develop to sync changes
 
 ```bash
