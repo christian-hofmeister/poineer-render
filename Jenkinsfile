@@ -1,7 +1,7 @@
 // Jenkins Declarative Pipeline for POIneer.Render
 // - Builds and tests on 'develop'
 // - Creates a published application archive
-// - Deploys 'release/*' builds to the VPS and verifies the deployed artifact starts (#107)
+// - Deploys verified Git release tags to the VPS
 // - Avoids heavy rendering on Jenkins
 
 pipeline {
@@ -10,6 +10,7 @@ pipeline {
   options {
     ansiColor('xterm')
     timestamps()
+    skipDefaultCheckout()
     disableConcurrentBuilds()
     buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '10'))
     timeout(time: 30, unit: 'MINUTES')
@@ -48,20 +49,61 @@ pipeline {
     string(
       name: 'PLANETILER_SHA256',
       defaultValue: '',
-      description: 'Required for release/* Docker builds. SHA-256 of planetiler.jar.'
+      description: 'SHA-256 of planetiler.jar for release tags. Defaults to CI_PLANETILER_SHA256 on the agent.'
     )
     string(
       name: 'FLYWAY_SHA256',
       defaultValue: '',
-      description: 'Required for release/* Docker builds. SHA-256 of flyway-commandline linux-x64 tar.gz.'
+      description: 'SHA-256 of the Flyway Linux x64 tarball for release tags. Defaults to CI_FLYWAY_SHA256 on the agent.'
     )
   }
 
   stages {
     stage('Checkout') {
       steps {
+        sh 'rm -f docker-image-tag.txt'
         checkout scm
         sh 'git --no-pager log -1 --pretty=fuller'
+      }
+    }
+
+    stage('Validate Release Tag') {
+      when {
+        buildingTag()
+      }
+      steps {
+        script {
+          if (!(env.TAG_NAME ==~ /v[0-9]+\.[0-9]+\.[0-9]+/)) {
+            error('Release tags must match vX.Y.Z.')
+          }
+
+          def releaseCommit = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+          // Use the SCM checkout credentials and full main history, even if the tag checkout is shallow.
+          dir('.release-main-checkout') {
+            deleteDir()
+            try {
+              checkout changelog: false, poll: false, scm: scmGit(
+                branches: [[name: 'origin/main']],
+                userRemoteConfigs: scm.userRemoteConfigs.collect { remote ->
+                  [url: remote.url, credentialsId: remote.credentialsId ?: '',
+                   refspec: '+refs/heads/main:refs/remotes/origin/main']
+                },
+                extensions: [cloneOption(honorRefspec: true, noTags: true)]
+              )
+              withEnv(["RELEASE_COMMIT=${releaseCommit}"]) {
+                sh '''
+                  if ! git merge-base --is-ancestor "$RELEASE_COMMIT" refs/remotes/origin/main; then
+                    echo "Release tag ${TAG_NAME} must point to a commit reachable from main."
+                    exit 1
+                  fi
+                '''
+              }
+            } finally {
+              deleteDir()
+            }
+          }
+          env.VERIFIED_RELEASE_TAG = env.TAG_NAME
+        }
       }
     }
 
@@ -231,9 +273,11 @@ pipeline {
           IMAGE_TAG="${DOCKER_IMAGE}:${SAFE_BRANCH}-${BUILD_NUMBER}"
           echo "${IMAGE_TAG}" > docker-image-tag.txt
 
-          if printf '%s' "$BRANCH_NAME" | grep -Eq '^release/.+'; then
-            if [ -z "${PLANETILER_SHA256:-}" ] || [ -z "${FLYWAY_SHA256:-}" ]; then
-              echo "Release Docker builds require PLANETILER_SHA256 and FLYWAY_SHA256."
+          PLANETILER_SHA256="${PLANETILER_SHA256:-${CI_PLANETILER_SHA256:-}}"
+          FLYWAY_SHA256="${FLYWAY_SHA256:-${CI_FLYWAY_SHA256:-}}"
+          if [ -n "${VERIFIED_RELEASE_TAG:-}" ]; then
+            if [ -z "$PLANETILER_SHA256" ] || [ -z "$FLYWAY_SHA256" ]; then
+              echo "Release tag builds require both Planetiler and Flyway SHA-256 checksums."
               exit 1
             fi
           fi
@@ -282,7 +326,7 @@ pipeline {
     stage('Remove Non-Release Docker Image') {
       when {
         expression {
-          return !((env.BRANCH_NAME ?: '') ==~ /^release\/.+/)
+          return !env.VERIFIED_RELEASE_TAG
         }
       }
       steps {
@@ -294,25 +338,63 @@ pipeline {
       }
     }
 
+    stage('Deploy to VPS') {
+      // Jenkins runs directly on the VPS (confirmed: /opt/poineer-render is already
+      // owned by the jenkins user) - so unlike the original placeholder sketch, this
+      // is a local filesystem sync, not an SSH/rsync-to-a-remote-host step (issue #107).
+      when {
+        expression { return env.VERIFIED_RELEASE_TAG && currentBuild.currentResult == 'SUCCESS' }
+      }
+      steps {
+        sh '''
+          set -eux
+          echo "[deploy] Deploying ${VERIFIED_RELEASE_TAG} to ${DEPLOY_APP_DIR} ..."
+
+          mkdir -p "${DEPLOY_APP_DIR}" "${DEPLOY_ROOT}/logs" "${DEPLOY_ROOT}/scripts"
+
+          # --delete removes anything left over from a previous deploy that this
+          # release no longer produces (e.g. a renamed/removed file). Safe because
+          # DEPLOY_APP_DIR only ever holds what "dotnet publish" produced - nothing
+          # under it is ever hand-edited on the VPS.
+          rsync -a --delete "${PUBLISH_DIR}/" "${DEPLOY_APP_DIR}/"
+
+          echo "[deploy] Deployed contents:"
+          ls -la "${DEPLOY_APP_DIR}"
+        '''
+      }
+    }
+
+    stage('Verify Deployment') {
+      // Confirms the just-deployed artifact actually starts against the real
+      // Production config (appsettings.Production.json + regions.production.json
+      // path resolution) - --Renderer:DryRun=true makes Runner log its resolved
+      // paths and exit 0 immediately, before touching the network, the lock file,
+      // or any region, so this is safe to run unattended on the VPS (issue #107).
+      when {
+        expression { return env.VERIFIED_RELEASE_TAG && currentBuild.currentResult == 'SUCCESS' }
+      }
+      steps {
+        sh '''
+          set -eux
+          echo "[verify] Starting the deployed artifact (dry run)..."
+
+          "${DOTNET_CURRENT}" "${DEPLOY_APP_DIR}/POIneer.Render.dll" --Renderer:DryRun=true
+
+          echo "[verify] Deployed renderer started successfully."
+        '''
+      }
+    }
+
     stage('Promote Release Docker Image') {
       when {
-        expression {
-          return (env.BRANCH_NAME ?: '') ==~ /^release\/.+/
-        }
+        expression { return env.VERIFIED_RELEASE_TAG && currentBuild.currentResult == 'SUCCESS' }
       }
       steps {
         sh '''
           set -eux
 
           IMAGE_TAG="$(cat docker-image-tag.txt)"
-          RELEASE_VERSION="${BRANCH_NAME#release/}"
-
-          if ! printf '%s' "$RELEASE_VERSION" | grep -Eq '^v[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9_.-]+)?$'; then
-            echo "Release branch must be named like release/v0.2.1. Got: ${BRANCH_NAME}"
-            exit 1
-          fi
-
-          RELEASE_IMAGE_TAG="${DOCKER_IMAGE}:${RELEASE_VERSION}"
+          RELEASE_IMAGE_TAG="${DOCKER_IMAGE}:${VERIFIED_RELEASE_TAG}"
           PRODUCTION_IMAGE_TAG="${DOCKER_IMAGE}:production"
 
           docker tag "${IMAGE_TAG}" "${RELEASE_IMAGE_TAG}"
@@ -336,9 +418,7 @@ pipeline {
 
     stage('Prune Old Release Docker Images') {
       when {
-        expression {
-          return (env.BRANCH_NAME ?: '') ==~ /^release\/.+/
-        }
+        expression { return env.VERIFIED_RELEASE_TAG && currentBuild.currentResult == 'SUCCESS' }
       }
       steps {
         sh '''
@@ -351,57 +431,6 @@ pipeline {
             | sort -V \
             | awk 'NR>2{print p2} {p2=p1; p1=$0}' \
             | while IFS= read -r image_tag; do docker image rm "$image_tag" || true; done
-        '''
-      }
-    }
-
-    stage('Deploy to VPS') {
-      // Jenkins runs directly on the VPS (confirmed: /opt/poineer-render is already
-      // owned by the jenkins user) - so unlike the original placeholder sketch, this
-      // is a local filesystem sync, not an SSH/rsync-to-a-remote-host step (issue #107).
-      when {
-        expression {
-          return (env.BRANCH_NAME ?: '') ==~ /^release\/.+/
-        }
-      }
-      steps {
-        sh '''
-          set -eux
-          echo "[deploy] Deploying ${BRANCH_NAME} to ${DEPLOY_APP_DIR} ..."
-
-          mkdir -p "${DEPLOY_APP_DIR}" "${DEPLOY_ROOT}/logs" "${DEPLOY_ROOT}/scripts"
-
-          # --delete removes anything left over from a previous deploy that this
-          # release no longer produces (e.g. a renamed/removed file). Safe because
-          # DEPLOY_APP_DIR only ever holds what "dotnet publish" produced - nothing
-          # under it is ever hand-edited on the VPS.
-          rsync -a --delete "${PUBLISH_DIR}/" "${DEPLOY_APP_DIR}/"
-
-          echo "[deploy] Deployed contents:"
-          ls -la "${DEPLOY_APP_DIR}"
-        '''
-      }
-    }
-
-    stage('Verify Deployment') {
-      // Confirms the just-deployed artifact actually starts against the real
-      // Production config (appsettings.Production.json + regions.production.json
-      // path resolution) - --Renderer:DryRun=true makes Runner log its resolved
-      // paths and exit 0 immediately, before touching the network, the lock file,
-      // or any region, so this is safe to run unattended on the VPS (issue #107).
-      when {
-        expression {
-          return (env.BRANCH_NAME ?: '') ==~ /^release\/.+/
-        }
-      }
-      steps {
-        sh '''
-          set -eux
-          echo "[verify] Starting the deployed artifact (dry run)..."
-
-          "${DOTNET_CURRENT}" "${DEPLOY_APP_DIR}/POIneer.Render.dll" --Renderer:DryRun=true
-
-          echo "[verify] Deployed renderer started successfully."
         '''
       }
     }
