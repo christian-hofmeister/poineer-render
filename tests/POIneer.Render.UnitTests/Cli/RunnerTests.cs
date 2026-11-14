@@ -593,6 +593,57 @@ public sealed class RunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_SkipsCleanedUpRegionUntilChecksumChanges_AndRejectsMismatchedDownload()
+    {
+        await using var temp = TestTemporaryDirectories.Create("runner-geofabrik-checksum");
+        var region = BerlinRegion();
+        var workDir = Path.Combine(temp.DirectoryPath, "work", region.Id);
+        var pbfPath = Path.Combine(workDir, "osm.pbf");
+        var downloadStatePath = Path.Combine(workDir, "download-state.json");
+        var renderStatePath = Path.Combine(workDir, "render-state.json");
+        TestFiles.WriteAllText(Path.Combine(temp.DirectoryPath, "regions.json"), "[]");
+        _regionSource.GetRegionsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new[] { region });
+        var reader = Substitute.For<IRemotePbfMetadataReader>();
+        var downloadStore = new FileRegionDownloadStateStore(NullLogger<FileRegionDownloadStateStore>.Instance);
+        var renderStore = new FileRegionRenderStateStore(NullLogger<FileRegionRenderStateStore>.Instance);
+        var checker = new RegionUpdateChecker(reader, renderStore, downloadStore);
+        var payload = new byte[] { 1, 2, 3 };
+        var original = new RegionUpdateMetadata(null, null, null,
+            Convert.ToHexStringLower(System.Security.Cryptography.MD5.HashData(payload)));
+        reader.GetMetadataAsync(region.PbfUrl, Arg.Any<CancellationToken>()).Returns(original);
+        _fileDownloader.DownloadAsync(region.PbfUrl, pbfPath, Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            File.WriteAllBytes(pbfPath, payload);
+            return Task.FromResult(pbfPath);
+        });
+        var sut = CreateSut(temp.DirectoryPath, CreateOptions(), checker,
+            publisherOptions: new PublisherOptions { Target = DatasetPublisherTarget.AzureBlob },
+            cleanupOptions: new CleanupOptions { DeleteLocalFilesAfterVerifiedPublish = true });
+
+        (await sut.RunAsync(CancellationToken.None)).Should().Be(0);
+        File.Exists(pbfPath).Should().BeFalse();
+        (await renderStore.ReadAsync(renderStatePath))!.LastProcessedMetadata.Should().Be(original);
+
+        _clock.UtcNow = _clock.UtcNow.AddDays(7);
+        (await sut.RunAsync(CancellationToken.None)).Should().Be(0);
+        await _fileDownloader.Received(1).DownloadAsync(region.PbfUrl, pbfPath, Arg.Any<CancellationToken>());
+
+        var changed = original with { Md5Checksum = "d41d8cd98f00b204e9800998ecf8427e" };
+        reader.GetMetadataAsync(region.PbfUrl, Arg.Any<CancellationToken>()).Returns(changed);
+        _clock.UtcNow = _clock.UtcNow.AddDays(7);
+        (await sut.RunAsync(CancellationToken.None)).Should().Be(1);
+        (await downloadStore.ReadAsync(downloadStatePath)).Should().BeNull();
+        (await renderStore.ReadAsync(renderStatePath))!.LastProcessedMetadata.Should().Be(original);
+        await _renderRegion.Received(1).RunAsync(region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), true);
+
+        payload = [];
+        (await sut.RunAsync(CancellationToken.None)).Should().Be(0);
+        await _fileDownloader.Received(3).DownloadAsync(region.PbfUrl, pbfPath, Arg.Any<CancellationToken>());
+        await _renderRegion.Received(2).RunAsync(region, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>(), true);
+        (await renderStore.ReadAsync(renderStatePath))!.LastProcessedMetadata.Should().Be(changed);
+    }
+
+    [Fact]
     public async Task RunAsync_RejectsInvalidRegionIdBeforeCheckingRemoteMetadata()
     {
         await using var tempDir = TestTemporaryDirectories.Create("runner-invalid-region-id");
