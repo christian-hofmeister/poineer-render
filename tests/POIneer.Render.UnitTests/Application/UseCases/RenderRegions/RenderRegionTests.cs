@@ -25,6 +25,9 @@ public sealed class RenderRegionTests
 {
     private readonly ILogger<RenderRegion> _logger =
         Substitute.For<ILogger<RenderRegion>>();
+    private readonly ILogger<RegionReleasePublisher> _releaseLogger =
+        Substitute.For<ILogger<RegionReleasePublisher>>();
+    private readonly PendingManifestStore _pendingManifests = new(NullLogger<PendingManifestStore>.Instance);
 
     private readonly IPolygonCutter _polygonCutter = Substitute.For<IPolygonCutter>();
     private readonly IOsmReader _osmReader = Substitute.For<IOsmReader>();
@@ -87,13 +90,16 @@ public sealed class RenderRegionTests
         _vectorTileGenerator.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(call => File.WriteAllTextAsync(call.ArgAt<string>(1), "unchanged tiles"));
 
+        var versionCalculator = new FileHashDatasetVersionCalculator(options);
+        var releasePublisher = new RegionReleasePublisher(
+            _releaseLogger, _datasetPublisher, versionCalculator, metadataFactory, _publishedDatasetVerifier,
+            _pendingManifests, metadataPublisher);
         var sut = new RenderRegion(
             _logger, _polygonCutter, _dbInit, _osmReader, _exporter, Substitute.For<IRawPoiMapper>(),
             TestRendererOptions.Create(false, false), _datasetValidator,
-            _datasetPublisher,
-            new FileHashDatasetVersionCalculator(options), metadataFactory, _publishedDatasetVerifier,
+            versionCalculator,
             _vectorTileGenerator, TestRendererOptions.CreateVectorTiles(enabled: true, planetilerJarPath: "planetiler.jar"),
-            metadataPublisher);
+            releasePublisher, _pendingManifests);
         var manifestPath = Path.Combine(metadataRoot, region.Id, "manifest.json");
 
         await sut.RunAsync(region, workDir, outDir);
@@ -288,14 +294,13 @@ public sealed class RenderRegionTests
             mapper ?? Substitute.For<IRawPoiMapper>(),
             TestRendererOptions.Create(overwriteDatabase, overwritePbf),
             validator,
-            publisher,
             versionCalculator,
-            metadataFactory,
-            verifier,
             vectorTileGenerator ?? _vectorTileGenerator,
             TestRendererOptions.CreateVectorTiles(
                 enabled: vectorTilesEnabled,
-                planetilerJarPath: vectorTilesEnabled ? "planetiler.jar" : null));
+                planetilerJarPath: vectorTilesEnabled ? "planetiler.jar" : null),
+            new RegionReleasePublisher(_releaseLogger, publisher, versionCalculator, metadataFactory, verifier, _pendingManifests),
+            _pendingManifests);
     }
 
     [Fact]
@@ -631,7 +636,7 @@ public sealed class RenderRegionTests
         await _publishedDatasetVerifier.Received(scenario == "publish-failure" ? 0 : 1)
             .VerifyAsync(tileMetadata, "test-publish-destination-path", cts.Token);
 
-        var releaseLogs = _logger.ReceivedCalls()
+        var releaseLogs = _releaseLogger.ReceivedCalls()
             .Where(call => call.GetMethodInfo().Name == "Log")
             .Select(call => call.GetArguments()[2]?.ToString())
             .Where(message => message?.Contains("Release artifacts verified:") == true).ToList();
