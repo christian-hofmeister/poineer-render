@@ -141,6 +141,8 @@ internal class Program
         builder.Services.AddSingleton<IProcessRunner, ProcessRunner>();
         builder.Services.AddSingleton<IVectorTileGenerator, PlanetilerVectorTileGenerator>();
         builder.Services.AddSingleton<IRenderRegion, RenderRegion>();
+        builder.Services.AddSingleton<RegionReleasePublisher>();
+        builder.Services.AddSingleton<PendingManifestStore>();
         builder.Services.AddSingleton<IRawPoiMapper, RawPoiMapper>();
         builder.Services.AddSingleton<IDatasetValidator, SqliteDatasetValidator>();
         builder.Services.AddSingleton<LocalDatasetPublisher>();

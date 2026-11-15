@@ -81,6 +81,12 @@ the current manifest. A metadata failure preserves the previous advertised relea
 retry using already verified files. There is no transaction across the two stores.
 See [ADR 0009](../decisions/0009-separate-metadata-artifact-storage-roots.md).
 
+`RenderRegion` decides whether to render again or retry publication with the existing
+files. `RegionReleasePublisher` publishes and verifies the artifacts before updating
+the manifest against the expected revision. `PendingManifestStore` manages the local
+checkpoint and hashes the source so a retry can detect changes even when the file size
+and modification time match.
+
 The planned architecture keeps the same boundaries while adding cloud-backed storage and,
 optionally, cloud-backed compute:
 
