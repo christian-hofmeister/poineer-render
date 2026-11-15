@@ -2,6 +2,13 @@
 
 All notable changes to POIneer.Render will be documented in this file.
 
+## [0.4.1]
+
+### Changed
+
+- Jenkins now promotes verified Docker images to the versioned and `production` tags only for `vX.Y.Z` Git tags whose commits are reachable from `main`. Release branch and pull request builds still verify images without promoting them.
+- Documented how to enable Jenkins tag builds and configure the required Planetiler and Flyway SHA-256 checksums for automated releases.
+
 ## [0.4.0]
 
 ### Added
