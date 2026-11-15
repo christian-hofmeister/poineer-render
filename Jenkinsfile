@@ -424,10 +424,10 @@ pipeline {
         sh '''
           set -eux
 
-          # Keep the two newest semantic release tags. The stable "production" tag is
-          # never selected here because it does not match the version tag pattern.
+          # Match the Git release tag format so temporary CI tags do not count
+          # toward the two retained releases.
           docker image ls "${DOCKER_IMAGE}" --format '{{.Repository}}:{{.Tag}}' \
-            | grep -E "^${DOCKER_IMAGE}:v[0-9]+\\.[0-9]+\\.[0-9]+([.-][A-Za-z0-9_.-]+)?$" \
+            | grep -E "^${DOCKER_IMAGE}:v[0-9]+\\.[0-9]+\\.[0-9]+$" \
             | sort -V \
             | awk 'NR>2{print p2} {p2=p1; p1=$0}' \
             | while IFS= read -r image_tag; do docker image rm "$image_tag" || true; done
