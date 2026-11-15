@@ -355,7 +355,7 @@ for the actual per-run log lines before assuming something is wrong.
    (config resolution, PBF download errors, Flyway migration errors, validation failures) is
    here.
 3. `docker image ls poineer-render` - confirm the `production` tag exists and points at the
-   image you expect (compare the image ID against the last `release/*` Jenkins build).
+   image you expect (compare the image ID against the last successful Jenkins release tag build).
 4. `ls -la /opt/poineer-render/data` and subdirectories - confirm ownership is still
    `10001:10001`; a manual `chown`/`chmod` elsewhere on the host, or a bind-mount remount as a
    different UID, would cause the container to fail on its own data with permission errors.
@@ -380,7 +380,7 @@ instead of inventing a new one:
 | Filesystem root | `/opt/poineer-render/{app,data,logs,scripts}` | `/opt/poineer-server/{app,data,logs}` for consistency, even though the API's actual persistent-data needs will differ |
 | Execution | Docker image, `--rm`, non-root in-container user | Same: containerize, run as a dedicated non-root uid (does not need to reuse `10001` - a distinct uid per service is fine and arguably clearer) |
 | Logging | stdout/stderr captured by journald via the systemd unit (no bespoke log file) | Same. Do **not** replicate `poineer-render`'s old `logs/render.log` file-based pattern - that predates the journald convention and is now stale/obsolete (see below); journald should be the only log sink from the start |
-| Image promotion | Jenkins builds a per-build tag, promotes to `<version>` + `<service>:production` on `release/*` | Same tagging scheme for consistency across services |
+| Image promotion | Jenkins builds a per-build tag and promotes verified `vX.Y.Z` Git tag builds to `<version>` and `<service>:production` | Same tagging scheme for consistency across services |
 
 ## Known Issues / Obsolete Configuration Found During This Review
 
