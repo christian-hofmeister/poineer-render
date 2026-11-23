@@ -24,7 +24,7 @@ Instead of merging these branches directly without review, it is recommended to:
 
 1. update `develop`
 2. create a local working branch from the Dependabot branch
-3. rebase the local branch onto the latest `develop`
+3. rebase onto the latest `develop` only when needed
 4. run tests locally
 5. push the working branch if needed
 6. open or complete the Pull Request
@@ -93,7 +93,9 @@ Working on your own branch gives you full control:
 * you can rebase safely
 * you can amend commits if needed
 * you can add fixes or CI adjustments
-* you avoid working directly on the auto-generated Dependabot branch
+* you can choose whether to update the existing Dependabot PR or open a separate PR
+
+Creating a local branch does not create a remote branch. With the usual Git defaults, this command sets the Dependabot remote branch as its upstream, even though the local name is different. Check the upstream with `git branch -vv` and use an explicit push target as shown in section 7.
 
 ### Naming suggestions
 
@@ -142,7 +144,11 @@ This is useful to confirm:
 
 ---
 
-## 5. Rebase onto the latest `develop`
+## 5. Rebase onto the latest `develop` if needed
+
+A rebase is not required just because you created a local working branch or added a fix. If the existing PR is mergeable and the required checks pass for its latest commit, you can merge it directly. Rebase when you need to resolve conflicts or validate the update against newer changes in `develop`.
+
+Rebasing rewrites commits. A local branch name does not make it safe to rewrite the existing remote Dependabot branch; prefer a separate PR for a locally rebased branch unless rewriting the original branch is intentional and coordinated.
 
 Fetch the latest state from the remote first:
 
@@ -194,7 +200,7 @@ git rebase --abort
 
 ## 6. Run tests locally
 
-After rebasing, run the relevant tests locally.
+After reviewing the update and making any changes, run the relevant tests locally.
 
 For the full solution:
 
@@ -225,27 +231,39 @@ This helps ensure the update does not break the build or existing behavior.
 
 ---
 
-## 7. Push your working branch if needed
+## 7. Push your changes if needed
 
-If you want to open a new PR or update an existing one from your own branch, push it to GitHub:
+### Update the existing Dependabot PR
 
-```bash
-git push origin chore/update-testhost-10.0.5
-```
-
-If you rebased and already pushed before, use:
+If you added commits, such as regenerated package lock files, push them explicitly to the existing Dependabot branch:
 
 ```bash
-git push --force-with-lease
+git push origin HEAD:dependabot/nuget/tests/POIneer.Render.IntegrationTests/Microsoft.AspNetCore.TestHost-10.0.5
 ```
 
-`--force-with-lease` is safer than `--force` because it protects against overwriting unexpected remote changes.
+Use the actual source branch name from the PR, without the `origin/` prefix. This updates the existing PR even if your local branch has a different name. No separate remote working branch or new PR is needed. If you made no changes, there is nothing to push.
+
+Do not rely on a plain `git push` when local and upstream branch names differ: its behavior depends on your Git configuration. If the explicit push is rejected, fetch and inspect the remote changes before proceeding; do not force-push automatically.
+
+### Open a separate PR from your own branch
+
+If you intentionally want a separate PR, publish your working branch:
+
+```bash
+git push -u origin chore/update-testhost-10.0.5
+```
+
+This creates or updates your own remote branch and sets it as the upstream. It does not update the existing Dependabot PR.
+
+If you intentionally rebase an already published personal branch, inspect the remote state and coordinate with anyone using it before updating it with `git push --force-with-lease origin chore/update-testhost-10.0.5`. Avoid rewriting shared history without explicit agreement.
 
 ---
 
 ## 8. Create or complete the Pull Request
 
-Open a Pull Request in GitHub with:
+When updating the existing Dependabot PR, review its final diff and wait for the required checks on the latest commit. If it is mergeable and approved as required, merge that PR directly.
+
+Only when using a separate remote working branch, open a new Pull Request in GitHub with:
 
 * **base branch**: `develop`
 * **compare branch**: your local working branch pushed to origin
@@ -368,12 +386,15 @@ git checkout -b chore/update-testhost-10.0.5 \
   origin/dependabot/nuget/tests/POIneer.Render.IntegrationTests/Microsoft.AspNetCore.TestHost-10.0.5
 
 git fetch origin
-git rebase origin/develop
+# Optional: rebase only if needed; see section 5.
 
 dotnet test
 
-git push origin chore/update-testhost-10.0.5
+# If you added commits, update the existing Dependabot PR:
+git push origin HEAD:dependabot/nuget/tests/POIneer.Render.IntegrationTests/Microsoft.AspNetCore.TestHost-10.0.5
 ```
+
+Review and merge the existing Dependabot PR after its latest checks pass. To open a separate PR instead, use the personal-branch push described in section 7.
 
 After merge:
 
@@ -389,7 +410,7 @@ git fetch --prune
 ## Notes
 
 * Prefer `chore/` for dependency updates
-* Rebase before merging to catch conflicts early
+* Rebase only when needed; a mergeable PR with passing checks does not require it
 * Run at least the relevant tests locally
 * Prefer Pull Requests over direct pushes for traceability
 * Clean up old local and remote references regularly
